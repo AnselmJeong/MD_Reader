@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron'
 
 export interface ElectronAPI {
   file: {
@@ -26,6 +26,9 @@ export interface ElectronAPI {
   }
   shell: {
     openExternal: (url: string) => Promise<void>
+  }
+  utils: {
+    getPathForFile: (file: File) => string
   }
 }
 
@@ -63,6 +66,9 @@ const api: ElectronAPI = {
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url)
+  },
+  utils: {
+    getPathForFile: (file: File) => webUtils.getPathForFile(file)
   }
 }
 

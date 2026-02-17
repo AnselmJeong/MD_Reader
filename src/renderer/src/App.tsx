@@ -118,8 +118,11 @@ export default function App() {
       
       const file = files[0]
       const name = file.name.toLowerCase()
-      if (file.path && (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt'))) {
-        const result = await window.api.file.read(file.path)
+      // Use the new API to get the path
+      const filePath = window.api.utils.getPathForFile(file)
+      
+      if (filePath && (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt'))) {
+        const result = await window.api.file.read(filePath)
         setDocument(result.filePath, result.content, result.bibContent || null)
       }
     }
