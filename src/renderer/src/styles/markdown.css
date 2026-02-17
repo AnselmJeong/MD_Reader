@@ -1,0 +1,241 @@
+/* ═══════════════════════════════════════════
+   Rendered Markdown Styles
+   ═══════════════════════════════════════════ */
+
+/* ─── Links ─── */
+.document-body a {
+  color: var(--color-accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s ease;
+}
+.document-body a:hover {
+  border-bottom-color: var(--color-accent);
+}
+
+/* ─── Lists ─── */
+.document-body ul,
+.document-body ol {
+  padding-left: 1.8em;
+  margin-bottom: 1.2em;
+}
+.document-body li {
+  margin-bottom: 0.4em;
+}
+.document-body li > p {
+  margin-bottom: 0.4em;
+}
+
+/* ─── Blockquote ─── */
+.document-body blockquote {
+  border-left: 3px solid var(--color-blockquote-border);
+  padding: 0.5em 1.2em;
+  margin: 1.5em 0;
+  color: var(--color-on-surface-muted);
+  background: var(--color-surface-alt);
+  border-radius: 0 6px 6px 0;
+}
+
+/* ─── Code ─── */
+.document-body code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.88em;
+  background: var(--color-code-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+
+.document-body pre {
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1em 1.2em;
+  margin: 1.5em 0;
+  overflow-x: auto;
+  font-size: 0.88em;
+  line-height: 1.6;
+}
+.document-body pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* ─── Tables ─── */
+.document-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5em 0;
+  font-size: 0.92em;
+  overflow-x: auto;
+  display: block;
+}
+.document-body thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.document-body th {
+  background: var(--color-surface-alt);
+  font-family: Inter, 'Noto Sans KR', system-ui, sans-serif;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.7em 1em;
+  border-bottom: 2px solid var(--color-border);
+}
+.document-body td {
+  padding: 0.6em 1em;
+  border-bottom: 1px solid var(--color-border);
+}
+.document-body tr:hover td {
+  background: var(--color-surface-alt);
+}
+
+/* ─── Horizontal Rule ─── */
+.document-body hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 2.5em 0;
+}
+
+/* ─── Images ─── */
+.document-body img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 1.5em auto;
+  display: block;
+  box-shadow: var(--shadow-md);
+}
+
+/* ─── Footnotes ─── */
+.document-body .footnotes {
+  margin-top: 3em;
+  padding-top: 1.5em;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.9em;
+  color: var(--color-on-surface-muted);
+}
+
+/* ─── KaTeX Math ─── */
+.document-body .math-display {
+  overflow-x: auto;
+  padding: 1em 0;
+  margin: 1em 0;
+}
+
+/* ─── Task Lists ─── */
+.document-body input[type='checkbox'] {
+  margin-right: 0.5em;
+  accent-color: var(--color-accent);
+}
+
+/* ─── Callout / Admonition Blocks ─── */
+.callout {
+  border-radius: 8px;
+  padding: 1em 1.2em;
+  margin: 1.5em 0;
+  border-left: 4px solid;
+}
+
+.callout-title {
+  font-family: Inter, 'Noto Sans KR', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.5em;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.callout-note {
+  background: var(--color-callout-note);
+  border-color: #3b82f6;
+}
+.callout-note .callout-title { color: #3b82f6; }
+
+.callout-warning {
+  background: var(--color-callout-warning);
+  border-color: #f59e0b;
+}
+.callout-warning .callout-title { color: #f59e0b; }
+
+.callout-important {
+  background: var(--color-callout-important);
+  border-color: #ef4444;
+}
+.callout-important .callout-title { color: #ef4444; }
+
+.callout-definition {
+  background: var(--color-callout-definition);
+  border-color: #22c55e;
+}
+.callout-definition .callout-title { color: #22c55e; }
+
+.callout-theorem {
+  background: var(--color-callout-note);
+  border-color: #6366f1;
+}
+.callout-theorem .callout-title { color: #6366f1; }
+
+/* ─── YAML Metadata Card ─── */
+.metadata-card {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1.5em 2em;
+  margin-bottom: 2.5em;
+  box-shadow: var(--shadow-sm);
+}
+.metadata-card h1 {
+  font-size: 1.8em;
+  border: none;
+  padding-bottom: 0;
+  margin-bottom: 0.3em;
+  margin-top: 0;
+}
+.metadata-card .meta-authors {
+  font-family: Inter, 'Noto Sans KR', system-ui, sans-serif;
+  color: var(--color-on-surface-muted);
+  font-size: 0.95em;
+  margin-bottom: 0.3em;
+}
+.metadata-card .meta-date {
+  font-family: Inter, 'Noto Sans KR', system-ui, sans-serif;
+  color: var(--color-on-surface-muted);
+  font-size: 0.85em;
+}
+.metadata-card .meta-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  margin-top: 0.8em;
+}
+.metadata-card .meta-keyword {
+  font-family: Inter, 'Noto Sans KR', system-ui, sans-serif;
+  font-size: 0.78em;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 0.2em 0.7em;
+  border-radius: 100px;
+  color: var(--color-on-surface-muted);
+}
+.metadata-card .meta-abstract {
+  margin-top: 1em;
+  padding-top: 1em;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.92em;
+  line-height: 1.7;
+  color: var(--color-on-surface-muted);
+}
+
+/* ─── Citation styling ─── */
+.citation {
+  color: var(--color-accent);
+  cursor: pointer;
+  font-weight: 500;
+}
+.citation:hover {
+  text-decoration: underline;
+}

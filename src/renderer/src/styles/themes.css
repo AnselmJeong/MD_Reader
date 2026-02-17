@@ -1,0 +1,92 @@
+/* ═══════════════════════════════════════════
+   Theme: Academic Light
+   ═══════════════════════════════════════════ */
+[data-theme='light'] {
+  --color-surface: #fafaf9;
+  --color-surface-alt: #ffffff;
+  --color-on-surface: #1c1917;
+  --color-on-surface-muted: #78716c;
+  --color-accent: #7c3aed;
+  --color-accent-hover: #6d28d9;
+  --color-border: #e7e5e4;
+  --color-chat-bg: #f5f5f4;
+  --color-chat-user: #ede9fe;
+  --color-chat-ai: #ffffff;
+  --color-reading-progress: #7c3aed;
+  --color-selection-menu: #ffffff;
+  --color-code-bg: #f5f5f4;
+  --color-blockquote-border: #7c3aed;
+  --color-callout-note: #eff6ff;
+  --color-callout-warning: #fffbeb;
+  --color-callout-important: #fef2f2;
+  --color-callout-definition: #f0fdf4;
+  --color-highlight-yellow: rgba(250, 204, 21, 0.3);
+  --color-highlight-green: rgba(74, 222, 128, 0.3);
+  --color-highlight-blue: rgba(96, 165, 250, 0.3);
+  --color-highlight-pink: rgba(244, 114, 182, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.08);
+}
+
+/* ═══════════════════════════════════════════
+   Theme: Sepia Classic
+   ═══════════════════════════════════════════ */
+[data-theme='sepia'] {
+  --color-surface: #f5f0e8;
+  --color-surface-alt: #faf6ee;
+  --color-on-surface: #3d2e1f;
+  --color-on-surface-muted: #8b7355;
+  --color-accent: #a0522d;
+  --color-accent-hover: #8b4513;
+  --color-border: #d4c4a8;
+  --color-chat-bg: #ede6d8;
+  --color-chat-user: #f5ebd9;
+  --color-chat-ai: #faf6ee;
+  --color-reading-progress: #a0522d;
+  --color-selection-menu: #faf6ee;
+  --color-code-bg: #ede6d8;
+  --color-blockquote-border: #a0522d;
+  --color-callout-note: #f0ebe0;
+  --color-callout-warning: #faf0d4;
+  --color-callout-important: #fae8e0;
+  --color-callout-definition: #eaf5e0;
+  --color-highlight-yellow: rgba(218, 185, 107, 0.35);
+  --color-highlight-green: rgba(139, 179, 109, 0.35);
+  --color-highlight-blue: rgba(131, 165, 196, 0.35);
+  --color-highlight-pink: rgba(196, 131, 160, 0.35);
+  --shadow-sm: 0 1px 2px rgba(61,46,31,0.06);
+  --shadow-md: 0 4px 12px rgba(61,46,31,0.08);
+  --shadow-lg: 0 8px 24px rgba(61,46,31,0.1);
+}
+
+/* ═══════════════════════════════════════════
+   Theme: Dark Scholar
+   ═══════════════════════════════════════════ */
+[data-theme='dark'] {
+  --color-surface: #1a1a2e;
+  --color-surface-alt: #16213e;
+  --color-on-surface: #e2e8f0;
+  --color-on-surface-muted: #94a3b8;
+  --color-accent: #a78bfa;
+  --color-accent-hover: #c4b5fd;
+  --color-border: #334155;
+  --color-chat-bg: #0f172a;
+  --color-chat-user: #1e1b4b;
+  --color-chat-ai: #1e293b;
+  --color-reading-progress: #a78bfa;
+  --color-selection-menu: #1e293b;
+  --color-code-bg: #0f172a;
+  --color-blockquote-border: #a78bfa;
+  --color-callout-note: #1e293b;
+  --color-callout-warning: #2d2305;
+  --color-callout-important: #2d0f0f;
+  --color-callout-definition: #0f2d1a;
+  --color-highlight-yellow: rgba(250, 204, 21, 0.2);
+  --color-highlight-green: rgba(74, 222, 128, 0.2);
+  --color-highlight-blue: rgba(96, 165, 250, 0.2);
+  --color-highlight-pink: rgba(244, 114, 182, 0.2);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+}

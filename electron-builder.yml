@@ -1,0 +1,15 @@
+appId: com.mdreader.app
+productName: MD Reader
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+mac:
+  target: dmg
+  icon: build/icon.png
+  category: public.app-category.productivity
+dmg:
+  title: "${productName} ${version}"
+  icon: build/icon.png
