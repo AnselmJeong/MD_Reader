@@ -37,10 +37,10 @@ function splitIntoUtterances(text: string): string[] {
 
   if (buffer) utterances.push(buffer)
   return utterances.flatMap((utterance) => {
-    if (utterance.length <= 700) return [utterance]
+    if (utterance.length <= 420) return [utterance]
     const chunks: string[] = []
-    for (let index = 0; index < utterance.length; index += 650) {
-      chunks.push(utterance.slice(index, index + 650).trim())
+    for (let index = 0; index < utterance.length; index += 380) {
+      chunks.push(utterance.slice(index, index + 380).trim())
     }
     return chunks.filter(Boolean)
   })
@@ -55,5 +55,8 @@ export function buildDocumentTtsUtterances(content: string): TtsUtterance[] {
 
 export function buildSelectionTtsUtterance(text: string): TtsUtterance[] {
   const normalized = text.replace(/\s+/g, ' ').trim()
-  return normalized ? [{ id: 'selection-0', text: normalized }] : []
+  return splitIntoUtterances(normalized).map((chunk, index) => ({
+    id: `selection-${index}`,
+    text: chunk
+  }))
 }

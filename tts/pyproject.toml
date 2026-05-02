@@ -1,11 +1,13 @@
 [project]
 name = "md-reader-tts"
 version = "0.1.0"
-description = "MD Reader local RealtimeTTS sidecar"
+description = "MD Reader local NeuTTS sidecar"
 requires-python = ">=3.11,<3.13"
 dependencies = [
-  "realtimetts[all]",
-  "neutts[llama]",
+  "neutts[llama,onnx]",
+  "phonemizer>=3.0.0",
+  "pyarrow<21",
+  "pyaudio",
 ]
 
 [tool.uv]

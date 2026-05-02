@@ -32,9 +32,13 @@ const emitter = new EventEmitter()
 
 let processRef: ChildProcessWithoutNullStreams | null = null
 let buffer = ''
+let stderrBuffer = ''
+let stderrTail: string[] = []
 let lastStatus: TtsStatus = { state: 'idle', mode: null }
 
 const DEFAULT_TTS_BACKBONE = 'neuphonic/neutts-air-q8-gguf'
+const DEFAULT_TTS_CODEC = 'neuphonic/neucodec-onnx-decoder'
+const MAX_STDERR_LINES = 80
 
 function getProjectRoot(): string {
   const cwdScript = path.join(process.cwd(), 'tts', 'reader_tts_server.py')
@@ -109,6 +113,12 @@ function getHuggingFaceHome(): string {
   return process.env.HF_HOME || path.join(app.getPath('userData'), 'huggingface')
 }
 
+function getReferenceCacheDir(root: string): string {
+  if (process.env.MD_READER_TTS_REF_CACHE_DIR) return process.env.MD_READER_TTS_REF_CACHE_DIR
+  if (app.isPackaged) return path.join(app.getPath('userData'), 'tts', 'reference-codes')
+  return path.join(root, 'tts', '.cache', 'reference-codes')
+}
+
 function getConfiguredVoice(): string | undefined {
   const voice = getSettings('ttsVoice')
   return typeof voice === 'string' && voice ? voice : undefined
@@ -145,6 +155,31 @@ function parseStdout(chunk: Buffer): void {
   }
 }
 
+function rememberStderrLine(line: string): void {
+  stderrTail.push(line)
+  if (stderrTail.length > MAX_STDERR_LINES) {
+    stderrTail = stderrTail.slice(-MAX_STDERR_LINES)
+  }
+  console.warn(`[TTS sidecar] ${line}`)
+}
+
+function parseStderr(chunk: Buffer): void {
+  stderrBuffer += chunk.toString('utf8')
+  let newline = stderrBuffer.indexOf('\n')
+  while (newline >= 0) {
+    const line = stderrBuffer.slice(0, newline).trim()
+    stderrBuffer = stderrBuffer.slice(newline + 1)
+    if (line) rememberStderrLine(line)
+    newline = stderrBuffer.indexOf('\n')
+  }
+}
+
+function flushStderrBuffer(): void {
+  const line = stderrBuffer.trim()
+  if (line) rememberStderrLine(line)
+  stderrBuffer = ''
+}
+
 function ensureProcess(): ChildProcessWithoutNullStreams {
   if (processRef && !processRef.killed) return processRef
 
@@ -164,23 +199,26 @@ function ensureProcess(): ChildProcessWithoutNullStreams {
       UV_PROJECT_ENVIRONMENT: getUvEnvironmentPath(root),
       HF_HOME: getHuggingFaceHome(),
       MD_READER_TTS_BACKBONE: process.env.MD_READER_TTS_BACKBONE || DEFAULT_TTS_BACKBONE,
+      MD_READER_TTS_CODEC: process.env.MD_READER_TTS_CODEC || DEFAULT_TTS_CODEC,
       MD_READER_TTS_DEVICE: process.env.MD_READER_TTS_DEVICE || 'cpu',
       MD_READER_TTS_DEFAULT_VOICE: process.env.MD_READER_TTS_DEFAULT_VOICE || getConfiguredVoice() || '',
+      MD_READER_TTS_REF_CACHE_DIR: getReferenceCacheDir(root),
       MD_READER_TTS_VOICES_DIR: process.env.MD_READER_TTS_VOICES_DIR || path.join(root, 'tts', 'voices')
     }
   })
 
   processRef = child
   buffer = ''
+  stderrBuffer = ''
+  stderrTail = []
   child.stdout.on('data', parseStdout)
-  child.stderr.on('data', (chunk) => {
-    const message = chunk.toString('utf8').trim()
-    if (message) emitEvent({ type: 'error', message })
-  })
+  child.stderr.on('data', parseStderr)
   child.on('exit', (code, signal) => {
+    flushStderrBuffer()
     processRef = null
     if (code !== 0 && signal !== 'SIGTERM') {
-      emitEvent({ type: 'error', message: `TTS sidecar exited with code ${code ?? 'unknown'}.` })
+      const stderr = stderrTail.length ? `\n\nRecent stderr:\n${stderrTail.join('\n')}` : ''
+      emitEvent({ type: 'error', message: `TTS sidecar exited with code ${code ?? 'unknown'}.${stderr}` })
     }
   })
 

@@ -1,6 +1,6 @@
-# MD Reader Realtime TTS
+# MD Reader TTS
 
-MD Reader uses a Python sidecar for local text-to-speech with RealtimeTTS, NeuTTSEngine, and NeuTTS-Air.
+MD Reader uses a Python sidecar for local text-to-speech with NeuTTS-Air and PyAudio playback.
 
 ## Setup
 
@@ -11,7 +11,7 @@ cd /Volumes/Aquatope/_DEV_/MD_Reader
 uv sync --directory tts
 ```
 
-The `tts/pyproject.toml` file pins the TTS environment to Python 3.11-3.12 and installs both `realtimetts[all]` and `neutts[llama]`. `uv` creates and manages `tts/.venv` automatically.
+The `tts/pyproject.toml` file pins the TTS environment to Python 3.11-3.12 and installs `neutts[llama,onnx]` plus `pyaudio`. `uv` creates and manages `tts/.venv` automatically.
 
 NeuTTS also needs a reference voice. Add clean 3-15 second mono WAV files and exact transcripts with matching basenames:
 
@@ -25,9 +25,11 @@ tts/voices/Christopher.txt
 The app automatically uses:
 
 - Backbone: `neuphonic/neutts-air-q8-gguf`
-- Codec: `neuphonic/neucodec`
+- Codec: `neuphonic/neucodec-onnx-decoder`
 - Device: `cpu`
 - Voice: the first valid voice pair in `tts/voices`, unless a development override selects another one
+
+The ONNX codec is decode-only, so MD Reader encodes each reference voice with the full `neuphonic/neucodec` encoder once and caches the resulting codes. In development, that cache lives in `tts/.cache/reference-codes`; in the packaged app, it lives under the app user data folder.
 
 The first playback can take a while because the Q8 GGUF backbone and codec are downloaded from Hugging Face. In the packaged desktop app, the virtual environment and Hugging Face cache live under the app's user data folder, not inside the app bundle.
 

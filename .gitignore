@@ -7,3 +7,4 @@ dist/
 *.log
 tts/.venv/
 tts/.python-version
+tts/.cache/

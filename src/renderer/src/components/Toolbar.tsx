@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { useUIStore } from '../store/useUIStore'
 import { useDocumentStore } from '../store/useDocumentStore'
@@ -17,10 +18,11 @@ const themeIcons: Record<string, string> = {
 }
 
 export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarProps) {
+  const [isTtsErrorOpen, setIsTtsErrorOpen] = useState(false)
   const { theme, fontSize, setFontSize, cycleTheme } = useSettingsStore()
   const { toggleToC, toggleSearch, toggleChat, showChat, toggleSettings } = useUIStore()
   const { content } = useDocumentStore()
-  const { mode: ttsMode, state: ttsState, error: ttsError, speakDocument, pause, resume, stop, restart } = useTtsStore()
+  const { mode: ttsMode, state: ttsState, error: ttsError, speakDocument, resume, stop, restart, clearError } = useTtsStore()
   const hasDocument = Boolean(content)
   const isDocumentTts = ttsMode === 'document'
   const isPreparingTts = ttsState === 'initializing' || ttsState === 'downloading-model'
@@ -30,6 +32,20 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
   const handleReadDocument = () => {
     if (!content || isPreparingTts) return
     void speakDocument(content)
+  }
+
+  const copyTtsError = async () => {
+    if (!ttsError) return
+    try {
+      await navigator.clipboard.writeText(ttsError)
+    } catch (error) {
+      console.error('Failed to copy TTS error:', error)
+    }
+  }
+
+  const dismissTtsError = () => {
+    clearError()
+    setIsTtsErrorOpen(false)
   }
 
   return (
@@ -92,7 +108,7 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
               : isPreparingTts
                 ? 'Preparing TTS'
                 : isPlayingTts
-                  ? 'Pause reading'
+                  ? 'Reading'
                   : isPausedTts
                     ? 'Resume reading'
                     : 'Read document'
@@ -108,22 +124,15 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
             <div className="w-px h-4 bg-border mx-0.5" />
             <button
               onClick={() => void resume()}
-              disabled={ttsState !== 'paused'}
+              disabled={ttsState !== 'stopped'}
               className="px-1.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface disabled:opacity-35 disabled:hover:bg-transparent"
-              title="Play"
+              title="Play from current position"
             >
               ▶
             </button>
             <button
-              onClick={() => void pause()}
-              disabled={ttsState !== 'playing'}
-              className="px-1.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface disabled:opacity-35 disabled:hover:bg-transparent"
-              title="Pause"
-            >
-              ⏸
-            </button>
-            <button
               onClick={() => void stop()}
+              disabled={ttsState !== 'playing' && !isPreparingTts}
               className="px-1.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface"
               title="Stop"
             >
@@ -132,7 +141,7 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
             <button
               onClick={() => void restart()}
               className="px-1.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface"
-              title="To beginning"
+              title="Rewind to beginning"
             >
               ↤
             </button>
@@ -180,9 +189,46 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
       {/* Right side */}
       <div className="titlebar-no-drag flex items-center gap-1">
         {ttsError && (
-          <span className="max-w-80 truncate text-xs text-red-500" title={ttsError}>
-            TTS: {ttsError}
-          </span>
+          <div className="relative">
+            <button
+              onClick={() => setIsTtsErrorOpen((open) => !open)}
+              className="max-w-36 truncate rounded-md border border-red-500/35 bg-red-500/10 px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-500/15"
+              title="Show TTS error details"
+            >
+              TTS Error
+            </button>
+            {isTtsErrorOpen && (
+              <div className="fixed right-4 top-12 z-50 flex max-h-[55vh] w-[min(720px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg border border-red-500/30 bg-surface-alt shadow-xl">
+                <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                  <span className="text-xs font-semibold text-red-500">TTS Error Details</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={copyTtsError}
+                      className="rounded-md px-2 py-1 text-xs text-on-surface-muted hover:bg-surface hover:text-on-surface"
+                    >
+                      Copy
+                    </button>
+                    <button
+                      onClick={dismissTtsError}
+                      className="rounded-md px-2 py-1 text-xs text-on-surface-muted hover:bg-surface hover:text-on-surface"
+                    >
+                      Dismiss
+                    </button>
+                    <button
+                      onClick={() => setIsTtsErrorOpen(false)}
+                      className="rounded-md px-2 py-1 text-xs text-on-surface-muted hover:bg-surface hover:text-on-surface"
+                      title="Close"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+                <pre className="whitespace-pre-wrap break-words overflow-auto p-3 text-left text-xs leading-relaxed text-on-surface">
+                  {ttsError}
+                </pre>
+              </div>
+            )}
+          </div>
         )}
         <button
           onClick={toggleChat}
