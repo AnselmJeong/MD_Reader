@@ -12,6 +12,8 @@ interface ChatState {
   messages: ChatMessage[]
   isStreaming: boolean
   streamingContent: string
+  inputDraft: string
+  focusInputRequest: number
   selectedModel: string
   availableModels: string[]
   systemPrompt: string
@@ -24,6 +26,13 @@ interface ChatState {
   setSelectedModel: (model: string) => void
   setAvailableModels: (models: string[]) => void
   setSystemPrompt: (prompt: string) => void
+  setInputDraft: (text: string) => void
+  requestInputFocus: () => void
+  sendMessage: (params: {
+    text: string
+    documentContent?: string | null
+    quotedText?: string
+  }) => Promise<{ success: boolean; reason?: string }>
 }
 
 let messageCounter = 0
@@ -32,6 +41,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isStreaming: false,
   streamingContent: '',
+  inputDraft: '',
+  focusInputRequest: 0,
   selectedModel: '',
   availableModels: [],
   systemPrompt:
@@ -69,5 +80,66 @@ export const useChatStore = create<ChatState>((set, get) => ({
   clearMessages: () => set({ messages: [], streamingContent: '' }),
   setSelectedModel: (model) => set({ selectedModel: model }),
   setAvailableModels: (models) => set({ availableModels: models }),
-  setSystemPrompt: (prompt) => set({ systemPrompt: prompt })
+  setSystemPrompt: (prompt) => set({ systemPrompt: prompt }),
+  setInputDraft: (text) => set({ inputDraft: text }),
+  requestInputFocus: () => set((state) => ({ focusInputRequest: state.focusInputRequest + 1 })),
+  sendMessage: async ({ text, documentContent, quotedText }) => {
+    const message = text.trim()
+    if (!message) return { success: false, reason: 'empty' }
+
+    const { selectedModel, isStreaming, messages, systemPrompt } = get()
+    if (!selectedModel) return { success: false, reason: 'no-model' }
+    if (isStreaming) return { success: false, reason: 'streaming' }
+
+    const id = `msg-${++messageCounter}-${Date.now()}`
+    const userMessage: ChatMessage = {
+      id,
+      role: 'user',
+      content: message,
+      quotedText,
+      timestamp: Date.now()
+    }
+
+    set((state) => ({
+      messages: [...state.messages, userMessage],
+      isStreaming: true,
+      streamingContent: '',
+      inputDraft: ''
+    }))
+
+    const chatMessages = [
+      ...messages.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user' as const, content: message }
+    ]
+
+    let fullSystemPrompt = systemPrompt
+    if (documentContent) {
+      fullSystemPrompt += `\n\n---\n\nHere is the document the user is reading:\n\n${documentContent}`
+    }
+
+    try {
+      await window.api.ollama.chat({
+        model: selectedModel,
+        messages: chatMessages,
+        systemPrompt: fullSystemPrompt
+      })
+      return { success: true }
+    } catch (error) {
+      const errMessage = error instanceof Error ? error.message : 'Failed to send message'
+      set((state) => ({
+        isStreaming: false,
+        streamingContent: '',
+        messages: [
+          ...state.messages,
+          {
+            id: `msg-${++messageCounter}-${Date.now()}`,
+            role: 'assistant',
+            content: `⚠️ Error: ${errMessage}`,
+            timestamp: Date.now()
+          }
+        ]
+      }))
+      return { success: false, reason: 'send-failed' }
+    }
+  }
 }))

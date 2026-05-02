@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { MouseEvent, useDeferredValue, useMemo } from 'react'
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkMath from 'remark-math'
@@ -14,7 +14,16 @@ interface ChatMessageProps {
   isStreaming?: boolean
 }
 
-function renderChatMarkdown(content: string): string {
+function escapeHtml(content: string): string {
+  return content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function renderChatMarkdown(content: string, streaming: boolean): string {
   try {
     const result = unified()
       .use(remarkParse)
@@ -22,18 +31,36 @@ function renderChatMarkdown(content: string): string {
       .use(remarkGfm)
       .use(remarkRehype, { allowDangerousHtml: true })
       .use(rehypeKatex)
-      .use(rehypeHighlight, { detect: true })
+      .use(rehypeHighlight, { detect: !streaming })
       .use(rehypeStringify, { allowDangerousHtml: true })
       .processSync(content)
     return String(result)
   } catch {
-    return content
+    // During incomplete streaming markdown/math, keep content readable and safe.
+    return escapeHtml(content).replace(/\n/g, '<br/>')
   }
 }
 
 export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
-  const html = useMemo(() => renderChatMarkdown(message.content), [message.content])
+  const deferredContent = useDeferredValue(message.content)
+  const contentForRender = isStreaming ? deferredContent : message.content
+  const html = useMemo(
+    () => renderChatMarkdown(contentForRender, Boolean(isStreaming)),
+    [contentForRender, isStreaming]
+  )
   const isUser = message.role === 'user'
+  
+  const handleLinkClick = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null
+    const anchor = target?.closest('a')
+    if (!anchor) return
+
+    const href = anchor.getAttribute('href') ?? ''
+    if (!href.startsWith('http://') && !href.startsWith('https://')) return
+
+    event.preventDefault()
+    void window.api.shell.openExternal(href)
+  }
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -42,7 +69,7 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
           isUser
             ? 'bg-chat-user text-on-surface rounded-br-sm'
             : 'bg-chat-ai text-on-surface border border-border rounded-bl-sm'
-        } ${isStreaming ? 'animate-pulse' : ''}`}
+        }`}
       >
         {/* Quoted text */}
         {message.quotedText && (
@@ -55,7 +82,8 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
 
         {/* Content */}
         <div
-          className="chat-message-content prose prose-sm max-w-none [&_p]:mb-2 [&_p:last-child]:mb-0 [&_pre]:text-xs [&_code]:text-xs"
+          onClick={handleLinkClick}
+          className="chat-message-content prose prose-sm max-w-none [&_p]:mb-2 [&_p:last-child]:mb-0 [&_pre]:text-xs [&_code]:text-xs [&_.katex-display]:overflow-x-auto [&_.katex-display]:py-2"
           dangerouslySetInnerHTML={{ __html: html }}
         />
 

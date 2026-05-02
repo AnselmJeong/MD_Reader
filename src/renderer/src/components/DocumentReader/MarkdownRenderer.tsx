@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { memo, MouseEvent, useCallback, useMemo } from 'react'
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkMath from 'remark-math'
@@ -8,14 +8,21 @@ import remarkRehype from 'remark-rehype'
 import rehypeKatex from 'rehype-katex'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeStringify from 'rehype-stringify'
+import { extractMarkdownHeadings, stripMarkdownFrontmatter } from './utils/headings'
 
 interface MarkdownRendererProps {
   content: string
 }
 
-function stripFrontmatter(content: string): string {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n/)
-  return match ? content.slice(match[0].length) : content
+function transformHighlightSyntax(content: string): string {
+  // Keep code segments untouched while converting ==highlight== into <mark>.
+  const codeSplit = content.split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+  return codeSplit
+    .map((segment) => {
+      if (segment.startsWith('```') || segment.startsWith('`')) return segment
+      return segment.replace(/==(?=\S)(.+?\S)==/g, '<mark>$1</mark>')
+    })
+    .join('')
 }
 
 function processCallouts(html: string): string {
@@ -37,10 +44,26 @@ function processCallouts(html: string): string {
   )
 }
 
-export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+function addHeadingIds(html: string, content: string): string {
+  const headings = extractMarkdownHeadings(content)
+  let headingIndex = 0
+
+  return html.replace(/<h([1-4])(\s[^>]*)?>/g, (match, level: string, attributes = '') => {
+    const heading = headings[headingIndex]
+    if (!heading || heading.level !== Number(level)) return match
+
+    headingIndex += 1
+    if (/\sid=/.test(attributes)) return match
+
+    return `<h${level}${attributes} id="${heading.id}">`
+  })
+}
+
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: MarkdownRendererProps) {
   const html = useMemo(() => {
     try {
-      const stripped = stripFrontmatter(content)
+      const stripped = stripMarkdownFrontmatter(content)
+      const withHighlights = transformHighlightSyntax(stripped)
       const result = unified()
         .use(remarkParse)
         .use(remarkFrontmatter, ['yaml'])
@@ -50,9 +73,10 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         .use(rehypeKatex)
         .use(rehypeHighlight, { detect: true })
         .use(rehypeStringify, { allowDangerousHtml: true })
-        .processSync(stripped)
+        .processSync(withHighlights)
 
       let htmlStr = String(result)
+      htmlStr = addHeadingIds(htmlStr, content)
       htmlStr = processCallouts(htmlStr)
       return htmlStr
     } catch (error) {
@@ -61,5 +85,17 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
     }
   }, [content])
 
-  return <div dangerouslySetInnerHTML={{ __html: html }} />
-}
+  const handleLinkClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null
+    const anchor = target?.closest('a')
+    if (!anchor) return
+
+    const href = anchor.getAttribute('href') ?? ''
+    if (!href.startsWith('http://') && !href.startsWith('https://')) return
+
+    event.preventDefault()
+    void window.api.shell.openExternal(href)
+  }, [])
+
+  return <div onClick={handleLinkClick} dangerouslySetInnerHTML={{ __html: html }} />
+})

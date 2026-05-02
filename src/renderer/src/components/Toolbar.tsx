@@ -3,6 +3,9 @@ import { useUIStore } from '../store/useUIStore'
 
 interface ToolbarProps {
   onOpenFile: () => void
+  onSaveFile: () => void
+  canSave: boolean
+  isDirty: boolean
 }
 
 const themeIcons: Record<string, string> = {
@@ -11,7 +14,7 @@ const themeIcons: Record<string, string> = {
   dark: '🌙'
 }
 
-export function Toolbar({ onOpenFile }: ToolbarProps) {
+export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarProps) {
   const { theme, fontSize, setFontSize, cycleTheme } = useSettingsStore()
   const { toggleToC, toggleSearch, toggleChat, showChat, toggleSettings } = useUIStore()
 
@@ -29,6 +32,17 @@ export function Toolbar({ onOpenFile }: ToolbarProps) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />
           </svg>
           <span className="text-xs">Open</span>
+        </button>
+        <button
+          onClick={onSaveFile}
+          disabled={!canSave}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface disabled:opacity-40 disabled:hover:bg-transparent"
+          title="Save File (⌘S)"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 21V7.5a2.25 2.25 0 0 0-.66-1.59l-1.76-1.76a2.25 2.25 0 0 0-1.59-.66H6.75A2.25 2.25 0 0 0 4.5 5.75V21m15 0h-15m15 0a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 21m10.5-17.25v5.25h-6V3.75m6 11.25h-6" />
+          </svg>
+          <span className="text-xs">Save{isDirty ? ' *' : ''}</span>
         </button>
       </div>
 

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { parse as parseYaml } from 'yaml'
 
 interface MetadataCardProps {
@@ -14,7 +14,7 @@ interface FrontMatter {
   abstract?: string
 }
 
-export function MetadataCard({ content }: MetadataCardProps) {
+export const MetadataCard = memo(function MetadataCard({ content }: MetadataCardProps) {
   const metadata = useMemo<FrontMatter | null>(() => {
     const match = content.match(/^---\n([\s\S]*?)\n---/)
     if (!match) return null
@@ -47,4 +47,4 @@ export function MetadataCard({ content }: MetadataCardProps) {
       )}
     </div>
   )
-}
+})

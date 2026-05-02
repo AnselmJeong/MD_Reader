@@ -2,7 +2,7 @@ import { useDocumentStore } from '../store/useDocumentStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 
 export function StatusBar() {
-  const { fileName, wordCount, readingTime } = useDocumentStore()
+  const { fileName, wordCount, readingTime, isDirty } = useDocumentStore()
   const { fontSize, theme } = useSettingsStore()
 
   return (
@@ -11,6 +11,7 @@ export function StatusBar() {
         {fileName ? (
           <>
             <span className="font-medium text-on-surface">{fileName}</span>
+            {isDirty && <span className="text-amber-600">Modified</span>}
             <span>{wordCount.toLocaleString()} words</span>
             <span>~{readingTime} min read</span>
           </>

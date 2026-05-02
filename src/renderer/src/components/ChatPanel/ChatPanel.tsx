@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
 import { QuickActions } from './QuickActions'
@@ -8,8 +8,8 @@ import { useDocumentStore } from '../../store/useDocumentStore'
 export function ChatPanel() {
   const {
     messages, isStreaming, streamingContent,
-    selectedModel, availableModels, systemPrompt,
-    addMessage, startStreaming, updateStreamingContent,
+    selectedModel, availableModels,
+    addMessage, sendMessage, updateStreamingContent,
     finalizeStreaming, clearMessages, setSelectedModel
   } = useChatStore()
   const { content } = useDocumentStore()
@@ -39,29 +39,9 @@ export function ChatPanel() {
     }
   }, [])
 
-  const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || !selectedModel || isStreaming) return
-
-    addMessage({ role: 'user', content: text })
-    startStreaming()
-
-    const chatMessages = [
-      ...messages.map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: text }
-    ]
-
-    // Include document content as system prompt context
-    let fullSystemPrompt = systemPrompt
-    if (content) {
-      fullSystemPrompt += `\n\n---\n\nHere is the document the user is reading:\n\n${content}`
-    }
-
-    await window.api.ollama.chat({
-      model: selectedModel,
-      messages: chatMessages,
-      systemPrompt: fullSystemPrompt
-    })
-  }, [selectedModel, isStreaming, messages, content, systemPrompt, addMessage, startStreaming])
+  const handleSendMessage = async (text: string) => {
+    await sendMessage({ text, documentContent: content })
+  }
 
   const handleExport = async () => {
     const md = messages
@@ -144,10 +124,10 @@ export function ChatPanel() {
       </div>
 
       {/* Quick Actions */}
-      <QuickActions onAction={sendMessage} disabled={isStreaming || !selectedModel} />
+      <QuickActions onAction={handleSendMessage} disabled={isStreaming || !selectedModel} />
 
       {/* Input */}
-      <ChatInput onSend={sendMessage} disabled={isStreaming || !selectedModel} />
+      <ChatInput onSend={handleSendMessage} disabled={isStreaming || !selectedModel} />
     </div>
   )
 }

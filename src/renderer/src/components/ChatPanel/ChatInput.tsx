@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useRef, useEffect } from 'react'
+import { useChatStore } from '../../store/useChatStore'
 
 interface ChatInputProps {
   onSend: (text: string) => void
@@ -6,7 +7,9 @@ interface ChatInputProps {
 }
 
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
-  const [input, setInput] = useState('')
+  const input = useChatStore((s) => s.inputDraft)
+  const setInputDraft = useChatStore((s) => s.setInputDraft)
+  const focusInputRequest = useChatStore((s) => s.focusInputRequest)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Auto-resize textarea
@@ -17,10 +20,18 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'
   }, [input])
 
+  useEffect(() => {
+    const ta = textareaRef.current
+    if (!ta || ta.disabled) return
+    ta.focus()
+    const end = ta.value.length
+    ta.setSelectionRange(end, end)
+  }, [focusInputRequest])
+
   const handleSend = () => {
     if (!input.trim() || disabled) return
     onSend(input.trim())
-    setInput('')
+    setInputDraft('')
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -35,7 +46,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
       <textarea
         ref={textareaRef}
         value={input}
-        onChange={(e) => setInput(e.target.value)}
+        onChange={(e) => setInputDraft(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={disabled ? 'Select an Ollama model...' : 'Ask about the document... (Enter to send)'}
         disabled={disabled}

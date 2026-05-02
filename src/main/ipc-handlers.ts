@@ -1,5 +1,5 @@
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
-import { readFileWithBib, getRecentFiles, addRecentFile } from './file-service'
+import { readFileWithBib, getRecentFiles, addRecentFile, writeFileContent } from './file-service'
 import { listModels, chatStream } from './ollama-service'
 import { getSettings, setSettings } from './settings-service'
 
@@ -27,6 +27,17 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('file:recent-list', async () => {
     return getRecentFiles()
+  })
+
+  ipcMain.handle('file:save', async (_event, filePath: string, content: string) => {
+    try {
+      await writeFileContent(filePath, content)
+      await addRecentFile(filePath)
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save file'
+      return { success: false, error: message }
+    }
   })
 
   // ─── Ollama ───

@@ -1,11 +1,6 @@
 import { useMemo, RefObject } from 'react'
 import { useUIStore } from '../../store/useUIStore'
-
-interface ToCItem {
-  level: number
-  text: string
-  id: string
-}
+import { extractMarkdownHeadings, createHeadingSlug } from './utils/headings'
 
 interface TableOfContentsProps {
   content: string
@@ -15,40 +10,23 @@ interface TableOfContentsProps {
 export function TableOfContents({ content, scrollContainer }: TableOfContentsProps) {
   const { toggleToC } = useUIStore()
 
-  const headings = useMemo<ToCItem[]>(() => {
-    const lines = content.split('\n')
-    const items: ToCItem[] = []
-    let inCodeBlock = false
-
-    for (const line of lines) {
-      if (line.trim().startsWith('```')) inCodeBlock = !inCodeBlock
-      if (inCodeBlock) continue
-
-      const match = line.match(/^(#{1,4})\s+(.+)/)
-      if (match) {
-        const level = match[1].length
-        const text = match[2].replace(/[*_`\[\]]/g, '').trim()
-        const id = text.toLowerCase().replace(/[^\w\s가-힣-]/g, '').replace(/\s+/g, '-')
-        items.push({ level, text, id })
-      }
-    }
-    return items
-  }, [content])
+  const headings = useMemo(() => extractMarkdownHeadings(content), [content])
 
   const handleClick = (id: string) => {
-    const el = scrollContainer.current?.querySelector(`[id="${id}"], h1, h2, h3, h4`)
-    // Find the heading by text content as a fallback
-    if (!el) {
-      const headings = scrollContainer.current?.querySelectorAll('h1, h2, h3, h4')
-      headings?.forEach((h) => {
-        const hText = h.textContent?.toLowerCase().replace(/[^\w\s가-힣-]/g, '').replace(/\s+/g, '-')
-        if (hText === id) {
-          h.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }
-      })
+    const container = scrollContainer.current
+    if (!container) return
+
+    const escapedId = window.CSS?.escape ? window.CSS.escape(id) : id.replace(/"/g, '\\"')
+    const el = container.querySelector(`#${escapedId}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
       return
     }
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    const fallbackHeading = Array.from(container.querySelectorAll('h1, h2, h3, h4')).find((heading) => {
+      return createHeadingSlug(heading.textContent ?? '') === id
+    })
+    fallbackHeading?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   return (

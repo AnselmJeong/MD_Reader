@@ -5,6 +5,7 @@ export interface ElectronAPI {
     openDialog: () => Promise<{ filePath: string; content: string; bibContent?: string | null } | null>
     read: (path: string) => Promise<{ filePath: string; content: string; bibContent?: string | null }>
     getRecent: () => Promise<string[]>
+    save: (path: string, content: string) => Promise<{ success: boolean; error?: string }>
   }
   ollama: {
     listModels: () => Promise<Array<{ name: string; size: number }>>
@@ -36,7 +37,8 @@ const api: ElectronAPI = {
   file: {
     openDialog: () => ipcRenderer.invoke('file:open-dialog'),
     read: (path: string) => ipcRenderer.invoke('file:read', path),
-    getRecent: () => ipcRenderer.invoke('file:recent-list')
+    getRecent: () => ipcRenderer.invoke('file:recent-list'),
+    save: (path: string, content: string) => ipcRenderer.invoke('file:save', path, content)
   },
   ollama: {
     listModels: () => ipcRenderer.invoke('ollama:list-models'),

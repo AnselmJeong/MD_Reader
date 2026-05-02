@@ -9,9 +9,10 @@ import { useDocumentStore } from './store/useDocumentStore'
 import { useChatStore } from './store/useChatStore'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useUIStore } from './store/useUIStore'
+import { filterOllamaModels } from './utils/ollama-model-filter'
 
 export default function App() {
-  const { content, setDocument, setRecentFiles } = useDocumentStore()
+  const { filePath, content, isDirty, setDocument, setRecentFiles, markSaved } = useDocumentStore()
   
   // Use selectors to avoid re-rendering App on every token stream (streamingContent/messages updates)
   const setAvailableModels = useChatStore(s => s.setAvailableModels)
@@ -20,7 +21,7 @@ export default function App() {
   const selectedModel = useChatStore(s => s.selectedModel)
 
   const { theme, fontSize, lineHeight, contentWidth, setTheme, setFontSize, cycleTheme } = useSettingsStore()
-  const { showChat, showSettings, toggleChat, toggleSettings, toggleToC, toggleSearch, chatWidth, setChatWidth } = useUIStore()
+  const { showChat, showSettings, toggleChat, toggleSettings, toggleToC, setShowSearch, chatWidth, setChatWidth } = useUIStore()
 
   // Resize logic
   const isResizing = useRef(false)
@@ -54,24 +55,46 @@ export default function App() {
 
   // Load initial settings & models
   useEffect(() => {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    const loadModels = async () => {
+      const maxAttempts = 4
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const models = await window.api.ollama.listModels()
+          const modelNames = filterOllamaModels(models.map((m) => m.name))
+          if (modelNames.length > 0) {
+            setAvailableModels(modelNames)
+            if (!selectedModel || !modelNames.includes(selectedModel)) {
+              setSelectedModel(modelNames[0])
+            }
+            return
+          }
+        } catch (e) {
+          console.error(`Model load attempt ${attempt} failed:`, e)
+        }
+        if (attempt < maxAttempts) await sleep(800)
+      }
+      setAvailableModels([])
+    }
+
     const init = async () => {
       try {
         const settings = (await window.api.settings.get()) as Record<string, unknown>
         if (settings?.theme) setTheme(settings.theme as 'light' | 'sepia' | 'dark')
         if (settings?.fontSize) setFontSize(settings.fontSize as number)
+      } catch (e) {
+        console.error('Settings init error:', e)
+      }
 
+      try {
         const recent = await window.api.file.getRecent()
         setRecentFiles(recent)
-
-        const models = await window.api.ollama.listModels()
-        const modelNames = models.map((m) => m.name)
-        setAvailableModels(modelNames)
-        if (modelNames.length > 0 && !selectedModel) {
-          setSelectedModel(modelNames[0])
-        }
       } catch (e) {
-        console.error('Init error:', e)
+        console.error('Recent files init error:', e)
       }
+
+      await loadModels()
     }
     init()
   }, [])
@@ -83,6 +106,20 @@ export default function App() {
       setDocument(result.filePath, result.content, result.bibContent || null)
     }
   }, [setDocument])
+
+  const handleSaveFile = useCallback(async () => {
+    if (!filePath || content == null) return
+    try {
+      const result = await window.api.file.save(filePath, content)
+      if (!result.success) {
+        console.error('Save failed:', result.error || 'Unknown error')
+        return
+      }
+      markSaved()
+    } catch (error) {
+      console.error('Save failed:', error)
+    }
+  }, [content, filePath, markSaved])
 
   // Drag & drop
   const [isDragging, setIsDragging] = useState(false)
@@ -150,22 +187,28 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key === 'o') { e.preventDefault(); handleOpenFile() }
+      if (mod && e.key === 's') { e.preventDefault(); handleSaveFile() }
       if (mod && e.key === '/') { e.preventDefault(); toggleChat() }
       if (mod && e.shiftKey && e.key === 'T') { e.preventDefault(); toggleToC() }
-      if (mod && e.key === 'f') { e.preventDefault(); toggleSearch() }
+      if (mod && e.key === 'f') { e.preventDefault(); setShowSearch(true) }
       if (mod && e.shiftKey && e.key === 'D') { e.preventDefault(); cycleTheme() }
       if (mod && e.key === '=') { e.preventDefault(); setFontSize(fontSize + 1) }
       if (mod && e.key === '-') { e.preventDefault(); setFontSize(fontSize - 1) }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleOpenFile, toggleChat, toggleToC, toggleSearch, cycleTheme, fontSize, setFontSize])
+  }, [handleOpenFile, handleSaveFile, toggleChat, toggleToC, setShowSearch, cycleTheme, fontSize, setFontSize])
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-background relative selection:bg-accent/30 text-on-surface">
       {/* Toolbar (Fixed Top) */}
       <div className="absolute top-0 left-0 right-0 h-11 z-20">
-        <Toolbar onOpenFile={handleOpenFile} />
+        <Toolbar
+          onOpenFile={handleOpenFile}
+          onSaveFile={handleSaveFile}
+          canSave={Boolean(filePath && content !== null)}
+          isDirty={isDirty}
+        />
       </div>
 
       {/* Main Content Area (Absolute Middle) */}

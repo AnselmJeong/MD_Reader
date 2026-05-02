@@ -5,41 +5,65 @@ import { useDocumentStore } from '../../store/useDocumentStore'
 interface TextSelectionMenuProps {
   rect: DOMRect
   selectedText: string
+  onHighlight: () => void
   onClose: () => void
 }
 
-export function TextSelectionMenu({ rect, selectedText, onClose }: TextSelectionMenuProps) {
-  const { addMessage } = useChatStore()
+export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: TextSelectionMenuProps) {
+  const { sendMessage, setInputDraft, requestInputFocus, selectedModel, isStreaming } = useChatStore()
   const { showChat } = useUIStore()
   const { toggleChat } = useUIStore()
   const { content } = useDocumentStore()
 
-  const sendToChat = (prompt: string) => {
+  const ensureChatOpen = () => {
     if (!showChat) toggleChat()
-    addMessage({
-      role: 'user',
-      content: prompt,
-      quotedText: selectedText
-    })
+  }
+
+  const closeMenu = () => {
     onClose()
     window.getSelection()?.removeAllRanges()
   }
 
+  const sendToAI = (prompt: string) => {
+    ensureChatOpen()
+
+    if (!selectedModel || isStreaming) {
+      setInputDraft(prompt)
+      closeMenu()
+      return
+    }
+
+    closeMenu()
+    void sendMessage({
+      text: prompt,
+      documentContent: content,
+      quotedText: selectedText
+    })
+  }
+
   const handleAskAI = () => {
-    sendToChat(`Regarding this passage:\n\n> ${selectedText}\n\nPlease explain this in detail.`)
+    ensureChatOpen()
+    setInputDraft(selectedText)
+    requestInputFocus()
+    closeMenu()
   }
 
   const handleSummarize = () => {
-    sendToChat(`Please summarize the following passage:\n\n> ${selectedText}`)
+    sendToAI(`Summarize the selected passage in 3-5 concise bullet points:\n\n${selectedText}`)
   }
 
-  const handleExplain = () => {
-    sendToChat(`Please explain the key terms and concepts in this passage:\n\n> ${selectedText}`)
+  const handleHighlight = () => {
+    onHighlight()
+    closeMenu()
   }
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(selectedText)
-    onClose()
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(selectedText)
+    } catch (error) {
+      console.error('Failed to copy selection:', error)
+    }
+    closeMenu()
   }
 
   const top = rect.top - 48
@@ -47,6 +71,8 @@ export function TextSelectionMenu({ rect, selectedText, onClose }: TextSelection
 
   return (
     <div
+      data-selection-menu="true"
+      onMouseDown={(e) => e.preventDefault()}
       className="fixed z-50 flex items-center gap-0.5 px-1.5 py-1 rounded-lg border border-border ui-text"
       style={{
         top: `${Math.max(8, top)}px`,
@@ -71,10 +97,10 @@ export function TextSelectionMenu({ rect, selectedText, onClose }: TextSelection
       </button>
       <div className="w-px h-4 bg-border" />
       <button
-        onClick={handleExplain}
+        onClick={handleHighlight}
         className="px-2.5 py-1 rounded-md hover:bg-surface transition-colors text-xs text-on-surface-muted"
       >
-        📖 Explain
+        ✨ Highlight
       </button>
       <div className="w-px h-4 bg-border" />
       <button

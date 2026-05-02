@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { useChatStore } from '../store/useChatStore'
+import { filterOllamaModels } from '../utils/ollama-model-filter'
 
 interface SettingsModalProps {
   onClose: () => void
@@ -8,7 +9,14 @@ interface SettingsModalProps {
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
   const { theme, fontSize, lineHeight, contentWidth, setTheme, setFontSize, setLineHeight, setContentWidth } = useSettingsStore()
-  const { systemPrompt, setSystemPrompt, selectedModel, availableModels, setSelectedModel } = useChatStore()
+  const {
+    systemPrompt,
+    setSystemPrompt,
+    selectedModel,
+    availableModels,
+    setSelectedModel,
+    setAvailableModels
+  } = useChatStore()
 
   // Close on Escape
   useEffect(() => {
@@ -18,6 +26,23 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
+
+  // Refresh models when opening settings.
+  useEffect(() => {
+    const refreshModels = async () => {
+      try {
+        const models = await window.api.ollama.listModels()
+        const modelNames = filterOllamaModels(models.map((m) => m.name))
+        setAvailableModels(modelNames)
+        if (modelNames.length > 0 && (!selectedModel || !modelNames.includes(selectedModel))) {
+          setSelectedModel(modelNames[0])
+        }
+      } catch (e) {
+        console.error('Failed to refresh models in settings:', e)
+      }
+    }
+    refreshModels()
+  }, [selectedModel, setAvailableModels, setSelectedModel])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>

@@ -239,3 +239,24 @@
 .citation:hover {
   text-decoration: underline;
 }
+
+/* ─── Markdown Highlight ─── */
+.document-body mark {
+  background: color-mix(in srgb, var(--color-highlight-yellow) 82%, white 18%);
+  color: inherit;
+  padding: 0.05em 0.12em;
+  border-radius: 3px;
+}
+
+/* ─── In-document Search ─── */
+.document-body mark.md-search-match {
+  background: var(--color-highlight-yellow);
+  color: inherit;
+  padding: 0.05em 0.08em;
+  border-radius: 2px;
+}
+
+.document-body mark.md-search-match.md-search-match-active {
+  background: var(--color-accent);
+  color: #ffffff;
+}

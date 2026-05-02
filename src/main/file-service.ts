@@ -40,6 +40,10 @@ export async function readFileWithBib(filePath: string): Promise<{ content: stri
   }
 }
 
+export async function writeFileContent(filePath: string, content: string): Promise<void> {
+  await fs.writeFile(filePath, content, 'utf-8')
+}
+
 export function getRecentFiles(): string[] {
   return store.get('recentFiles') || []
 }

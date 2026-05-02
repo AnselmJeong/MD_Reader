@@ -12,6 +12,7 @@ interface UIState {
   toggleChat: () => void
   toggleSettings: () => void
   toggleSearch: () => void
+  setShowSearch: (show: boolean) => void
   setSelectedText: (text: string | null) => void
   setChatWidth: (width: number) => void
 }
@@ -28,6 +29,7 @@ export const useUIStore = create<UIState>((set) => ({
   toggleChat: () => set((s) => ({ showChat: !s.showChat })),
   toggleSettings: () => set((s) => ({ showSettings: !s.showSettings })),
   toggleSearch: () => set((s) => ({ showSearch: !s.showSearch })),
+  setShowSearch: (show) => set({ showSearch: show }),
   setSelectedText: (text) => set({ selectedText: text }),
   setChatWidth: (width) => set({ chatWidth: width })
 }))
