@@ -30,16 +30,16 @@ export function TableOfContents({ content, scrollContainer }: TableOfContentsPro
   }
 
   return (
-    <div className="absolute top-0 left-0 z-30 w-72 h-full bg-surface-alt/95 backdrop-blur-sm border-r border-border shadow-lg overflow-y-auto">
+    <div className="h-full w-72 shrink-0 overflow-y-auto border-r border-border bg-surface-alt">
       {/* Header */}
-      <div className="sticky top-0 bg-surface-alt/95 backdrop-blur-sm flex items-center justify-between px-4 py-3 border-b border-border">
-        <span className="font-semibold text-sm text-on-surface ui-text">Table of Contents</span>
+      <div className="sticky top-0 flex items-center justify-between border-b border-border bg-surface-alt px-4 py-3">
+        <span className="small-caps text-on-surface">Contents</span>
         <button
           onClick={toggleToC}
-          className="text-on-surface-muted hover:text-on-surface transition-colors"
+          className="rounded px-1 text-on-surface-muted transition-colors hover:bg-[var(--ink-3)] hover:text-on-surface"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+          <svg className="h-4 w-4" viewBox="0 0 16 16" aria-hidden="true">
+            <path className="icon-stroke" d="M4 4l8 8M12 4l-8 8" />
           </svg>
         </button>
       </div>
@@ -50,7 +50,7 @@ export function TableOfContents({ content, scrollContainer }: TableOfContentsPro
           <button
             key={i}
             onClick={() => handleClick(h.id)}
-            className="w-full text-left px-3 py-1.5 rounded-md text-sm hover:bg-surface transition-colors truncate ui-text"
+            className="w-full truncate rounded-md px-3 py-1.5 text-left text-[12px] transition-colors hover:bg-[var(--ink-3)] ui-text"
             style={{ paddingLeft: `${(h.level - 1) * 16 + 12}px` }}
           >
             <span className={h.level === 1 ? 'font-semibold text-on-surface' : 'text-on-surface-muted'}>

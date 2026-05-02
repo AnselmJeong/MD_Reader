@@ -28,17 +28,19 @@ export function StatusBar() {
   const visibleProgress = ttsStatusText && /\d+\/\d+/.test(ttsStatusText) ? '' : utteranceProgress
 
   return (
-    <div className="flex items-center justify-between h-6 px-4 bg-surface-alt border-t border-border ui-text text-[11px] text-on-surface-muted select-none">
-      <div className="flex min-w-0 items-center gap-3">
+    <div className="small-caps flex h-6 items-center justify-between border-t border-border bg-surface-alt px-4 text-on-surface-muted select-none">
+      <div className="flex min-w-0 items-center gap-2">
         {fileName ? (
           <>
-            <span className="truncate font-medium text-on-surface">{fileName}</span>
-            {isDirty && <span className="text-amber-600">Modified</span>}
-            <span className="shrink-0">{wordCount.toLocaleString()} words</span>
-            <span className="shrink-0">~{readingTime} min read</span>
+            <span className="truncate text-on-surface">{fileName}</span>
+            {isDirty && <span className="text-accent">Modified</span>}
+            <span>·</span>
+            <span className="shrink-0">{wordCount.toLocaleString()} Words</span>
+            <span>·</span>
+            <span className="shrink-0">≈ {readingTime} Min</span>
           </>
         ) : (
-          <span className="shrink-0">No document open</span>
+          <span className="shrink-0">No Document Open · Drop A .MD To Begin</span>
         )}
       </div>
       <div className="mx-4 flex min-w-0 flex-1 justify-center">
@@ -50,7 +52,8 @@ export function StatusBar() {
       </div>
       <div className="flex shrink-0 items-center gap-3">
         <span>{fontSize}px</span>
-        <span className="capitalize">{theme}</span>
+        <span>·</span>
+        <span>{theme}</span>
       </div>
     </div>
   )

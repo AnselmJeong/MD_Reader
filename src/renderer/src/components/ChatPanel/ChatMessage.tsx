@@ -65,15 +65,23 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[90%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed ${
+        className={`max-w-[92%] text-[12.5px] leading-relaxed ${
           isUser
-            ? 'bg-chat-user text-on-surface rounded-br-sm'
-            : 'bg-chat-ai text-on-surface border border-border rounded-bl-sm'
+            ? 'rounded-[8px_8px_2px_8px] bg-chat-user px-3.5 py-3 font-sans font-medium text-surface'
+            : 'text-on-surface'
         }`}
       >
+        {!isUser && (
+          <div className="small-caps mb-2 flex items-center gap-2 text-on-surface-muted">
+            <svg className="h-3 w-3 text-accent" viewBox="0 0 16 16" aria-hidden="true">
+              <path className="icon-stroke" d="M8 1.75l.9 3.35L12.25 6l-3.35.9L8 10.25l-.9-3.35L3.75 6l3.35-.9L8 1.75z" />
+            </svg>
+            <span>Assistant</span>
+          </div>
+        )}
         {/* Quoted text */}
         {message.quotedText && (
-          <div className="mb-2 px-3 py-1.5 border-l-2 border-accent/50 text-xs text-on-surface-muted bg-surface/50 rounded-r-md">
+          <div className="mb-3 rounded-md border border-[var(--hair-2)] bg-surface px-3 py-2 font-serif text-[12px] italic text-on-surface-muted">
             {message.quotedText.length > 200
               ? message.quotedText.slice(0, 200) + '...'
               : message.quotedText}
@@ -83,7 +91,9 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
         {/* Content */}
         <div
           onClick={handleLinkClick}
-          className="chat-message-content prose prose-sm max-w-none [&_p]:mb-2 [&_p:last-child]:mb-0 [&_pre]:text-xs [&_code]:text-xs [&_.katex-display]:overflow-x-auto [&_.katex-display]:py-2"
+          className={`chat-message-content prose prose-sm max-w-none [&_p]:mb-2 [&_p:last-child]:mb-0 [&_pre]:text-xs [&_code]:text-xs [&_.katex-display]:overflow-x-auto [&_.katex-display]:py-2 ${
+            isUser ? 'prose-invert font-sans' : 'font-serif prose-p:font-serif prose-li:font-serif'
+          }`}
           dangerouslySetInnerHTML={{ __html: html }}
         />
 
@@ -94,12 +104,12 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
 
         {/* Actions */}
         {!isStreaming && !isUser && (
-          <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-border/50">
+          <div className="mt-3 flex items-center gap-2 border-t border-border/50 pt-1.5">
             <button
               onClick={() => navigator.clipboard.writeText(message.content)}
-              className="text-[10px] text-on-surface-muted hover:text-on-surface transition-colors"
+              className="text-[10px] font-medium uppercase tracking-[0.08em] text-on-surface-muted transition-colors hover:text-on-surface"
             >
-              📋 Copy
+              Copy
             </button>
           </div>
         )}

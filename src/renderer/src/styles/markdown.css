@@ -28,12 +28,16 @@
 
 /* ─── Blockquote ─── */
 .document-body blockquote {
-  border-left: 3px solid var(--color-blockquote-border);
-  padding: 0.5em 1.2em;
-  margin: 1.5em 0;
-  color: var(--color-on-surface-muted);
-  background: var(--color-surface-alt);
-  border-radius: 0 6px 6px 0;
+  border-left: 2px solid var(--color-blockquote-border);
+  padding: 0.35em 0 0.35em 1.2em;
+  margin: 2em 0 2em -28px;
+  color: var(--color-on-surface);
+  background: transparent;
+  border-radius: 0;
+  font-size: 22px;
+  font-style: italic;
+  font-weight: 300;
+  line-height: 1.4;
 }
 
 /* ─── Code ─── */
@@ -48,7 +52,7 @@
 .document-body pre {
   background: var(--color-code-bg);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 1em 1.2em;
   margin: 1.5em 0;
   overflow-x: auto;
@@ -101,10 +105,9 @@
 /* ─── Images ─── */
 .document-body img {
   max-width: 100%;
-  border-radius: 8px;
+  border-radius: 4px;
   margin: 1.5em auto;
   display: block;
-  box-shadow: var(--shadow-md);
 }
 
 /* ─── Footnotes ─── */
@@ -131,10 +134,12 @@
 
 /* ─── Callout / Admonition Blocks ─── */
 .callout {
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 1em 1.2em;
   margin: 1.5em 0;
-  border-left: 4px solid;
+  border: 1px solid var(--hair-2);
+  border-left: 2px solid;
+  background: var(--paper-2);
 }
 
 .callout-title {
@@ -150,43 +155,38 @@
 }
 
 .callout-note {
-  background: var(--color-callout-note);
-  border-color: #3b82f6;
+  border-color: var(--accent);
 }
-.callout-note .callout-title { color: #3b82f6; }
+.callout-note .callout-title { color: var(--accent); }
 
 .callout-warning {
-  background: var(--color-callout-warning);
-  border-color: #f59e0b;
+  border-color: var(--hair-3);
 }
-.callout-warning .callout-title { color: #f59e0b; }
+.callout-warning .callout-title { color: var(--ink-2); }
 
 .callout-important {
-  background: var(--color-callout-important);
-  border-color: #ef4444;
+  border-color: var(--accent);
 }
-.callout-important .callout-title { color: #ef4444; }
+.callout-important .callout-title { color: var(--accent); }
 
 .callout-definition {
-  background: var(--color-callout-definition);
-  border-color: #22c55e;
+  border-color: var(--accent);
 }
-.callout-definition .callout-title { color: #22c55e; }
+.callout-definition .callout-title { color: var(--accent); }
 
 .callout-theorem {
-  background: var(--color-callout-note);
-  border-color: #6366f1;
+  border-color: var(--accent);
 }
-.callout-theorem .callout-title { color: #6366f1; }
+.callout-theorem .callout-title { color: var(--accent); }
 
 /* ─── YAML Metadata Card ─── */
 .metadata-card {
-  background: var(--color-surface-alt);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 1.5em 2em;
+  background: transparent;
+  border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+  border-radius: 0;
+  padding: 1em 0;
   margin-bottom: 2.5em;
-  box-shadow: var(--shadow-sm);
 }
 .metadata-card h1 {
   font-size: 1.8em;
@@ -218,7 +218,7 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   padding: 0.2em 0.7em;
-  border-radius: 100px;
+  border-radius: 4px;
   color: var(--color-on-surface-muted);
 }
 .metadata-card .meta-abstract {
@@ -242,10 +242,11 @@
 
 /* ─── Markdown Highlight ─── */
 .document-body mark {
-  background: color-mix(in srgb, var(--color-highlight-yellow) 82%, white 18%);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
   color: inherit;
   padding: 0.05em 0.12em;
-  border-radius: 3px;
+  border-radius: 2px;
+  box-shadow: 0 -1px 0 color-mix(in oklch, var(--accent) 25%, transparent), 0 1px 0 color-mix(in oklch, var(--accent) 25%, transparent);
 }
 
 /* ─── In-document Search ─── */
@@ -263,9 +264,9 @@
 
 /* ─── TTS current utterance ─── */
 .document-body mark.md-tts-current {
-  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
   color: inherit;
-  outline: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+  outline: 1px solid color-mix(in oklch, var(--accent) 30%, transparent);
   padding: 0.05em 0.1em;
   border-radius: 3px;
 }

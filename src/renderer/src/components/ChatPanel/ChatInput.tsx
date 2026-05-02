@@ -17,7 +17,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
-    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'
+    ta.style.height = input.trim() ? Math.min(ta.scrollHeight, 80) + 'px' : '44px'
   }, [input])
 
   useEffect(() => {
@@ -42,24 +42,24 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   }
 
   return (
-    <div className="flex items-end gap-2 px-4 py-3 border-t border-border bg-surface-alt/50">
+    <div className="flex items-end gap-2 border-t border-border bg-surface px-4 py-3">
       <textarea
         ref={textareaRef}
         value={input}
         onChange={(e) => setInputDraft(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={disabled ? 'Select an Ollama model...' : 'Ask about the document... (Enter to send)'}
+        placeholder={disabled ? 'Select model...' : 'Ask about the document...'}
         disabled={disabled}
         rows={1}
-        className="flex-1 resize-none bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface placeholder:text-on-surface-muted/50 outline-none focus:border-accent transition-colors disabled:opacity-50"
+        className="min-h-11 flex-1 resize-none rounded-lg border border-[var(--hair-2)] bg-surface px-3 py-3 text-[12px] font-medium leading-5 text-on-surface outline-none transition-colors placeholder:text-on-surface-muted/65 focus:border-[var(--hair-3)] disabled:opacity-50"
       />
       <button
         onClick={handleSend}
         disabled={disabled || !input.trim()}
-        className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-accent text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-30"
       >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+        <svg className="h-4 w-4" viewBox="0 0 16 16" aria-hidden="true">
+          <path className="icon-stroke" d="M2.5 8l11-5-3.2 10-2.1-4.2L2.5 8zM8.2 8.8l2.1-2.2" />
         </svg>
       </button>
     </div>

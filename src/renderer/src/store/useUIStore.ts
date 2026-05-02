@@ -23,7 +23,7 @@ export const useUIStore = create<UIState>((set) => ({
   showSettings: false,
   showSearch: false,
   selectedText: null,
-  chatWidth: 380,
+  chatWidth: 320,
 
   toggleToC: () => set((s) => ({ showToC: !s.showToC })),
   toggleChat: () => set((s) => ({ showChat: !s.showChat })),

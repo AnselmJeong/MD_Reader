@@ -14,6 +14,7 @@ export function ChatPanel() {
   } = useChatStore()
   const { content } = useDocumentStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const selectedContext = [...messages].reverse().find((message) => message.quotedText)?.quotedText
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -30,7 +31,7 @@ export function ChatPanel() {
     })
     const unsubError = window.api.ollama.onError((error) => {
       finalizeStreaming()
-      addMessage({ role: 'assistant', content: `⚠️ Error: ${error}` })
+      addMessage({ role: 'assistant', content: `Error: ${error}` })
     })
     return () => {
       unsubToken()
@@ -45,40 +46,48 @@ export function ChatPanel() {
 
   const handleExport = async () => {
     const md = messages
-      .map((m) => `### ${m.role === 'user' ? '🧑 User' : '🤖 Assistant'}\n\n${m.content}`)
+      .map((m) => `### ${m.role === 'user' ? 'User' : 'Assistant'}\n\n${m.content}`)
       .join('\n\n---\n\n')
     await window.api.chat.exportMarkdown(`# Chat Export\n\n${md}`)
   }
 
   return (
-    <div className="h-full flex flex-col bg-chat-bg ui-text">
+    <div className="flex h-full flex-col bg-chat-bg ui-text">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-surface-alt/50">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-on-surface">AI Chat</span>
+      <div className="flex h-[66px] items-center justify-between gap-3 border-b border-border bg-surface-alt px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-on-surface text-surface">
+            <svg className="h-4 w-4" viewBox="0 0 16 16" aria-hidden="true">
+              <path className="icon-stroke" d="M8 1.75l.9 3.35L12.25 6l-3.35.9L8 10.25l-.9-3.35L3.75 6l3.35-.9L8 1.75z" />
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold leading-none text-on-surface">Conversation</div>
           {availableModels.length > 0 && (
             <select
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
-              className="text-xs bg-surface border border-border rounded-md px-2 py-0.5 text-on-surface-muted outline-none focus:border-accent"
+              title={selectedModel}
+              className="mt-1 block w-full max-w-[112px] appearance-none truncate bg-transparent text-[10px] font-medium uppercase leading-tight tracking-[0.08em] text-on-surface-muted outline-none"
             >
               {availableModels.map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
           )}
+          </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <button
             onClick={handleExport}
-            className="text-xs text-on-surface-muted hover:text-on-surface px-2 py-1 rounded-md hover:bg-surface transition-colors"
+            className="rounded border border-[var(--hair-2)] px-2.5 py-1 text-[10.5px] font-medium uppercase tracking-[0.06em] text-on-surface-muted transition-colors hover:border-[var(--hair-3)] hover:text-on-surface"
             title="Export chat (⌘⇧E)"
           >
             Export
           </button>
           <button
             onClick={clearMessages}
-            className="text-xs text-on-surface-muted hover:text-on-surface px-2 py-1 rounded-md hover:bg-surface transition-colors"
+            className="rounded border border-[var(--hair-2)] px-2.5 py-1 text-[10.5px] font-medium uppercase tracking-[0.06em] text-on-surface-muted transition-colors hover:border-[var(--hair-3)] hover:text-on-surface"
           >
             Clear
           </button>
@@ -86,12 +95,43 @@ export function ChatPanel() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-w-0">
+      <div className="min-w-0 flex-1 space-y-5 overflow-y-auto px-4 py-5">
+        {selectedContext && (
+          <div className="rounded-md border border-[var(--hair-2)] bg-surface px-3.5 py-3">
+            <div className="small-caps mb-2 flex items-center gap-2 text-on-surface-muted">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+              <span>Selected Context · 1 Passage</span>
+            </div>
+            <p className="line-clamp-2 font-serif text-[13px] italic leading-relaxed text-on-surface">
+              "{selectedContext}"
+            </p>
+          </div>
+        )}
         {messages.length === 0 && !isStreaming && (
-          <div className="text-center text-on-surface-muted text-sm py-8">
-            <p className="text-2xl mb-3">🤖</p>
-            <p className="font-medium mb-1">Ask questions about the document</p>
-            <p className="text-xs">Select text in the document or use Quick Actions below</p>
+          <div className="flex h-full flex-col items-center justify-center px-5 text-center text-on-surface-muted">
+            <div className="mb-8 flex h-14 w-14 items-center justify-center rounded-full border border-dashed border-[var(--hair-3)]">
+              <svg className="h-5 w-5 text-accent" viewBox="0 0 16 16" aria-hidden="true">
+                <path className="icon-stroke" d="M8 1.75l.9 3.35L12.25 6l-3.35.9L8 10.25l-.9-3.35L3.75 6l3.35-.9L8 1.75z" />
+              </svg>
+            </div>
+            <p className="font-serif text-[18px] leading-snug text-on-surface">Your reading<br />companion is ready.</p>
+            <p className="mt-5 max-w-[230px] text-[12px] font-medium leading-6">
+              Open a document to begin a conversation. Select any passage to ask, summarize, or extract.
+            </p>
+            <div className="my-8 h-px w-full border-t border-dashed border-[var(--hair-3)]" />
+            <div className="small-caps mb-4">Try After Opening</div>
+            <div className="w-full space-y-2">
+              {['What is the central thesis?', 'List unfamiliar terms.', 'Compare with prior reading.'].map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => handleSendMessage(prompt)}
+                  disabled={!content || isStreaming || !selectedModel}
+                  className="w-full rounded-md border border-[var(--hair-2)] bg-surface px-3 py-2 text-left font-serif text-[13px] italic text-on-surface transition-colors hover:border-[var(--hair-3)] disabled:opacity-60"
+                >
+                  "{prompt}"
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {messages.map((msg) => (
@@ -110,11 +150,11 @@ export function ChatPanel() {
             />
           ) : (
             <div className="flex justify-start max-w-full">
-              <div className="bg-surface border border-border rounded-2xl rounded-tl-none px-4 py-3 text-sm text-on-surface shadow-sm">
+              <div className="px-1 py-3 text-sm text-on-surface">
                 <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 bg-on-surface-muted rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                  <span className="w-1.5 h-1.5 bg-on-surface-muted rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                  <span className="w-1.5 h-1.5 bg-on-surface-muted rounded-full animate-bounce"></span>
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-on-surface-muted [animation-delay:-0.3s]"></span>
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-on-surface-muted [animation-delay:-0.15s]"></span>
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-on-surface-muted"></span>
                 </div>
               </div>
             </div>

@@ -1,16 +1,17 @@
 /* Academic Typography System */
 
 .document-body {
-  font-family: 'Source Serif 4', 'Noto Serif KR', Georgia, serif;
+  font-family: Newsreader, 'Noto Serif KR', Georgia, serif;
   font-size: var(--font-size, 17px);
-  line-height: var(--line-height, 1.75);
+  line-height: var(--line-height, 1.65);
   color: var(--color-on-surface);
-  max-width: calc(var(--content-width, 72) * 1ch);
+  max-width: 620px;
   margin: 0 auto;
-  padding: 3rem 2rem 6rem;
+  padding: 64px 0 80px;
   font-feature-settings: 'liga' 1, 'kern' 1;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  text-wrap: pretty;
 }
 
 .document-body h1,
@@ -19,25 +20,27 @@
 .document-body h4,
 .document-body h5,
 .document-body h6 {
-  font-family: Inter, 'Noto Sans KR', system-ui, sans-serif;
-  font-weight: 700;
-  line-height: 1.3;
-  margin-top: 2.5em;
-  margin-bottom: 0.8em;
+  font-family: Newsreader, 'Noto Serif KR', Georgia, serif;
+  font-weight: 400;
+  line-height: 1.08;
+  margin-top: 2.2em;
+  margin-bottom: 0.75em;
   color: var(--color-on-surface);
 }
 
 .document-body h1 {
-  font-size: 2em;
+  font-size: 56px;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
   margin-top: 0;
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.55em;
+  border-bottom: 1px solid var(--hair);
 }
 
 .document-body h2 {
-  font-size: 1.5em;
+  font-size: 32px;
   padding-bottom: 0.2em;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--hair);
 }
 
 .document-body h3 { font-size: 1.25em; }
@@ -48,19 +51,95 @@
   margin-bottom: 1.2em;
   text-align: justify;
   hyphens: auto;
+  letter-spacing: 0.005em;
 }
 
 .document-body strong {
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .document-body em {
   font-style: italic;
 }
 
+.document-preface {
+  margin-bottom: 26px;
+}
+
+.document-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 26px;
+  font-family: Inter, 'Noto Sans KR', system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+
+.document-breadcrumb span:nth-child(even) {
+  color: var(--hair-3);
+}
+
+.document-section-label {
+  margin-bottom: 8px;
+  font-family: Newsreader, 'Noto Serif KR', Georgia, serif;
+  font-size: 15px;
+  font-style: italic;
+  font-weight: 400;
+  color: var(--accent);
+}
+
+.reader-title {
+  margin: 0 0 26px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--hair);
+  font-family: Newsreader, 'Noto Serif KR', Georgia, serif;
+  font-size: 56px;
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+}
+
+.document-meta-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 0;
+  margin-bottom: 34px;
+  padding: 16px 0;
+  border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+}
+
+.document-meta-strip span {
+  display: block;
+  margin-bottom: 7px;
+  font-family: Inter, 'Noto Sans KR', system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+
+.document-meta-strip strong {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
 /* UI text (toolbar, panels, etc.) */
 .ui-text {
   font-family: Inter, 'Noto Sans KR', system-ui, sans-serif;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.5;
 }

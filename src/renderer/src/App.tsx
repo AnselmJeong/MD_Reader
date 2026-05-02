@@ -5,6 +5,7 @@ import { ChatPanel } from './components/ChatPanel/ChatPanel'
 import { StatusBar } from './components/StatusBar'
 import { SettingsModal } from './components/SettingsModal'
 import { WelcomeScreen } from './components/WelcomeScreen'
+import { DocumentTabs } from './components/DocumentTabs'
 import { useDocumentStore } from './store/useDocumentStore'
 import { useChatStore } from './store/useChatStore'
 import { useSettingsStore } from './store/useSettingsStore'
@@ -160,15 +161,15 @@ export default function App() {
       
       const files = e.dataTransfer?.files
       if (!files?.length) return
-      
-      const file = files[0]
-      const name = file.name.toLowerCase()
-      // Use the new API to get the path
-      const filePath = window.api.utils.getPathForFile(file)
-      
-      if (filePath && (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt'))) {
-        const result = await window.api.file.read(filePath)
-        setDocument(result.filePath, result.content, result.bibContent || null)
+
+      for (const file of Array.from(files)) {
+        const name = file.name.toLowerCase()
+        const filePath = window.api.utils.getPathForFile(file)
+
+        if (filePath && (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt'))) {
+          const result = await window.api.file.read(filePath)
+          setDocument(result.filePath, result.content, result.bibContent || null)
+        }
       }
     }
 
@@ -208,9 +209,9 @@ export default function App() {
   }, [handleOpenFile, handleSaveFile, toggleChat, toggleToC, setShowSearch, cycleTheme, fontSize, setFontSize])
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-background relative selection:bg-accent/30 text-on-surface">
+    <div className="relative h-screen w-screen overflow-hidden bg-surface text-on-surface selection:bg-accent/20">
       {/* Toolbar (Fixed Top) */}
-      <div className="absolute top-0 left-0 right-0 h-11 z-20">
+      <div className="absolute left-0 right-0 top-0 z-20 h-[38px]">
         <Toolbar
           onOpenFile={handleOpenFile}
           onSaveFile={handleSaveFile}
@@ -220,19 +221,22 @@ export default function App() {
       </div>
 
       {/* Main Content Area (Absolute Middle) */}
-      <div className="absolute top-11 bottom-6 left-0 right-0 flex overflow-hidden">
+      <div className="absolute bottom-6 left-0 right-0 top-[38px] flex overflow-hidden">
         
         {/* Document Reader */}
-        <div className="flex-1 h-full relative min-w-0">
-          <div 
-            className="absolute inset-0 overflow-y-auto"
-            style={{
-              '--font-size': `${fontSize}px`,
-              '--line-height': `${lineHeight}`,
-              '--content-width': `${contentWidth}`
-            } as React.CSSProperties}
-          >
-            {content ? <DocumentReader /> : <WelcomeScreen onOpenFile={handleOpenFile} />}
+        <div className="flex h-full min-w-0 flex-1 flex-col">
+          {content && <DocumentTabs />}
+          <div className="relative min-h-0 flex-1">
+            <div
+              className="absolute inset-0 overflow-hidden"
+              style={{
+                '--font-size': `${fontSize}px`,
+                '--line-height': `${lineHeight}`,
+                '--content-width': `${contentWidth}`
+              } as React.CSSProperties}
+            >
+              {content ? <DocumentReader /> : <WelcomeScreen onOpenFile={handleOpenFile} />}
+            </div>
           </div>
         </div>
 
@@ -241,12 +245,12 @@ export default function App() {
           <>
             {/* Resize Handle */}
             <div
-              className="w-1 hover:w-1.5 transition-all bg-border hover:bg-accent cursor-col-resize z-30 relative -mr-0.5 h-full flex-shrink-0"
+              className="relative z-30 h-full w-px flex-shrink-0 cursor-col-resize bg-border transition-all hover:bg-[var(--hair-3)]"
               onMouseDown={startResizing}
             />
             {/* Chat Panel Wrapper */}
             <div 
-              className="h-full bg-surface border-l border-border relative flex-shrink-0" 
+              className="relative h-full flex-shrink-0 border-l border-border bg-surface" 
               style={{ width: `${chatWidth}px` }}
             >
               <div className="absolute inset-0 overflow-hidden">
@@ -267,11 +271,11 @@ export default function App() {
 
       {/* Drag & Drop Overlay */}
       {isDragging && (
-        <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center pointer-events-none">
-          <div className="bg-surface border-2 border-dashed border-accent rounded-3xl p-12 text-center animate-pulse">
-            <div className="text-6xl mb-4">📂</div>
-            <h2 className="text-2xl font-bold text-accent mb-2">Drop markdown file here</h2>
-            <p className="text-on-surface-muted">to open directly</p>
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-surface/85 backdrop-blur-sm">
+          <div className="rounded-lg border border-dashed border-accent px-12 py-10 text-center">
+            <div className="small-caps mb-4 text-accent">Drop Markdown</div>
+            <h2 className="font-serif text-3xl text-on-surface">Open this document</h2>
+            <p className="mt-2 text-sm text-on-surface-muted">Release to begin reading.</p>
           </div>
         </div>
       )}

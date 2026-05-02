@@ -11,17 +11,30 @@ interface ToolbarProps {
   isDirty: boolean
 }
 
-const themeIcons: Record<string, string> = {
-  light: '☀️',
-  sepia: '📜',
-  dark: '🌙'
+const iconPaths: Record<string, string[]> = {
+  folder: ['M2.5 5.5h4.1l1.5 1.6h5.4v6.9h-11z'],
+  save: ['M3.5 2.75h7.4l1.6 1.6v8.9h-9z', 'M5.5 2.75v3.5h5', 'M5.5 10.25h5'],
+  toc: ['M5.5 4h8', 'M5.5 8h8', 'M5.5 12h8', 'M2.75 4h.5', 'M2.75 8h.5', 'M2.75 12h.5'],
+  search: ['M7.2 12.2a5 5 0 1 0 0-10 5 5 0 0 0 0 10z', 'M10.8 10.8l3 3'],
+  headphones: ['M2.75 8.5a5.25 5.25 0 0 1 10.5 0', 'M2.75 8.5v3.75h2v-4h-2z', 'M13.25 8.5v3.75h-2v-4h2z'],
+  sun: ['M8 10.75A2.75 2.75 0 1 0 8 5.25a2.75 2.75 0 0 0 0 5.5z', 'M8 1.5v1.2', 'M8 13.3v1.2', 'M1.5 8h1.2', 'M13.3 8h1.2', 'M3.4 3.4l.85.85', 'M11.75 11.75l.85.85', 'M12.6 3.4l-.85.85', 'M4.25 11.75l-.85.85'],
+  spark: ['M8 1.75l.9 3.35L12.25 6l-3.35.9L8 10.25l-.9-3.35L3.75 6l3.35-.9L8 1.75z'],
+  cog: ['M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z', 'M8 1.75v1.4', 'M8 12.85v1.4', 'M1.75 8h1.4', 'M12.85 8h1.4', 'M3.6 3.6l1 1', 'M11.4 11.4l1 1', 'M12.4 3.6l-1 1', 'M4.6 11.4l-1 1']
+}
+
+function Icon({ name, className = 'h-3.5 w-3.5' }: { name: keyof typeof iconPaths; className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" aria-hidden="true">
+      {iconPaths[name].map((d) => <path key={d} className="icon-stroke" d={d} />)}
+    </svg>
+  )
 }
 
 export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarProps) {
   const [isTtsErrorOpen, setIsTtsErrorOpen] = useState(false)
   const { theme, fontSize, setFontSize, cycleTheme } = useSettingsStore()
   const { toggleToC, toggleSearch, toggleChat, showChat, toggleSettings } = useUIStore()
-  const { content } = useDocumentStore()
+  const { content, fileName, isDirty: documentIsDirty } = useDocumentStore()
   const { mode: ttsMode, state: ttsState, error: ttsError, speakDocument, resume, stop, restart, clearError } = useTtsStore()
   const hasDocument = Boolean(content)
   const isDocumentTts = ttsMode === 'document'
@@ -49,57 +62,51 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
   }
 
   return (
-    <div className="titlebar-drag flex items-center h-11 px-4 bg-surface-alt border-b border-border ui-text select-none"
-         style={{ paddingLeft: '80px' /* macOS traffic lights */ }}>
+    <div className="titlebar-drag flex h-[38px] items-center border-b border-border bg-surface-alt px-4 pl-[88px] ui-text select-none">
       {/* File actions */}
       <div className="titlebar-no-drag flex items-center gap-1">
         <button
           onClick={onOpenFile}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface"
+          className="flex items-center gap-1.5 rounded-[5px] px-2.5 py-1 text-[11.5px] font-medium text-on-surface hover:bg-[var(--ink-3)]"
           title="Open File (⌘O)"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />
-          </svg>
-          <span className="text-xs">Open</span>
+          <Icon name="folder" />
+          <span>Open</span>
         </button>
         <button
           onClick={onSaveFile}
           disabled={!canSave}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface disabled:opacity-40 disabled:hover:bg-transparent"
+          className="flex items-center gap-1.5 rounded-[5px] px-2.5 py-1 text-[11.5px] font-medium text-on-surface hover:bg-[var(--ink-3)] disabled:opacity-35 disabled:hover:bg-transparent"
           title="Save File (⌘S)"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 21V7.5a2.25 2.25 0 0 0-.66-1.59l-1.76-1.76a2.25 2.25 0 0 0-1.59-.66H6.75A2.25 2.25 0 0 0 4.5 5.75V21m15 0h-15m15 0a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 21m10.5-17.25v5.25h-6V3.75m6 11.25h-6" />
-          </svg>
-          <span className="text-xs">Save{isDirty ? ' *' : ''}</span>
+          <Icon name="save" />
+          <span>Save{isDirty ? ' *' : ''}</span>
         </button>
       </div>
 
-      <div className="w-px h-5 bg-border mx-2" />
+      <div className="mx-2 h-5 w-px bg-border" />
 
       {/* Navigation */}
       <div className="titlebar-no-drag flex items-center gap-1">
         <button
           onClick={toggleToC}
-          className="px-2.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface text-xs"
+          className="flex items-center gap-1.5 rounded-[5px] px-2.5 py-1 text-[11.5px] font-medium text-on-surface hover:bg-[var(--ink-3)]"
           title="Table of Contents (⌘⇧T)"
         >
-          ToC
+          <Icon name="toc" />
+          <span>Contents</span>
         </button>
         <button
           onClick={toggleSearch}
-          className="flex items-center gap-1 px-2.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface"
+          className="flex items-center gap-1 rounded-[5px] px-2.5 py-1 text-on-surface hover:bg-[var(--ink-3)]"
           title="Search (⌘F)"
         >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-          </svg>
+          <Icon name="search" />
         </button>
         <button
           onClick={handleReadDocument}
           disabled={!hasDocument || isPreparingTts}
-          className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors text-on-surface-muted hover:text-on-surface disabled:opacity-40 disabled:hover:bg-transparent ${
+          className={`flex items-center gap-1 rounded-[5px] px-2.5 py-1 text-on-surface transition-colors disabled:opacity-40 disabled:hover:bg-transparent ${
             isPlayingTts || isPausedTts ? 'bg-accent/15 text-accent' : 'hover:bg-surface'
           }`}
           title={
@@ -114,10 +121,7 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
                     : 'Read document'
           }
         >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.7} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.75 13.25v-1.5a7.25 7.25 0 0 1 14.5 0v1.5" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.75 13.25h2.5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1v-5Zm14.5 0h-2.5a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h1.5a1 1 0 0 0 1-1v-5Z" />
-          </svg>
+          <Icon name="headphones" />
         </button>
         {isDocumentTts && (
           <>
@@ -149,41 +153,47 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
         )}
       </div>
 
-      <div className="w-px h-5 bg-border mx-2" />
+      <div className="mx-2 h-5 w-px bg-border" />
 
       {/* Font size */}
-      <div className="titlebar-no-drag flex items-center gap-1">
+      <div className="titlebar-no-drag flex items-center gap-0 rounded-md border border-border bg-surface">
         <button
           onClick={() => setFontSize(fontSize - 1)}
-          className="px-2 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface text-xs font-medium"
+          className="px-2 py-1 text-[12px] font-medium text-on-surface-muted hover:text-on-surface"
           title="Decrease font size (⌘-)"
         >
           A-
         </button>
-        <span className="text-xs text-on-surface-muted w-8 text-center">{fontSize}</span>
+        <span className="w-8 border-x border-border text-center text-[12px] text-on-surface">{fontSize}</span>
         <button
           onClick={() => setFontSize(fontSize + 1)}
-          className="px-2 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface text-xs font-medium"
+          className="px-2 py-1 text-[12px] font-medium text-on-surface-muted hover:text-on-surface"
           title="Increase font size (⌘+)"
         >
           A+
         </button>
       </div>
 
-      <div className="w-px h-5 bg-border mx-2" />
+      <div className="mx-2 h-5 w-px bg-border" />
 
       {/* Theme */}
       <div className="titlebar-no-drag flex items-center gap-1">
         <button
           onClick={cycleTheme}
-          className="px-2.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface text-xs"
+          className="flex items-center gap-1.5 rounded-[5px] px-2.5 py-1 text-[11.5px] font-medium text-on-surface hover:bg-[var(--ink-3)]"
           title="Cycle Theme (⌘⇧D)"
         >
-          {themeIcons[theme]} {theme.charAt(0).toUpperCase() + theme.slice(1)}
+          <Icon name="sun" />
+          <span>{theme.charAt(0).toUpperCase() + theme.slice(1)}</span>
         </button>
       </div>
 
-      {/* Spacer */}
+      <div className="pointer-events-none absolute left-1/2 top-1/2 max-w-[36vw] -translate-x-1/2 -translate-y-1/2 truncate text-[11.5px] font-medium text-on-surface-muted">
+        {fileName ? (
+          <><span className="text-on-surface">{fileName}</span>{documentIsDirty && <span> · edited</span>}</>
+        ) : null}
+      </div>
+
       <div className="flex-1" />
 
       {/* Right side */}
@@ -232,24 +242,22 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
         )}
         <button
           onClick={toggleChat}
-          className={`px-2.5 py-1 rounded-md transition-colors text-xs ${
+          className={`flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-[11.5px] font-semibold uppercase tracking-[0.08em] transition-colors ${
             showChat
-              ? 'bg-accent text-white'
+              ? 'bg-on-surface text-surface'
               : 'hover:bg-surface text-on-surface-muted hover:text-on-surface'
           }`}
           title="Toggle Chat (⌘/)"
         >
-          AI Chat
+          <Icon name="spark" />
+          <span>Ask AI</span>
         </button>
         <button
           onClick={toggleSettings}
-          className="px-2 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface"
+          className="rounded-[5px] px-2 py-1 text-on-surface-muted transition-colors hover:bg-[var(--ink-3)] hover:text-on-surface"
           title="Settings"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.431.992a7.723 7.723 0 0 1 0 .255c-.007.378.138.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-          </svg>
+          <Icon name="cog" />
         </button>
       </div>
     </div>

@@ -2,20 +2,33 @@
    Theme: Academic Light
    ═══════════════════════════════════════════ */
 [data-theme='light'] {
-  --color-surface: #fafaf9;
-  --color-surface-alt: #ffffff;
-  --color-on-surface: #1c1917;
-  --color-on-surface-muted: #78716c;
-  --color-accent: #7c3aed;
-  --color-accent-hover: #6d28d9;
-  --color-border: #e7e5e4;
-  --color-chat-bg: #f5f5f4;
-  --color-chat-user: #ede9fe;
-  --color-chat-ai: #ffffff;
-  --color-reading-progress: #7c3aed;
-  --color-selection-menu: #ffffff;
-  --color-code-bg: #f5f5f4;
-  --color-blockquote-border: #7c3aed;
+  --paper: oklch(0.985 0.005 75);
+  --paper-2: oklch(0.965 0.006 75);
+  --ink: oklch(0.20 0.01 60);
+  --ink-2: oklch(0.34 0.01 60);
+  --ink-3: oklch(0.92 0.006 75);
+  --mute: oklch(0.56 0.008 60);
+  --hair: oklch(0.20 0.01 60 / 0.08);
+  --hair-2: oklch(0.20 0.01 60 / 0.14);
+  --hair-3: oklch(0.20 0.01 60 / 0.22);
+  --accent: oklch(0.46 0.13 305);
+  --selection-menu-bg: oklch(0.30 0.012 60);
+  --selection-menu-fg: oklch(0.97 0.006 75);
+  --selection-menu-hair: oklch(1 0 0 / 0.14);
+  --color-surface: var(--paper);
+  --color-surface-alt: var(--paper-2);
+  --color-on-surface: var(--ink);
+  --color-on-surface-muted: var(--mute);
+  --color-accent: var(--accent);
+  --color-accent-hover: oklch(0.40 0.13 305);
+  --color-border: var(--hair);
+  --color-chat-bg: var(--paper);
+  --color-chat-user: var(--ink);
+  --color-chat-ai: transparent;
+  --color-reading-progress: var(--accent);
+  --color-selection-menu: var(--ink);
+  --color-code-bg: var(--ink-3);
+  --color-blockquote-border: var(--accent);
   --color-callout-note: #eff6ff;
   --color-callout-warning: #fffbeb;
   --color-callout-important: #fef2f2;
@@ -24,22 +37,35 @@
   --color-highlight-green: rgba(74, 222, 128, 0.3);
   --color-highlight-blue: rgba(96, 165, 250, 0.3);
   --color-highlight-pink: rgba(244, 114, 182, 0.3);
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
-  --shadow-lg: 0 8px 24px rgba(0,0,0,0.08);
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: 0 12px 32px -8px rgba(20,15,30,0.35), 0 2px 6px -2px rgba(20,15,30,0.2);
 }
 
 /* ═══════════════════════════════════════════
    Theme: Sepia Classic
    ═══════════════════════════════════════════ */
 [data-theme='sepia'] {
-  --color-surface: #f5f0e8;
-  --color-surface-alt: #faf6ee;
-  --color-on-surface: #3d2e1f;
-  --color-on-surface-muted: #8b7355;
-  --color-accent: #a0522d;
-  --color-accent-hover: #8b4513;
-  --color-border: #d4c4a8;
+  --paper: oklch(0.955 0.025 78);
+  --paper-2: oklch(0.975 0.02 78);
+  --ink: oklch(0.27 0.035 62);
+  --ink-2: oklch(0.38 0.035 62);
+  --ink-3: oklch(0.90 0.025 78);
+  --mute: oklch(0.55 0.03 62);
+  --hair: oklch(0.27 0.035 62 / 0.10);
+  --hair-2: oklch(0.27 0.035 62 / 0.18);
+  --hair-3: oklch(0.27 0.035 62 / 0.28);
+  --accent: oklch(0.46 0.09 48);
+  --selection-menu-bg: oklch(0.37 0.045 62);
+  --selection-menu-fg: oklch(0.97 0.02 78);
+  --selection-menu-hair: oklch(1 0 0 / 0.16);
+  --color-surface: var(--paper);
+  --color-surface-alt: var(--paper-2);
+  --color-on-surface: var(--ink);
+  --color-on-surface-muted: var(--mute);
+  --color-accent: var(--accent);
+  --color-accent-hover: oklch(0.39 0.09 48);
+  --color-border: var(--hair);
   --color-chat-bg: #ede6d8;
   --color-chat-user: #f5ebd9;
   --color-chat-ai: #faf6ee;
@@ -64,13 +90,26 @@
    Theme: Dark Scholar
    ═══════════════════════════════════════════ */
 [data-theme='dark'] {
-  --color-surface: #1a1a2e;
-  --color-surface-alt: #16213e;
-  --color-on-surface: #e2e8f0;
-  --color-on-surface-muted: #94a3b8;
-  --color-accent: #a78bfa;
-  --color-accent-hover: #c4b5fd;
-  --color-border: #334155;
+  --paper: oklch(0.18 0.025 285);
+  --paper-2: oklch(0.15 0.024 285);
+  --ink: oklch(0.92 0.012 285);
+  --ink-2: oklch(0.76 0.014 285);
+  --ink-3: oklch(0.26 0.03 285);
+  --mute: oklch(0.68 0.018 285);
+  --hair: oklch(0.92 0.012 285 / 0.10);
+  --hair-2: oklch(0.92 0.012 285 / 0.18);
+  --hair-3: oklch(0.92 0.012 285 / 0.28);
+  --accent: oklch(0.68 0.12 305);
+  --selection-menu-bg: oklch(0.31 0.035 285);
+  --selection-menu-fg: oklch(0.95 0.012 285);
+  --selection-menu-hair: oklch(1 0 0 / 0.16);
+  --color-surface: var(--paper);
+  --color-surface-alt: var(--paper-2);
+  --color-on-surface: var(--ink);
+  --color-on-surface-muted: var(--mute);
+  --color-accent: var(--accent);
+  --color-accent-hover: oklch(0.76 0.12 305);
+  --color-border: var(--hair);
   --color-chat-bg: #0f172a;
   --color-chat-user: #1e1b4b;
   --color-chat-ai: #1e293b;

@@ -134,7 +134,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           {
             id: `msg-${++messageCounter}-${Date.now()}`,
             role: 'assistant',
-            content: `⚠️ Error: ${errMessage}`,
+            content: `Error: ${errMessage}`,
             timestamp: Date.now()
           }
         ]

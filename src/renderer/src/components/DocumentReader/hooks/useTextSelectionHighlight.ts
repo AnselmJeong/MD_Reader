@@ -35,6 +35,33 @@ function wrapTextWithHighlight(content: string, selectedText: string, occurrence
   return `${content.slice(0, index)}==${selectedText}==${content.slice(index + selectedText.length)}`
 }
 
+function getVisibleSelectionRect(range: Range): DOMRect {
+  const viewportTop = 0
+  const viewportBottom = window.innerHeight
+  const viewportLeft = 0
+  const viewportRight = window.innerWidth
+  const visibleRects = Array.from(range.getClientRects()).filter((rect) => (
+    rect.width > 0 &&
+    rect.height > 0 &&
+    rect.bottom > viewportTop &&
+    rect.top < viewportBottom &&
+    rect.right > viewportLeft &&
+    rect.left < viewportRight
+  ))
+
+  if (visibleRects.length === 0) {
+    return range.getBoundingClientRect()
+  }
+
+  const preferredRect = visibleRects.find((rect) => rect.top >= 56) ?? visibleRects[0]
+  return DOMRect.fromRect({
+    x: Math.max(viewportLeft, preferredRect.left),
+    y: Math.max(viewportTop, preferredRect.top),
+    width: Math.min(preferredRect.width, viewportRight - Math.max(viewportLeft, preferredRect.left)),
+    height: preferredRect.height
+  })
+}
+
 interface UseTextSelectionHighlightOptions {
   content: string | null
   rootRef: RefObject<HTMLElement | null>
@@ -97,7 +124,7 @@ export function useTextSelectionHighlight({
         const normalizedSelection = selection.toString().trim()
         setSelectedText(normalizedSelection)
         setSelectedOccurrence(getSelectionOccurrence(range, normalizedSelection))
-        setSelectionRect(range.getBoundingClientRect())
+        setSelectionRect(getVisibleSelectionRect(range))
         return
       }
 

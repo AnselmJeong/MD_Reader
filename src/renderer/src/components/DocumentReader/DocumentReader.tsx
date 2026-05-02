@@ -13,8 +13,17 @@ import { useUIStore } from '../../store/useUIStore'
 import { useTtsStore } from '../../store/useTtsStore'
 import { clearTtsMarks, markSpokenText } from './utils/ttsDom'
 
+function getPrimaryHeading(content: string): string {
+  const match = content.match(/^#\s+(.+)$/m)
+  return match?.[1]?.replace(/[*_`]/g, '').trim() || 'Document'
+}
+
+function stripPrimaryHeading(content: string): string {
+  return content.replace(/^#\s+.+\n+/, '')
+}
+
 export function DocumentReader() {
-  const { content, bibContent, updateContent } = useDocumentStore()
+  const { content, bibContent, updateContent, fileName, wordCount, readingTime } = useDocumentStore()
   const { showToC, showSearch, setShowSearch } = useUIStore()
   const { activeUtteranceId, state: ttsState, utterances } = useTtsStore()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -41,6 +50,8 @@ export function DocumentReader() {
     rootRef: documentBodyRef,
     updateContent
   })
+  const sectionLabel = getPrimaryHeading(content)
+  const renderedContent = stripPrimaryHeading(content)
 
   useEffect(() => {
     const root = documentBodyRef.current
@@ -59,7 +70,7 @@ export function DocumentReader() {
   if (!content) return null
 
   return (
-    <div className="relative h-full">
+    <div className="relative flex h-full">
       {/* Reading progress bar */}
       <ReadingProgress progress={scrollProgress} />
 
@@ -110,10 +121,53 @@ export function DocumentReader() {
       )}
 
       {/* Document content */}
-      <div ref={scrollRef} className="h-full overflow-y-auto">
-        <div ref={documentBodyRef} className="document-body">
-          <MetadataCard content={content} />
-          <MarkdownRenderer content={content} />
+      <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
+        <div className="flex min-h-full">
+          <aside className="sticky top-0 hidden h-[calc(100vh-98px)] w-14 shrink-0 border-r border-border bg-surface-alt md:block">
+            <div className="small-caps absolute left-1/2 top-16 origin-center -translate-x-1/2 rotate-[-90deg] whitespace-nowrap text-on-surface-muted">
+              § · {sectionLabel}
+            </div>
+            <div className="absolute bottom-10 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2" aria-hidden="true">
+              <span className="h-1.5 w-1.5 rounded-full bg-on-surface-muted/35" />
+              <span className="h-1.5 w-1.5 rounded-full bg-on-surface-muted/35" />
+              <span className="h-4 w-px bg-accent" />
+              <span className="h-1.5 w-1.5 rounded-full bg-on-surface-muted/35" />
+              <span className="h-1.5 w-1.5 rounded-full bg-on-surface-muted/35" />
+            </div>
+          </aside>
+          <div ref={documentBodyRef} className="document-body flex-1">
+            <div className="document-preface">
+              <div className="document-breadcrumb">
+                <span>{fileName?.replace(/\.[^.]+$/, '') || 'Markdown'}</span>
+                <span>/</span>
+                <span>Reader</span>
+                <span>/</span>
+                <span>{sectionLabel}</span>
+              </div>
+              <div className="document-section-label">document</div>
+              <h1 className="reader-title">{sectionLabel}</h1>
+              <div className="document-meta-strip">
+                <div>
+                  <span>Section</span>
+                  <strong>1 of 1</strong>
+                </div>
+                <div>
+                  <span>Words</span>
+                  <strong>{wordCount.toLocaleString()}</strong>
+                </div>
+                <div>
+                  <span>Read</span>
+                  <strong>≈ {readingTime} min</strong>
+                </div>
+                <div>
+                  <span>Updated</span>
+                  <strong>Now</strong>
+                </div>
+              </div>
+            </div>
+            <MetadataCard content={content} />
+            <MarkdownRenderer content={renderedContent} />
+          </div>
         </div>
       </div>
 

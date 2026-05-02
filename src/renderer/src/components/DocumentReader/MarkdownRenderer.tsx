@@ -31,13 +31,9 @@ function processCallouts(html: string): string {
     /<blockquote>\s*<p>\[!(note|warning|important|definition|theorem|tip|caution|abstract)\](?:\s*(.+?))?\s*\n?([\s\S]*?)<\/p>\s*<\/blockquote>/gi,
     (_match, type: string, title: string | undefined, body: string) => {
       const typeLower = type.toLowerCase()
-      const icons: Record<string, string> = {
-        note: 'ℹ️', warning: '⚠️', important: '❗', definition: '📖',
-        theorem: '📐', tip: '💡', caution: '🔥', abstract: '📋'
-      }
       const displayTitle = title?.trim() || type.charAt(0).toUpperCase() + type.slice(1)
       return `<div class="callout callout-${typeLower}">
-        <div class="callout-title">${icons[typeLower] || '📌'} ${displayTitle}</div>
+        <div class="callout-title">${displayTitle}</div>
         <div>${body.trim()}</div>
       </div>`
     }
