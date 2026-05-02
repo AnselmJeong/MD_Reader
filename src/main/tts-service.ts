@@ -3,6 +3,7 @@ import { spawn, ChildProcessWithoutNullStreams } from 'child_process'
 import { EventEmitter } from 'events'
 import path from 'path'
 import fs from 'fs'
+import { getSettings } from './settings-service'
 
 export type TtsMode = 'document' | 'selection'
 export type TtsState = 'idle' | 'initializing' | 'downloading-model' | 'ready' | 'playing' | 'paused' | 'stopped' | 'ended' | 'error'
@@ -15,6 +16,7 @@ export interface TtsUtterance {
 export interface TtsSpeakParams {
   mode: TtsMode
   utterances: TtsUtterance[]
+  voice?: string
 }
 
 export interface TtsStatus {
@@ -32,9 +34,14 @@ let processRef: ChildProcessWithoutNullStreams | null = null
 let buffer = ''
 let lastStatus: TtsStatus = { state: 'idle', mode: null }
 
+const DEFAULT_TTS_BACKBONE = 'neuphonic/neutts-air-q8-gguf'
+
 function getProjectRoot(): string {
   const cwdScript = path.join(process.cwd(), 'tts', 'reader_tts_server.py')
   if (fs.existsSync(cwdScript)) return process.cwd()
+
+  const resourceScript = path.join(process.resourcesPath, 'tts', 'reader_tts_server.py')
+  if (fs.existsSync(resourceScript)) return process.resourcesPath
 
   const appPathScript = path.join(app.getAppPath(), 'tts', 'reader_tts_server.py')
   if (fs.existsSync(appPathScript)) return app.getAppPath()
@@ -42,17 +49,69 @@ function getProjectRoot(): string {
   return process.cwd()
 }
 
-function getPythonExecutable(root: string): string {
-  if (process.env.MD_READER_TTS_PYTHON) return process.env.MD_READER_TTS_PYTHON
+function getTtsDir(root: string): string {
+  return path.join(root, 'tts')
+}
 
-  const venvPython = path.join(root, 'tts', '.venv', 'bin', 'python')
-  if (fs.existsSync(venvPython)) return venvPython
+function getPythonLaunch(root: string): { command: string; args: string[]; cwd: string } {
+  const ttsDir = getTtsDir(root)
 
-  return 'python3'
+  if (process.env.MD_READER_TTS_PYTHON) {
+    return {
+      command: process.env.MD_READER_TTS_PYTHON,
+      args: [getScriptPath(root)],
+      cwd: root
+    }
+  }
+
+  const uvCandidates = [
+    process.env.MD_READER_TTS_UV,
+    path.join(process.env.HOME || '', '.cargo', 'bin', 'uv'),
+    path.join(process.env.HOME || '', '.local', 'bin', 'uv'),
+    '/opt/homebrew/bin/uv',
+    '/usr/local/bin/uv',
+    'uv'
+  ].filter(Boolean) as string[]
+
+  for (const uv of uvCandidates) {
+    if (uv === 'uv' || fs.existsSync(uv)) {
+      return {
+        command: uv,
+        args: ['run', 'python', 'reader_tts_server.py'],
+        cwd: ttsDir
+      }
+    }
+  }
+
+  const venvPython = path.join(ttsDir, '.venv', 'bin', 'python')
+  if (fs.existsSync(venvPython)) {
+    return {
+      command: venvPython,
+      args: [getScriptPath(root)],
+      cwd: root
+    }
+  }
+
+  throw new Error('uv was not found. Install uv or set MD_READER_TTS_UV to the uv executable path.')
 }
 
 function getScriptPath(root: string): string {
   return path.join(root, 'tts', 'reader_tts_server.py')
+}
+
+function getUvEnvironmentPath(root: string): string {
+  if (process.env.UV_PROJECT_ENVIRONMENT) return process.env.UV_PROJECT_ENVIRONMENT
+  if (app.isPackaged) return path.join(app.getPath('userData'), 'tts', '.venv')
+  return path.join(root, 'tts', '.venv')
+}
+
+function getHuggingFaceHome(): string {
+  return process.env.HF_HOME || path.join(app.getPath('userData'), 'huggingface')
+}
+
+function getConfiguredVoice(): string | undefined {
+  const voice = getSettings('ttsVoice')
+  return typeof voice === 'string' && voice ? voice : undefined
 }
 
 function emitEvent(event: SidecarEvent): void {
@@ -95,11 +154,18 @@ function ensureProcess(): ChildProcessWithoutNullStreams {
     throw new Error(`TTS sidecar script not found: ${scriptPath}`)
   }
 
-  const child = spawn(getPythonExecutable(root), [scriptPath], {
-    cwd: root,
+  const launch = getPythonLaunch(root)
+
+  const child = spawn(launch.command, launch.args, {
+    cwd: launch.cwd,
     env: {
       ...process.env,
       PYTHONUNBUFFERED: '1',
+      UV_PROJECT_ENVIRONMENT: getUvEnvironmentPath(root),
+      HF_HOME: getHuggingFaceHome(),
+      MD_READER_TTS_BACKBONE: process.env.MD_READER_TTS_BACKBONE || DEFAULT_TTS_BACKBONE,
+      MD_READER_TTS_DEVICE: process.env.MD_READER_TTS_DEVICE || 'cpu',
+      MD_READER_TTS_DEFAULT_VOICE: process.env.MD_READER_TTS_DEFAULT_VOICE || getConfiguredVoice() || '',
       MD_READER_TTS_VOICES_DIR: process.env.MD_READER_TTS_VOICES_DIR || path.join(root, 'tts', 'voices')
     }
   })

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSettingsStore } from '../store/useSettingsStore'
+import { TtsVoice, useSettingsStore } from '../store/useSettingsStore'
 import { useChatStore } from '../store/useChatStore'
 import { filterOllamaModels } from '../utils/ollama-model-filter'
 
@@ -8,7 +8,18 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
-  const { theme, fontSize, lineHeight, contentWidth, setTheme, setFontSize, setLineHeight, setContentWidth } = useSettingsStore()
+  const {
+    theme,
+    fontSize,
+    lineHeight,
+    contentWidth,
+    ttsVoice,
+    setTheme,
+    setFontSize,
+    setLineHeight,
+    setContentWidth,
+    setTtsVoice
+  } = useSettingsStore()
   const {
     systemPrompt,
     setSystemPrompt,
@@ -43,6 +54,15 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     }
     refreshModels()
   }, [selectedModel, setAvailableModels, setSelectedModel])
+
+  const persistSetting = (key: string, value: unknown) => {
+    void window.api.settings.set(key, value)
+  }
+
+  const handleTtsVoiceChange = (voice: TtsVoice) => {
+    setTtsVoice(voice)
+    persistSetting('ttsVoice', voice)
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -167,6 +187,35 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                   rows={4}
                   className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent resize-none"
                 />
+              </div>
+            </div>
+          </section>
+
+          {/* ─── TTS ─── */}
+          <section>
+            <h3 className="text-sm font-semibold text-on-surface mb-3">Text to Speech</h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-on-surface-muted">Voice</label>
+                <div className="flex gap-1">
+                  {([
+                    { id: 'Christopher', label: 'Christopher', detail: 'Male' },
+                    { id: 'Ava', label: 'Ava', detail: 'Female' }
+                  ] as Array<{ id: TtsVoice; label: string; detail: string }>).map((voice) => (
+                    <button
+                      key={voice.id}
+                      onClick={() => handleTtsVoiceChange(voice.id)}
+                      className={`px-3 py-1 rounded-md text-xs transition-colors ${
+                        ttsVoice === voice.id
+                          ? 'bg-accent text-white'
+                          : 'bg-surface border border-border text-on-surface-muted hover:text-on-surface'
+                      }`}
+                      title={`${voice.label} (${voice.detail})`}
+                    >
+                      {voice.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </section>

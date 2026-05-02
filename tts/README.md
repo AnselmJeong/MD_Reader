@@ -5,35 +5,43 @@ MD Reader uses a Python sidecar for local text-to-speech with RealtimeTTS, NeuTT
 ## Setup
 
 ```bash
-brew install espeak-ng portaudio ffmpeg
+brew install uv espeak-ng portaudio ffmpeg
 
 cd /Volumes/Aquatope/_DEV_/MD_Reader
-python3.11 -m venv tts/.venv
-tts/.venv/bin/pip install -U pip
-tts/.venv/bin/pip install -r tts/requirements.txt
+uv sync --directory tts
 ```
 
-Python 3.11 or 3.12 is recommended for this stack. If `python3.11` is not installed, install it first or point `MD_READER_TTS_PYTHON` at a compatible interpreter.
+The `tts/pyproject.toml` file pins the TTS environment to Python 3.11-3.12 and installs both `realtimetts[all]` and `neutts[llama]`. `uv` creates and manages `tts/.venv` automatically.
 
-NeuTTS also needs a reference voice. Add a clean 3-15 second mono WAV file and an exact transcript with the same basename:
+NeuTTS also needs a reference voice. Add clean 3-15 second mono WAV files and exact transcripts with matching basenames:
 
 ```text
-tts/voices/default.wav
-tts/voices/default.txt
+tts/voices/Ava.wav
+tts/voices/Ava.txt
+tts/voices/Christopher.wav
+tts/voices/Christopher.txt
 ```
 
-The first playback can take a while because `neuphonic/neutts-air` and `neuphonic/neucodec` are downloaded from Hugging Face.
+The app automatically uses:
+
+- Backbone: `neuphonic/neutts-air-q8-gguf`
+- Codec: `neuphonic/neucodec`
+- Device: `cpu`
+- Voice: the first valid voice pair in `tts/voices`, unless a development override selects another one
+
+The first playback can take a while because the Q8 GGUF backbone and codec are downloaded from Hugging Face. In the packaged desktop app, the virtual environment and Hugging Face cache live under the app's user data folder, not inside the app bundle.
 
 ## Check
 
 ```bash
-tts/.venv/bin/python tts/reader_tts_server.py --check
+uv run --directory tts python reader_tts_server.py --check
 ```
 
 Optional environment overrides:
 
 ```bash
-export MD_READER_TTS_PYTHON=/absolute/path/to/python
-export MD_READER_TTS_DEFAULT_VOICE=default
-export MD_READER_TTS_DEVICE=cpu
+MD_READER_TTS_DEFAULT_VOICE=jo uv run --directory tts python reader_tts_server.py --check
+MD_READER_TTS_BACKBONE=neuphonic/neutts-air uv run --directory tts python reader_tts_server.py --check
 ```
+
+These overrides are for development only. The desktop app sets its own TTS defaults when it starts, so normal users should not need shell `export` commands.

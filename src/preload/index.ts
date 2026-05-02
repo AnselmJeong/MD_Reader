@@ -56,6 +56,7 @@ export interface TtsUtterance {
 export interface TtsSpeakParams {
   mode: TtsMode
   utterances: TtsUtterance[]
+  voice?: string
 }
 
 export interface TtsStatus {

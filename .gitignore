@@ -5,3 +5,5 @@ dist/
 .npm-cache/
 .electron-cache/
 *.log
+tts/.venv/
+tts/.python-version

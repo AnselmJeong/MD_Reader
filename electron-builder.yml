@@ -6,6 +6,15 @@ directories:
 files:
   - out/**/*
   - package.json
+extraResources:
+  - from: tts
+    to: tts
+    filter:
+      - pyproject.toml
+      - uv.lock
+      - reader_tts_server.py
+      - README.md
+      - voices/**/*
 mac:
   target: dmg
   icon: build/icon.png

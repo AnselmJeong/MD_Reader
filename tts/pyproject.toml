@@ -1,0 +1,12 @@
+[project]
+name = "md-reader-tts"
+version = "0.1.0"
+description = "MD Reader local RealtimeTTS sidecar"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "realtimetts[all]",
+  "neutts[llama]",
+]
+
+[tool.uv]
+package = false

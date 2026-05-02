@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { TtsMode, TtsState, TtsStatus, TtsUtterance, TtsUtteranceEvent } from '../global'
 import { buildDocumentTtsUtterances, buildSelectionTtsUtterance } from '../components/DocumentReader/utils/ttsText'
+import { useSettingsStore } from './useSettingsStore'
 
 interface TtsStore {
   mode: TtsMode | null
@@ -49,15 +50,17 @@ export const useTtsStore = create<TtsStore>((set, get) => ({
     }
 
     const utterances = buildDocumentTtsUtterances(content)
+    const voice = useSettingsStore.getState().ttsVoice
     set({ mode: 'document', state: 'initializing', utterances, activeUtteranceId: null, activeUtteranceIndex: -1, error: null })
-    const result = await window.api.tts.speak({ mode: 'document', utterances })
+    const result = await window.api.tts.speak({ mode: 'document', utterances, voice })
     if (!result.success) applyError(result.error || 'Failed to start document TTS')
   },
 
   speakSelection: async (text) => {
     const utterances = buildSelectionTtsUtterance(text)
+    const voice = useSettingsStore.getState().ttsVoice
     set({ mode: 'selection', state: 'initializing', utterances, activeUtteranceId: null, activeUtteranceIndex: -1, error: null })
-    const result = await window.api.tts.speak({ mode: 'selection', utterances })
+    const result = await window.api.tts.speak({ mode: 'selection', utterances, voice })
     if (!result.success) applyError(result.error || 'Failed to start selection TTS')
   },
 

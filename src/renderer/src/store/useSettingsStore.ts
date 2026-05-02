@@ -1,17 +1,20 @@
 import { create } from 'zustand'
 
 type Theme = 'light' | 'sepia' | 'dark'
+export type TtsVoice = 'Ava' | 'Christopher'
 
 interface SettingsState {
   theme: Theme
   fontSize: number
   lineHeight: number
   contentWidth: number
+  ttsVoice: TtsVoice
 
   setTheme: (theme: Theme) => void
   setFontSize: (size: number) => void
   setLineHeight: (height: number) => void
   setContentWidth: (width: number) => void
+  setTtsVoice: (voice: TtsVoice) => void
   cycleTheme: () => void
 }
 
@@ -22,6 +25,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   fontSize: 17,
   lineHeight: 1.75,
   contentWidth: 72,
+  ttsVoice: 'Christopher',
 
   setTheme: (theme) => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -35,6 +39,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setLineHeight: (height) => set({ lineHeight: height }),
   setContentWidth: (width) => set({ contentWidth: width }),
+  setTtsVoice: (voice) => set({ ttsVoice: voice }),
 
   cycleTheme: () => {
     const { theme } = get()

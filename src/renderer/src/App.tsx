@@ -21,7 +21,7 @@ export default function App() {
   const availableModels = useChatStore(s => s.availableModels)
   const selectedModel = useChatStore(s => s.selectedModel)
 
-  const { theme, fontSize, lineHeight, contentWidth, setTheme, setFontSize, cycleTheme } = useSettingsStore()
+  const { theme, fontSize, lineHeight, contentWidth, setTheme, setFontSize, setLineHeight, setContentWidth, setTtsVoice, cycleTheme } = useSettingsStore()
   const { showChat, showSettings, toggleChat, toggleSettings, toggleToC, setShowSearch, chatWidth, setChatWidth } = useUIStore()
   const initializeTtsListeners = useTtsStore(s => s.initializeListeners)
 
@@ -85,6 +85,11 @@ export default function App() {
         const settings = (await window.api.settings.get()) as Record<string, unknown>
         if (settings?.theme) setTheme(settings.theme as 'light' | 'sepia' | 'dark')
         if (settings?.fontSize) setFontSize(settings.fontSize as number)
+        if (settings?.lineHeight) setLineHeight(settings.lineHeight as number)
+        if (settings?.contentWidth) setContentWidth(settings.contentWidth as number)
+        if (settings?.ttsVoice === 'Ava' || settings?.ttsVoice === 'Christopher') {
+          setTtsVoice(settings.ttsVoice)
+        }
       } catch (e) {
         console.error('Settings init error:', e)
       }
@@ -100,7 +105,7 @@ export default function App() {
     }
     init()
     initializeTtsListeners()
-  }, [initializeTtsListeners])
+  }, [initializeTtsListeners, setContentWidth, setFontSize, setLineHeight, setTheme, setTtsVoice])
 
   // File open handler
   const handleOpenFile = useCallback(async () => {

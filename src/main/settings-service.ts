@@ -7,6 +7,7 @@ interface AppSettings {
   contentWidth: number
   ollamaModel: string
   systemPrompt: string
+  ttsVoice: 'Ava' | 'Christopher'
 }
 
 const store = new SimpleStore<AppSettings>('md-reader-settings', {
@@ -15,6 +16,7 @@ const store = new SimpleStore<AppSettings>('md-reader-settings', {
   lineHeight: 1.75,
   contentWidth: 72,
   ollamaModel: '',
+  ttsVoice: 'Christopher',
   systemPrompt: 'You are a knowledgeable academic assistant. Answer questions about the provided document clearly and precisely, using appropriate scholarly terminology.'
 })
 

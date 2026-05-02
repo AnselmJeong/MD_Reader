@@ -7,17 +7,23 @@ import argparse
 import importlib.util
 import json
 import os
-import queue
 import sys
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
 
 ROOT = Path(__file__).resolve().parent
 VOICES_DIR = Path(os.environ.get("MD_READER_TTS_VOICES_DIR", ROOT / "voices"))
-DEFAULT_VOICE = os.environ.get("MD_READER_TTS_DEFAULT_VOICE")
+DEFAULT_BACKBONE = "neuphonic/neutts-air-q8-gguf"
+
+
+def choose_default_voice() -> str | None:
+    configured = os.environ.get("MD_READER_TTS_DEFAULT_VOICE")
+    if configured:
+        return configured
+    voices = sorted(path.stem for path in VOICES_DIR.glob("*.wav") if path.with_suffix(".txt").exists())
+    return voices[0] if voices else None
 
 
 def emit(event: dict[str, Any]) -> None:
@@ -48,7 +54,6 @@ class TtsServer:
         self.stream = None
         self.active_mode: str | None = None
         self.active_utterances: list[dict[str, Any]] = []
-        self.command_queue: queue.Queue[dict[str, Any]] = queue.Queue()
         self.playback_thread: threading.Thread | None = None
         self.stop_requested = threading.Event()
         self.state = "idle"
@@ -69,13 +74,16 @@ class TtsServer:
         if not VOICES_DIR.exists():
             VOICES_DIR.mkdir(parents=True, exist_ok=True)
 
+        default_voice = choose_default_voice()
+        backbone_repo = os.environ.get("MD_READER_TTS_BACKBONE", DEFAULT_BACKBONE)
+
         self.engine = NeuTTSEngine(
             model="neutts-air",
-            backbone_repo=os.environ.get("MD_READER_TTS_BACKBONE", "neuphonic/neutts-air"),
+            backbone_repo=backbone_repo,
             codec_repo=os.environ.get("MD_READER_TTS_CODEC", "neuphonic/neucodec"),
             device=os.environ.get("MD_READER_TTS_DEVICE", "cpu"),
             voices_dir=str(VOICES_DIR),
-            default_voice=DEFAULT_VOICE,
+            default_voice=default_voice,
         )
 
         voices = []
@@ -84,8 +92,8 @@ class TtsServer:
         except Exception:
             voices = []
 
-        if DEFAULT_VOICE:
-            self.engine.set_voice(DEFAULT_VOICE)
+        if default_voice:
+            self.engine.set_voice(default_voice)
         elif voices:
             self.engine.set_voice(voices[0])
 
@@ -94,7 +102,13 @@ class TtsServer:
             on_audio_stream_start=lambda: emit({"type": "status", "state": "playing", "mode": self.active_mode}),
             on_audio_stream_stop=lambda: emit({"type": "status", "state": "ended", "mode": self.active_mode}),
         )
-        emit({"type": "status", "state": "ready", "voices": voices})
+        emit({
+            "type": "status",
+            "state": "ready",
+            "voices": voices,
+            "voice": default_voice or (voices[0] if voices else None),
+            "backbone": backbone_repo,
+        })
 
     def utterance_generator(self):
         for index, utterance in enumerate(self.active_utterances):
@@ -111,6 +125,9 @@ class TtsServer:
     def speak(self, command: dict[str, Any]) -> None:
         self.stop()
         self.ensure_stream()
+        voice = command.get("voice")
+        if voice and self.engine is not None:
+            self.engine.set_voice(str(voice))
         self.active_mode = command.get("mode") or "document"
         self.active_utterances = [
             item for item in command.get("utterances", [])
