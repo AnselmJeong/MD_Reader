@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { MetadataCard } from './MetadataCard'
 import { TableOfContents } from './TableOfContents'
@@ -10,10 +10,13 @@ import { useTextSelectionHighlight } from './hooks/useTextSelectionHighlight'
 import { useLinkTooltip } from './hooks/useLinkTooltip'
 import { useDocumentStore } from '../../store/useDocumentStore'
 import { useUIStore } from '../../store/useUIStore'
+import { useTtsStore } from '../../store/useTtsStore'
+import { clearTtsMarks, markSpokenText } from './utils/ttsDom'
 
 export function DocumentReader() {
   const { content, bibContent, updateContent } = useDocumentStore()
   const { showToC, showSearch, setShowSearch } = useUIStore()
+  const { activeUtteranceId, state: ttsState, utterances } = useTtsStore()
   const scrollRef = useRef<HTMLDivElement>(null)
   const documentBodyRef = useRef<HTMLDivElement>(null)
   const [scrollProgress, setScrollProgress] = useState(0)
@@ -38,6 +41,20 @@ export function DocumentReader() {
     rootRef: documentBodyRef,
     updateContent
   })
+
+  useEffect(() => {
+    const root = documentBodyRef.current
+    if (!root) return
+
+    if (!activeUtteranceId || ttsState === 'stopped' || ttsState === 'ended' || ttsState === 'idle') {
+      clearTtsMarks(root)
+      return
+    }
+
+    const utterance = utterances.find((item) => item.id === activeUtteranceId)
+    if (!utterance) return
+    markSpokenText(root, scrollRef.current, utterance.text)
+  }, [activeUtteranceId, ttsState, utterances])
 
   if (!content) return null
 

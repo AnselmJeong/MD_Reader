@@ -1,5 +1,7 @@
 import { useSettingsStore } from '../store/useSettingsStore'
 import { useUIStore } from '../store/useUIStore'
+import { useDocumentStore } from '../store/useDocumentStore'
+import { useTtsStore } from '../store/useTtsStore'
 
 interface ToolbarProps {
   onOpenFile: () => void
@@ -17,6 +19,18 @@ const themeIcons: Record<string, string> = {
 export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarProps) {
   const { theme, fontSize, setFontSize, cycleTheme } = useSettingsStore()
   const { toggleToC, toggleSearch, toggleChat, showChat, toggleSettings } = useUIStore()
+  const { content } = useDocumentStore()
+  const { mode: ttsMode, state: ttsState, error: ttsError, speakDocument, pause, resume, stop, restart } = useTtsStore()
+  const hasDocument = Boolean(content)
+  const isDocumentTts = ttsMode === 'document'
+  const isPreparingTts = ttsState === 'initializing' || ttsState === 'downloading-model'
+  const isPlayingTts = isDocumentTts && ttsState === 'playing'
+  const isPausedTts = isDocumentTts && ttsState === 'paused'
+
+  const handleReadDocument = () => {
+    if (!content || isPreparingTts) return
+    void speakDocument(content)
+  }
 
   return (
     <div className="titlebar-drag flex items-center h-11 px-4 bg-surface-alt border-b border-border ui-text select-none"
@@ -66,6 +80,64 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
             <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
           </svg>
         </button>
+        <button
+          onClick={handleReadDocument}
+          disabled={!hasDocument || isPreparingTts}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors text-on-surface-muted hover:text-on-surface disabled:opacity-40 disabled:hover:bg-transparent ${
+            isPlayingTts || isPausedTts ? 'bg-accent/15 text-accent' : 'hover:bg-surface'
+          }`}
+          title={
+            !hasDocument
+              ? 'Open a document to read'
+              : isPreparingTts
+                ? 'Preparing TTS'
+                : isPlayingTts
+                  ? 'Pause reading'
+                  : isPausedTts
+                    ? 'Resume reading'
+                    : 'Read document'
+          }
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.7} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4.75 13.25v-1.5a7.25 7.25 0 0 1 14.5 0v1.5" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4.75 13.25h2.5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1v-5Zm14.5 0h-2.5a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h1.5a1 1 0 0 0 1-1v-5Z" />
+          </svg>
+        </button>
+        {isDocumentTts && (
+          <>
+            <div className="w-px h-4 bg-border mx-0.5" />
+            <button
+              onClick={() => void resume()}
+              disabled={ttsState !== 'paused'}
+              className="px-1.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface disabled:opacity-35 disabled:hover:bg-transparent"
+              title="Play"
+            >
+              ▶
+            </button>
+            <button
+              onClick={() => void pause()}
+              disabled={ttsState !== 'playing'}
+              className="px-1.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface disabled:opacity-35 disabled:hover:bg-transparent"
+              title="Pause"
+            >
+              ⏸
+            </button>
+            <button
+              onClick={() => void stop()}
+              className="px-1.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface"
+              title="Stop"
+            >
+              ■
+            </button>
+            <button
+              onClick={() => void restart()}
+              className="px-1.5 py-1 rounded-md hover:bg-surface transition-colors text-on-surface-muted hover:text-on-surface"
+              title="To beginning"
+            >
+              ↤
+            </button>
+          </>
+        )}
       </div>
 
       <div className="w-px h-5 bg-border mx-2" />
@@ -107,6 +179,11 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
 
       {/* Right side */}
       <div className="titlebar-no-drag flex items-center gap-1">
+        {ttsError && (
+          <span className="max-w-80 truncate text-xs text-red-500" title={ttsError}>
+            TTS: {ttsError}
+          </span>
+        )}
         <button
           onClick={toggleChat}
           className={`px-2.5 py-1 rounded-md transition-colors text-xs ${

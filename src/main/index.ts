@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell } from 'electron'
 import path, { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc-handlers'
+import { shutdownTts } from './tts-service'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -55,6 +56,10 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', () => {
+  shutdownTts()
 })
 
 app.on('window-all-closed', () => {

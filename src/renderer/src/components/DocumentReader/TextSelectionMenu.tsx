@@ -1,6 +1,7 @@
 import { useChatStore } from '../../store/useChatStore'
 import { useUIStore } from '../../store/useUIStore'
 import { useDocumentStore } from '../../store/useDocumentStore'
+import { useTtsStore } from '../../store/useTtsStore'
 
 interface TextSelectionMenuProps {
   rect: DOMRect
@@ -14,6 +15,7 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: 
   const { showChat } = useUIStore()
   const { toggleChat } = useUIStore()
   const { content } = useDocumentStore()
+  const { speakSelection } = useTtsStore()
 
   const ensureChatOpen = () => {
     if (!showChat) toggleChat()
@@ -66,6 +68,11 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: 
     closeMenu()
   }
 
+  const handleSpeakSelection = () => {
+    void speakSelection(selectedText)
+    closeMenu()
+  }
+
   const top = rect.top - 48
   const left = rect.left + rect.width / 2
 
@@ -101,6 +108,14 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: 
         className="px-2.5 py-1 rounded-md hover:bg-surface transition-colors text-xs text-on-surface-muted"
       >
         ✨ Highlight
+      </button>
+      <div className="w-px h-4 bg-border" />
+      <button
+        onClick={handleSpeakSelection}
+        className="px-2.5 py-1 rounded-md hover:bg-surface transition-colors text-xs text-on-surface-muted"
+        title="Read selected text"
+      >
+        🎧 Read
       </button>
       <div className="w-px h-4 bg-border" />
       <button

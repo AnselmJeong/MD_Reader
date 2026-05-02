@@ -2,8 +2,17 @@ import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { readFileWithBib, getRecentFiles, addRecentFile, writeFileContent } from './file-service'
 import { listModels, chatStream } from './ollama-service'
 import { getSettings, setSettings } from './settings-service'
+import { controlTts, getTtsStatus, onTtsEvent, speakTts, TtsSpeakParams } from './tts-service'
 
 export function registerIpcHandlers(): void {
+  onTtsEvent((ttsEvent) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send(`tts:${ttsEvent.type}`, ttsEvent)
+      }
+    }
+  })
+
   // ─── File Operations ───
   ipcMain.handle('file:open-dialog', async () => {
     const result = await dialog.showOpenDialog({
@@ -80,6 +89,31 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('settings:set', async (_event, key: string, value: unknown) => {
     setSettings(key, value)
     return { success: true }
+  })
+
+  // ─── TTS ───
+  ipcMain.handle('tts:speak', async (_event, params: TtsSpeakParams) => {
+    return speakTts(params)
+  })
+
+  ipcMain.handle('tts:pause', async () => {
+    return controlTts('pause')
+  })
+
+  ipcMain.handle('tts:resume', async () => {
+    return controlTts('resume')
+  })
+
+  ipcMain.handle('tts:stop', async () => {
+    return controlTts('stop')
+  })
+
+  ipcMain.handle('tts:restart', async () => {
+    return controlTts('restart')
+  })
+
+  ipcMain.handle('tts:status', async () => {
+    return getTtsStatus()
   })
 
   // ─── Chat Export ───

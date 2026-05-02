@@ -260,3 +260,12 @@
   background: var(--color-accent);
   color: #ffffff;
 }
+
+/* ─── TTS current utterance ─── */
+.document-body mark.md-tts-current {
+  background: color-mix(in srgb, var(--color-accent) 26%, transparent);
+  color: inherit;
+  outline: 1px solid color-mix(in srgb, var(--color-accent) 48%, transparent);
+  padding: 0.05em 0.1em;
+  border-radius: 3px;
+}

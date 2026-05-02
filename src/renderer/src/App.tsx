@@ -9,6 +9,7 @@ import { useDocumentStore } from './store/useDocumentStore'
 import { useChatStore } from './store/useChatStore'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useUIStore } from './store/useUIStore'
+import { useTtsStore } from './store/useTtsStore'
 import { filterOllamaModels } from './utils/ollama-model-filter'
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
 
   const { theme, fontSize, lineHeight, contentWidth, setTheme, setFontSize, cycleTheme } = useSettingsStore()
   const { showChat, showSettings, toggleChat, toggleSettings, toggleToC, setShowSearch, chatWidth, setChatWidth } = useUIStore()
+  const initializeTtsListeners = useTtsStore(s => s.initializeListeners)
 
   // Resize logic
   const isResizing = useRef(false)
@@ -97,7 +99,8 @@ export default function App() {
       await loadModels()
     }
     init()
-  }, [])
+    initializeTtsListeners()
+  }, [initializeTtsListeners])
 
   // File open handler
   const handleOpenFile = useCallback(async () => {
