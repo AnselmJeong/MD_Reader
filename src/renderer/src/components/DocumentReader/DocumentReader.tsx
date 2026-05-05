@@ -4,11 +4,13 @@ import { MetadataCard } from './MetadataCard'
 import { TableOfContents } from './TableOfContents'
 import { ReadingProgress } from './ReadingProgress'
 import { TextSelectionMenu } from './TextSelectionMenu'
+import { EpubDocumentView } from './EpubDocumentView'
 import { LinkTooltip } from './LinkTooltip'
+import { ContentsRailButton } from './ContentsRailButton'
 import { useDocumentSearch } from './hooks/useDocumentSearch'
 import { useTextSelectionHighlight } from './hooks/useTextSelectionHighlight'
 import { useLinkTooltip } from './hooks/useLinkTooltip'
-import { useDocumentStore } from '../../store/useDocumentStore'
+import { useDocumentStore, type MarkdownDocumentTab } from '../../store/useDocumentStore'
 import { useUIStore } from '../../store/useUIStore'
 import { useTtsStore } from '../../store/useTtsStore'
 import { clearTtsMarks, markSpokenText } from './utils/ttsDom'
@@ -22,10 +24,11 @@ function stripPrimaryHeading(content: string): string {
   return content.replace(/^#\s+.+\n+/, '')
 }
 
-export function DocumentReader() {
-  const { content, bibContent, updateContent, fileName, wordCount, readingTime } = useDocumentStore()
-  const { showToC, showSearch, setShowSearch } = useUIStore()
+function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
+  const { updateContent } = useDocumentStore()
+  const { showToC, showSearch, setShowSearch, toggleToC } = useUIStore()
   const { activeUtteranceId, state: ttsState, utterances } = useTtsStore()
+  const { content, bibContent, fileName, wordCount, readingTime } = tab
   const scrollRef = useRef<HTMLDivElement>(null)
   const documentBodyRef = useRef<HTMLDivElement>(null)
   const [scrollProgress, setScrollProgress] = useState(0)
@@ -124,7 +127,8 @@ export function DocumentReader() {
       <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
         <div className="flex min-h-full">
           <aside className="sticky top-0 hidden h-[calc(100vh-98px)] w-14 shrink-0 border-r border-border bg-surface-alt md:block">
-            <div className="small-caps absolute left-1/2 top-16 origin-center -translate-x-1/2 rotate-[-90deg] whitespace-nowrap text-on-surface-muted">
+            <ContentsRailButton active={showToC} onClick={toggleToC} />
+            <div className="reader-rail-label small-caps text-on-surface-muted">
               § · {sectionLabel}
             </div>
             <div className="absolute bottom-10 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2" aria-hidden="true">
@@ -187,4 +191,12 @@ export function DocumentReader() {
       )}
     </div>
   )
+}
+
+export function DocumentReader() {
+  const { activeTab } = useDocumentStore()
+
+  if (!activeTab) return null
+  if (activeTab.kind === 'epub') return <EpubDocumentView tab={activeTab} />
+  return <MarkdownDocumentView tab={activeTab} />
 }

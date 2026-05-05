@@ -12,7 +12,7 @@ export function ChatPanel() {
     addMessage, sendMessage, updateStreamingContent,
     finalizeStreaming, clearMessages, setSelectedModel
   } = useChatStore()
-  const { content } = useDocumentStore()
+  const { activeTab, content } = useDocumentStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const selectedContext = [...messages].reverse().find((message) => message.quotedText)?.quotedText
 
@@ -125,7 +125,7 @@ export function ChatPanel() {
                 <button
                   key={prompt}
                   onClick={() => handleSendMessage(prompt)}
-                  disabled={!content || isStreaming || !selectedModel}
+                  disabled={!activeTab || isStreaming || !selectedModel}
                   className="w-full rounded-md border border-[var(--hair-2)] bg-surface px-3 py-2 text-left font-serif text-[13px] italic text-on-surface transition-colors hover:border-[var(--hair-3)] disabled:opacity-60"
                 >
                   "{prompt}"

@@ -3,7 +3,7 @@ import { useSettingsStore } from '../store/useSettingsStore'
 import { useTtsStore } from '../store/useTtsStore'
 
 export function StatusBar() {
-  const { fileName, wordCount, readingTime, isDirty } = useDocumentStore()
+  const { fileName, kind, wordCount, readingTime, isDirty } = useDocumentStore()
   const { fontSize, theme } = useSettingsStore()
   const { state: ttsState, message: ttsMessage, error: ttsError, activeUtteranceIndex, utterances } = useTtsStore()
   const showTtsStatus = !ttsError && !['idle', 'stopped', 'ended'].includes(ttsState)
@@ -35,12 +35,18 @@ export function StatusBar() {
             <span className="truncate text-on-surface">{fileName}</span>
             {isDirty && <span className="text-accent">Modified</span>}
             <span>·</span>
+            {kind && (
+              <>
+                <span className="shrink-0">{kind.toUpperCase()}</span>
+                <span>·</span>
+              </>
+            )}
             <span className="shrink-0">{wordCount.toLocaleString()} Words</span>
             <span>·</span>
             <span className="shrink-0">≈ {readingTime} Min</span>
           </>
         ) : (
-          <span className="shrink-0">No Document Open · Drop A .MD To Begin</span>
+          <span className="shrink-0">No Document Open · Drop .MD Or .EPUB To Begin</span>
         )}
       </div>
       <div className="mx-4 flex min-w-0 flex-1 justify-center">

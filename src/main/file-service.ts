@@ -6,6 +6,21 @@ interface FileStoreData {
   recentFiles: string[]
 }
 
+export type DocumentFileResult =
+  | {
+      kind: 'markdown'
+      filePath: string
+      content: string
+      bibContent: string | null
+    }
+  | {
+      kind: 'epub'
+      filePath: string
+      content: string
+      epubBase64: string
+      bibContent: null
+    }
+
 const store = new SimpleStore<FileStoreData>('md-reader-files', {
   recentFiles: []
 })
@@ -37,6 +52,29 @@ export async function readFileWithBib(filePath: string): Promise<{ content: stri
     return { content, bibContent }
   } catch (error) {
     throw error
+  }
+}
+
+export async function readDocumentFile(filePath: string): Promise<DocumentFileResult> {
+  const extension = path.extname(filePath).toLowerCase()
+
+  if (extension === '.epub') {
+    const buffer = await fs.readFile(filePath)
+    return {
+      kind: 'epub',
+      filePath,
+      content: '',
+      epubBase64: buffer.toString('base64'),
+      bibContent: null
+    }
+  }
+
+  const { content, bibContent } = await readFileWithBib(filePath)
+  return {
+    kind: 'markdown',
+    filePath,
+    content,
+    bibContent
   }
 }
 

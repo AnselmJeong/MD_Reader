@@ -1,9 +1,26 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron'
 
+export type DocumentKind = 'markdown' | 'epub'
+
+export type FileReadResult =
+  | {
+      kind: 'markdown'
+      filePath: string
+      content: string
+      bibContent?: string | null
+    }
+  | {
+      kind: 'epub'
+      filePath: string
+      content: string
+      epubBase64: string
+      bibContent?: null
+    }
+
 export interface ElectronAPI {
   file: {
-    openDialog: () => Promise<{ filePath: string; content: string; bibContent?: string | null } | null>
-    read: (path: string) => Promise<{ filePath: string; content: string; bibContent?: string | null }>
+    openDialog: () => Promise<FileReadResult | null>
+    read: (path: string) => Promise<FileReadResult>
     getRecent: () => Promise<string[]>
     save: (path: string, content: string) => Promise<{ success: boolean; error?: string }>
   }

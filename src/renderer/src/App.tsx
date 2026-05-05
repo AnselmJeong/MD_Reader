@@ -14,7 +14,7 @@ import { useTtsStore } from './store/useTtsStore'
 import { filterOllamaModels } from './utils/ollama-model-filter'
 
 export default function App() {
-  const { filePath, content, isDirty, setDocument, setRecentFiles, markSaved } = useDocumentStore()
+  const { activeTab, filePath, content, kind, isDirty, setDocument, setRecentFiles, markSaved } = useDocumentStore()
   
   // Use selectors to avoid re-rendering App on every token stream (streamingContent/messages updates)
   const setAvailableModels = useChatStore(s => s.setAvailableModels)
@@ -112,12 +112,12 @@ export default function App() {
   const handleOpenFile = useCallback(async () => {
     const result = await window.api.file.openDialog()
     if (result) {
-      setDocument(result.filePath, result.content, result.bibContent || null)
+      setDocument(result)
     }
   }, [setDocument])
 
   const handleSaveFile = useCallback(async () => {
-    if (!filePath || content == null) return
+    if (!filePath || content == null || kind !== 'markdown') return
     try {
       const result = await window.api.file.save(filePath, content)
       if (!result.success) {
@@ -128,7 +128,7 @@ export default function App() {
     } catch (error) {
       console.error('Save failed:', error)
     }
-  }, [content, filePath, markSaved])
+  }, [content, filePath, kind, markSaved])
 
   // Drag & drop
   const [isDragging, setIsDragging] = useState(false)
@@ -166,9 +166,9 @@ export default function App() {
         const name = file.name.toLowerCase()
         const filePath = window.api.utils.getPathForFile(file)
 
-        if (filePath && (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt'))) {
+        if (filePath && (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt') || name.endsWith('.epub'))) {
           const result = await window.api.file.read(filePath)
-          setDocument(result.filePath, result.content, result.bibContent || null)
+          setDocument(result)
         }
       }
     }
@@ -215,7 +215,7 @@ export default function App() {
         <Toolbar
           onOpenFile={handleOpenFile}
           onSaveFile={handleSaveFile}
-          canSave={Boolean(filePath && content !== null)}
+          canSave={Boolean(filePath && content !== null && kind === 'markdown')}
           isDirty={isDirty}
         />
       </div>
@@ -225,7 +225,7 @@ export default function App() {
         
         {/* Document Reader */}
         <div className="flex h-full min-w-0 flex-1 flex-col">
-          {content && <DocumentTabs />}
+          {activeTab && <DocumentTabs />}
           <div className="relative min-h-0 flex-1">
             <div
               className="absolute inset-0 overflow-hidden"
@@ -235,7 +235,7 @@ export default function App() {
                 '--content-width': `${contentWidth}`
               } as React.CSSProperties}
             >
-              {content ? <DocumentReader /> : <WelcomeScreen onOpenFile={handleOpenFile} />}
+              {activeTab ? <DocumentReader /> : <WelcomeScreen onOpenFile={handleOpenFile} />}
             </div>
           </div>
         </div>
@@ -273,7 +273,7 @@ export default function App() {
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-surface/85 backdrop-blur-sm">
           <div className="rounded-lg border border-dashed border-accent px-12 py-10 text-center">
-            <div className="small-caps mb-4 text-accent">Drop Markdown</div>
+            <div className="small-caps mb-4 text-accent">Drop Document</div>
             <h2 className="font-serif text-3xl text-on-surface">Open this document</h2>
             <p className="mt-2 text-sm text-on-surface-muted">Release to begin reading.</p>
           </div>

@@ -33,10 +33,11 @@ function Icon({ name, className = 'h-3.5 w-3.5' }: { name: keyof typeof iconPath
 export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarProps) {
   const [isTtsErrorOpen, setIsTtsErrorOpen] = useState(false)
   const { theme, fontSize, setFontSize, cycleTheme } = useSettingsStore()
-  const { toggleToC, toggleSearch, toggleChat, showChat, toggleSettings } = useUIStore()
-  const { content, fileName, isDirty: documentIsDirty } = useDocumentStore()
+  const { toggleSearch, toggleChat, showChat, toggleSettings } = useUIStore()
+  const { activeTab, content, fileName, kind, isDirty: documentIsDirty } = useDocumentStore()
   const { mode: ttsMode, state: ttsState, error: ttsError, speakDocument, resume, stop, restart, clearError } = useTtsStore()
-  const hasDocument = Boolean(content)
+  const hasDocument = Boolean(activeTab)
+  const canReadDocument = Boolean(content?.trim()) || kind === 'markdown'
   const isDocumentTts = ttsMode === 'document'
   const isPreparingTts = ttsState === 'initializing' || ttsState === 'downloading-model'
   const isPlayingTts = isDocumentTts && ttsState === 'playing'
@@ -89,14 +90,6 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
       {/* Navigation */}
       <div className="titlebar-no-drag flex items-center gap-1">
         <button
-          onClick={toggleToC}
-          className="flex items-center gap-1.5 rounded-[5px] px-2.5 py-1 text-[11.5px] font-medium text-on-surface hover:bg-[var(--ink-3)]"
-          title="Table of Contents (⌘⇧T)"
-        >
-          <Icon name="toc" />
-          <span>Contents</span>
-        </button>
-        <button
           onClick={toggleSearch}
           className="flex items-center gap-1 rounded-[5px] px-2.5 py-1 text-on-surface hover:bg-[var(--ink-3)]"
           title="Search (⌘F)"
@@ -105,13 +98,15 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
         </button>
         <button
           onClick={handleReadDocument}
-          disabled={!hasDocument || isPreparingTts}
+          disabled={!hasDocument || !canReadDocument || isPreparingTts}
           className={`flex items-center gap-1 rounded-[5px] px-2.5 py-1 text-on-surface transition-colors disabled:opacity-40 disabled:hover:bg-transparent ${
             isPlayingTts || isPausedTts ? 'bg-accent/15 text-accent' : 'hover:bg-surface'
           }`}
           title={
             !hasDocument
               ? 'Open a document to read'
+              : !canReadDocument
+                ? 'EPUB text is loading'
               : isPreparingTts
                 ? 'Preparing TTS'
                 : isPlayingTts
@@ -188,13 +183,13 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
         </button>
       </div>
 
-      <div className="pointer-events-none absolute left-1/2 top-1/2 max-w-[36vw] -translate-x-1/2 -translate-y-1/2 truncate text-[11.5px] font-medium text-on-surface-muted">
+      <div className="pointer-events-none mx-3 flex min-w-0 flex-1 justify-center px-2 text-[11.5px] font-medium text-on-surface-muted">
         {fileName ? (
-          <><span className="text-on-surface">{fileName}</span>{documentIsDirty && <span> · edited</span>}</>
+          <span className="max-w-full truncate">
+            <span className="text-on-surface">{fileName}</span>{documentIsDirty && <span> · edited</span>}
+          </span>
         ) : null}
       </div>
-
-      <div className="flex-1" />
 
       {/* Right side */}
       <div className="titlebar-no-drag flex items-center gap-1">

@@ -10,7 +10,7 @@ export function WelcomeScreen({ onOpenFile }: WelcomeScreenProps) {
   const handleRecentClick = async (filePath: string) => {
     try {
       const result = await window.api.file.read(filePath)
-      setDocument(result.filePath, result.content, result.bibContent || null)
+      setDocument(result)
     } catch (e) {
       console.error('Failed to open file:', e)
     }
@@ -27,7 +27,7 @@ export function WelcomeScreen({ onOpenFile }: WelcomeScreenProps) {
         <section className="mx-auto max-w-[720px] text-center">
           <div className="small-caps mb-8 flex items-center justify-center gap-4 text-on-surface-muted">
             <span className="h-px w-8 bg-[var(--hair-3)]" />
-            <span>Markdown · Reader · Vol. IV</span>
+            <span>Markdown · EPUB · Reader</span>
             <span className="h-px w-8 bg-[var(--hair-3)]" />
           </div>
           <h1 className="font-serif text-[84px] font-light leading-none tracking-[-0.025em] text-on-surface">
@@ -35,7 +35,7 @@ export function WelcomeScreen({ onOpenFile }: WelcomeScreenProps) {
             ask <em className="font-light italic text-accent">intelligently</em>.
           </h1>
           <p className="mx-auto mt-9 max-w-[420px] text-[13px] font-medium leading-7 text-on-surface-muted">
-            A quiet space for long-form markdown — paired with a research assistant that knows what you're reading.
+            A quiet space for long-form documents — paired with a research assistant that knows what you're reading.
           </p>
           <div className="mt-10 flex items-center justify-center gap-4">
             <button
@@ -46,10 +46,10 @@ export function WelcomeScreen({ onOpenFile }: WelcomeScreenProps) {
               <svg className="h-4 w-4" viewBox="0 0 16 16" aria-hidden="true">
                 <path className="icon-stroke" d="M2.5 5.5h4.1l1.5 1.6h5.4v6.9h-11z" />
               </svg>
-              Open Markdown File
+              Open Document
             </button>
             <span className="text-[13px] font-medium text-on-surface-muted">
-              or drop a .md file <kbd className="ml-2 rounded border border-border bg-surface-alt px-1.5 py-1 font-mono text-[11px] text-on-surface">⌘</kbd>
+              or drop .md / .epub <kbd className="ml-2 rounded border border-border bg-surface-alt px-1.5 py-1 font-mono text-[11px] text-on-surface">⌘</kbd>
               <kbd className="ml-1 rounded border border-border bg-surface-alt px-1.5 py-1 font-mono text-[11px] text-on-surface">O</kbd>
             </span>
           </div>
@@ -82,7 +82,7 @@ export function WelcomeScreen({ onOpenFile }: WelcomeScreenProps) {
             )) : (
               <div className="border-b border-border py-8 text-center">
                 <p className="font-serif text-[18px] text-on-surface">No recent files yet.</p>
-                <p className="mt-1 text-[12px] text-on-surface-muted">Open a markdown file to start the list.</p>
+                <p className="mt-1 text-[12px] text-on-surface-muted">Open a Markdown or EPUB file to start the list.</p>
               </div>
             )}
           </div>

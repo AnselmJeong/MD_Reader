@@ -1,5 +1,5 @@
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
-import { readFileWithBib, getRecentFiles, addRecentFile, writeFileContent } from './file-service'
+import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent } from './file-service'
 import { listModels, chatStream } from './ollama-service'
 import { getSettings, setSettings } from './settings-service'
 import { controlTts, getTtsStatus, onTtsEvent, speakTts, TtsSpeakParams } from './tts-service'
@@ -18,20 +18,22 @@ export function registerIpcHandlers(): void {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
       filters: [
-        { name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }
+        { name: 'Readable Documents', extensions: ['md', 'markdown', 'txt', 'epub'] },
+        { name: 'Markdown', extensions: ['md', 'markdown', 'txt'] },
+        { name: 'EPUB', extensions: ['epub'] }
       ]
     })
     if (result.canceled || result.filePaths.length === 0) return null
     const filePath = result.filePaths[0]
-    const { content, bibContent } = await readFileWithBib(filePath)
+    const document = await readDocumentFile(filePath)
     await addRecentFile(filePath)
-    return { filePath, content, bibContent }
+    return document
   })
 
   ipcMain.handle('file:read', async (_event, filePath: string) => {
-    const { content, bibContent } = await readFileWithBib(filePath)
+    const document = await readDocumentFile(filePath)
     await addRecentFile(filePath)
-    return { filePath, content, bibContent }
+    return document
   })
 
   ipcMain.handle('file:recent-list', async () => {

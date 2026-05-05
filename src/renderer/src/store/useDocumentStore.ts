@@ -1,30 +1,52 @@
 import { create } from 'zustand'
+import type { FileReadResult } from '../global'
 
-export interface DocumentTab {
+export type DocumentKind = 'markdown' | 'epub'
+
+interface BaseDocumentTab {
   id: string
   filePath: string
   fileName: string
+  kind: DocumentKind
   content: string
-  bibContent: string | null
   wordCount: number
   readingTime: number
   isDirty: boolean
 }
 
+export interface MarkdownDocumentTab extends BaseDocumentTab {
+  kind: 'markdown'
+  bibContent: string | null
+}
+
+export interface EpubDocumentTab extends BaseDocumentTab {
+  kind: 'epub'
+  bibContent: null
+  epubBase64: string
+  currentLocation: string | null
+}
+
+export type DocumentTab = MarkdownDocumentTab | EpubDocumentTab
+
 interface DocumentState {
   tabs: DocumentTab[]
+  activeTab: DocumentTab | null
   activeTabId: string | null
+  kind: DocumentKind | null
   filePath: string | null
   fileName: string | null
   content: string | null
   bibContent: string | null
+  epubBase64: string | null
   recentFiles: string[]
   wordCount: number
   readingTime: number
   isDirty: boolean
 
-  setDocument: (filePath: string, content: string, bibContent: string | null) => void
+  setDocument: (document: FileReadResult) => void
   updateContent: (content: string) => void
+  updateEpubContent: (tabId: string, content: string) => void
+  updateEpubLocation: (tabId: string, currentLocation: string | null) => void
   markSaved: () => void
   clearDocument: () => void
   selectTab: (tabId: string) => void
@@ -38,15 +60,37 @@ function getDocumentStats(content: string) {
   return { words, readingTime }
 }
 
-function createDocumentTab(filePath: string, content: string, bibContent: string | null): DocumentTab {
-  const fileName = filePath.split('/').pop() || filePath
-  const { words, readingTime } = getDocumentStats(content)
+function getFileName(filePath: string) {
+  return filePath.split('/').pop() || filePath
+}
+
+function createDocumentTab(document: FileReadResult): DocumentTab {
+  const fileName = getFileName(document.filePath)
+  const { words, readingTime } = getDocumentStats(document.content)
+
+  if (document.kind === 'epub') {
+    return {
+      id: document.filePath,
+      filePath: document.filePath,
+      fileName,
+      kind: 'epub',
+      content: document.content,
+      bibContent: null,
+      epubBase64: document.epubBase64,
+      currentLocation: null,
+      wordCount: words,
+      readingTime,
+      isDirty: false
+    }
+  }
+
   return {
-    id: filePath,
-    filePath,
+    id: document.filePath,
+    filePath: document.filePath,
     fileName,
-    content,
-    bibContent,
+    kind: 'markdown',
+    content: document.content,
+    bibContent: document.bibContent ?? null,
     wordCount: words,
     readingTime,
     isDirty: false
@@ -55,11 +99,14 @@ function createDocumentTab(filePath: string, content: string, bibContent: string
 
 function activeFields(tab: DocumentTab | null) {
   return {
+    activeTab: tab,
     activeTabId: tab?.id ?? null,
+    kind: tab?.kind ?? null,
     filePath: tab?.filePath ?? null,
     fileName: tab?.fileName ?? null,
     content: tab?.content ?? null,
     bibContent: tab?.bibContent ?? null,
+    epubBase64: tab?.kind === 'epub' ? tab.epubBase64 : null,
     wordCount: tab?.wordCount ?? 0,
     readingTime: tab?.readingTime ?? 0,
     isDirty: tab?.isDirty ?? false
@@ -68,24 +115,34 @@ function activeFields(tab: DocumentTab | null) {
 
 export const useDocumentStore = create<DocumentState>((set) => ({
   tabs: [],
+  activeTab: null,
   activeTabId: null,
+  kind: null,
   filePath: null,
   fileName: null,
   content: null,
   bibContent: null,
+  epubBase64: null,
   recentFiles: [],
   wordCount: 0,
   readingTime: 0,
   isDirty: false,
 
-  setDocument: (filePath, content, bibContent) => {
-    const nextTab = createDocumentTab(filePath, content, bibContent)
+  setDocument: (document) => {
+    const nextTab = createDocumentTab(document)
     set((state) => {
-      const existingIndex = state.tabs.findIndex((tab) => tab.filePath === filePath)
+      const existingIndex = state.tabs.findIndex((tab) => tab.filePath === document.filePath)
       const tabs = existingIndex >= 0
-        ? state.tabs.map((tab, index) => index === existingIndex ? nextTab : tab)
+        ? state.tabs.map((tab, index) => {
+          if (index !== existingIndex) return tab
+          if (tab.kind === 'epub' && nextTab.kind === 'epub') {
+            return { ...nextTab, currentLocation: tab.currentLocation }
+          }
+          return nextTab
+        })
         : [...state.tabs, nextTab]
-      return { tabs, ...activeFields(nextTab) }
+      const active = tabs.find((tab) => tab.id === nextTab.id) ?? nextTab
+      return { tabs, ...activeFields(active) }
     })
   },
 
@@ -103,6 +160,33 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     })
   },
 
+  updateEpubContent: (tabId, content) => {
+    const { words, readingTime } = getDocumentStats(content)
+    set((state) => {
+      const tabs = state.tabs.map((tab) => (
+        tab.id === tabId && tab.kind === 'epub'
+          ? { ...tab, content, wordCount: words, readingTime }
+          : tab
+      ))
+      if (state.activeTabId !== tabId) return { tabs }
+      const active = tabs.find((tab) => tab.id === tabId) ?? null
+      return { tabs, ...activeFields(active) }
+    })
+  },
+
+  updateEpubLocation: (tabId, currentLocation) => {
+    set((state) => {
+      const tabs = state.tabs.map((tab) => (
+        tab.id === tabId && tab.kind === 'epub'
+          ? { ...tab, currentLocation }
+          : tab
+      ))
+      if (state.activeTabId !== tabId) return { tabs }
+      const active = tabs.find((tab) => tab.id === tabId) ?? null
+      return { tabs, ...activeFields(active) }
+    })
+  },
+
   markSaved: () => set((state) => {
     if (!state.activeTabId) return { isDirty: false }
     const tabs = state.tabs.map((tab) => (
@@ -115,11 +199,14 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   clearDocument: () =>
     set({
       tabs: [],
+      activeTab: null,
       activeTabId: null,
+      kind: null,
       filePath: null,
       fileName: null,
       content: null,
       bibContent: null,
+      epubBase64: null,
       wordCount: 0,
       readingTime: 0,
       isDirty: false
