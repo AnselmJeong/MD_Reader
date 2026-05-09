@@ -23,7 +23,8 @@
   --color-accent-hover: oklch(0.40 0.13 305);
   --color-border: var(--hair);
   --color-chat-bg: var(--paper);
-  --color-chat-user: var(--ink);
+  --color-chat-user: oklch(0.94 0.008 75);
+  --color-chat-user-fg: var(--ink);
   --color-chat-ai: transparent;
   --color-reading-progress: var(--accent);
   --color-selection-menu: var(--ink);
@@ -68,6 +69,7 @@
   --color-border: var(--hair);
   --color-chat-bg: #ede6d8;
   --color-chat-user: #f5ebd9;
+  --color-chat-user-fg: var(--ink);
   --color-chat-ai: #faf6ee;
   --color-reading-progress: #a0522d;
   --color-selection-menu: #faf6ee;
@@ -112,6 +114,7 @@
   --color-border: var(--hair);
   --color-chat-bg: #0f172a;
   --color-chat-user: #1e1b4b;
+  --color-chat-user-fg: var(--ink);
   --color-chat-ai: #1e293b;
   --color-reading-progress: #a78bfa;
   --color-selection-menu: #1e293b;

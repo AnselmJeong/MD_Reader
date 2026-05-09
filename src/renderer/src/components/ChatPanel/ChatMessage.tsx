@@ -67,7 +67,7 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
       <div
         className={`max-w-[92%] text-[12.5px] leading-relaxed ${
           isUser
-            ? 'rounded-[8px_8px_2px_8px] bg-chat-user px-3.5 py-3 font-sans font-medium text-surface'
+            ? 'rounded-[8px_8px_2px_8px] border border-[var(--hair-2)] bg-chat-user px-3.5 py-3 font-sans font-medium text-chat-user-fg'
             : 'text-on-surface'
         }`}
       >
@@ -92,7 +92,7 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
         <div
           onClick={handleLinkClick}
           className={`chat-message-content prose prose-sm max-w-none [&_p]:mb-2 [&_p:last-child]:mb-0 [&_pre]:text-xs [&_code]:text-xs [&_.katex-display]:overflow-x-auto [&_.katex-display]:py-2 ${
-            isUser ? 'prose-invert font-sans' : 'font-serif prose-p:font-serif prose-li:font-serif'
+            isUser ? 'font-sans' : 'font-serif prose-p:font-serif prose-li:font-serif'
           }`}
           dangerouslySetInnerHTML={{ __html: html }}
         />

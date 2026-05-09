@@ -18,6 +18,7 @@ module.exports = {
         border: 'var(--color-border)',
         'chat-bg': 'var(--color-chat-bg)',
         'chat-user': 'var(--color-chat-user)',
+        'chat-user-fg': 'var(--color-chat-user-fg)',
         'chat-ai': 'var(--color-chat-ai)',
       },
       typography: {
