@@ -19,10 +19,8 @@ export default function App() {
   // Use selectors to avoid re-rendering App on every token stream (streamingContent/messages updates)
   const setAvailableModels = useChatStore(s => s.setAvailableModels)
   const setSelectedModel = useChatStore(s => s.setSelectedModel)
-  const availableModels = useChatStore(s => s.availableModels)
-  const selectedModel = useChatStore(s => s.selectedModel)
 
-  const { theme, fontSize, lineHeight, contentWidth, setTheme, setFontSize, setLineHeight, setContentWidth, setTtsVoice, cycleTheme } = useSettingsStore()
+  const { fontSize, aiSidebarFontSize, lineHeight, contentWidth, setTheme, setFontSize, setAiSidebarFontSize, setLineHeight, setContentWidth, setTtsVoice, cycleTheme } = useSettingsStore()
   const { showChat, showSettings, toggleChat, toggleSettings, toggleToC, setShowSearch, chatWidth, setChatWidth } = useUIStore()
   const initializeTtsListeners = useTtsStore(s => s.initializeListeners)
 
@@ -60,7 +58,7 @@ export default function App() {
   useEffect(() => {
     const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-    const loadModels = async () => {
+    const loadModels = async (preferredModel?: string) => {
       const maxAttempts = 4
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
@@ -68,9 +66,7 @@ export default function App() {
           const modelNames = filterOllamaModels(models.map((m) => m.name))
           if (modelNames.length > 0) {
             setAvailableModels(modelNames)
-            if (!selectedModel || !modelNames.includes(selectedModel)) {
-              setSelectedModel(modelNames[0])
-            }
+            setSelectedModel(preferredModel && modelNames.includes(preferredModel) ? preferredModel : modelNames[0])
             return
           }
         } catch (e) {
@@ -86,13 +82,16 @@ export default function App() {
         const settings = (await window.api.settings.get()) as Record<string, unknown>
         if (settings?.theme) setTheme(settings.theme as 'light' | 'sepia' | 'dark')
         if (settings?.fontSize) setFontSize(settings.fontSize as number)
+        if (settings?.aiSidebarFontSize) setAiSidebarFontSize(settings.aiSidebarFontSize as number)
         if (settings?.lineHeight) setLineHeight(settings.lineHeight as number)
         if (settings?.contentWidth) setContentWidth(settings.contentWidth as number)
         if (settings?.ttsVoice === 'Ava' || settings?.ttsVoice === 'Christopher') {
           setTtsVoice(settings.ttsVoice)
         }
+        await loadModels(typeof settings?.ollamaModel === 'string' ? settings.ollamaModel : undefined)
       } catch (e) {
         console.error('Settings init error:', e)
+        await loadModels()
       }
 
       try {
@@ -102,11 +101,10 @@ export default function App() {
         console.error('Recent files init error:', e)
       }
 
-      await loadModels()
     }
     init()
     initializeTtsListeners()
-  }, [initializeTtsListeners, setContentWidth, setFontSize, setLineHeight, setTheme, setTtsVoice])
+  }, [initializeTtsListeners, setAiSidebarFontSize, setAvailableModels, setContentWidth, setFontSize, setLineHeight, setRecentFiles, setSelectedModel, setTheme, setTtsVoice])
 
   // File open handler
   const handleOpenFile = useCallback(async () => {
@@ -251,7 +249,10 @@ export default function App() {
             {/* Chat Panel Wrapper */}
             <div 
               className="relative h-full flex-shrink-0 border-l border-border bg-surface" 
-              style={{ width: `${chatWidth}px` }}
+              style={{
+                width: `${chatWidth}px`,
+                '--ai-sidebar-font-size': `${aiSidebarFontSize}px`
+              } as React.CSSProperties}
             >
               <div className="absolute inset-0 overflow-hidden">
                 <ChatPanel />

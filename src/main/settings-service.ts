@@ -3,6 +3,7 @@ import { SimpleStore } from './simple-store'
 interface AppSettings {
   theme: 'light' | 'sepia' | 'dark'
   fontSize: number
+  aiSidebarFontSize: number
   lineHeight: number
   contentWidth: number
   ollamaModel: string
@@ -13,6 +14,7 @@ interface AppSettings {
 const store = new SimpleStore<AppSettings>('md-reader-settings', {
   theme: 'light',
   fontSize: 17,
+  aiSidebarFontSize: 14,
   lineHeight: 1.75,
   contentWidth: 72,
   ollamaModel: '',

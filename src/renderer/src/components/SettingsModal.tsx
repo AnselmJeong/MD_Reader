@@ -11,11 +11,13 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const {
     theme,
     fontSize,
+    aiSidebarFontSize,
     lineHeight,
     contentWidth,
     ttsVoice,
     setTheme,
     setFontSize,
+    setAiSidebarFontSize,
     setLineHeight,
     setContentWidth,
     setTtsVoice
@@ -54,15 +56,6 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     }
     refreshModels()
   }, [selectedModel, setAvailableModels, setSelectedModel])
-
-  const persistSetting = (key: string, value: unknown) => {
-    void window.api.settings.set(key, value)
-  }
-
-  const handleTtsVoiceChange = (voice: TtsVoice) => {
-    setTtsVoice(voice)
-    persistSetting('ttsVoice', voice)
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -163,6 +156,22 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           <section>
             <h3 className="text-sm font-semibold text-on-surface mb-3">AI Settings</h3>
             <div className="space-y-4">
+              {/* Sidebar font size */}
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-on-surface-muted">Sidebar Font Size</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={12}
+                    max={20}
+                    value={aiSidebarFontSize}
+                    onChange={(e) => setAiSidebarFontSize(Number(e.target.value))}
+                    className="w-28 accent-accent"
+                  />
+                  <span className="text-xs text-on-surface-muted w-8 text-right">{aiSidebarFontSize}px</span>
+                </div>
+              </div>
+
               {/* Model */}
               <div className="flex items-center justify-between">
                 <label className="text-sm text-on-surface-muted">Ollama Model</label>
@@ -204,7 +213,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                   ] as Array<{ id: TtsVoice; label: string; detail: string }>).map((voice) => (
                     <button
                       key={voice.id}
-                      onClick={() => handleTtsVoiceChange(voice.id)}
+                      onClick={() => setTtsVoice(voice.id)}
                       className={`px-3 py-1 rounded-md text-xs transition-colors ${
                         ttsVoice === voice.id
                           ? 'bg-accent text-white'

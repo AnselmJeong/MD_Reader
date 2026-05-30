@@ -52,7 +52,7 @@ export function ChatPanel() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-chat-bg ui-text">
+    <div className="ai-sidebar flex h-full flex-col bg-chat-bg ui-text">
       {/* Header */}
       <div className="flex h-[66px] items-center justify-between gap-3 border-b border-border bg-surface-alt px-4">
         <div className="flex min-w-0 flex-1 items-center gap-3">

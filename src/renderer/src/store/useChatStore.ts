@@ -37,6 +37,10 @@ interface ChatState {
 
 let messageCounter = 0
 
+const persistSetting = (key: string, value: unknown) => {
+  void window.api.settings.set(key, value)
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isStreaming: false,
@@ -78,7 +82,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   clearMessages: () => set({ messages: [], streamingContent: '' }),
-  setSelectedModel: (model) => set({ selectedModel: model }),
+  setSelectedModel: (model) => {
+    set({ selectedModel: model })
+    persistSetting('ollamaModel', model)
+  },
   setAvailableModels: (models) => set({ availableModels: models }),
   setSystemPrompt: (prompt) => set({ systemPrompt: prompt }),
   setInputDraft: (text) => set({ inputDraft: text }),

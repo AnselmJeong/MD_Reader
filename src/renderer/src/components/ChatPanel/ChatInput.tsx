@@ -51,7 +51,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
         placeholder={disabled ? 'Select model...' : 'Ask about the document...'}
         disabled={disabled}
         rows={1}
-        className="min-h-11 flex-1 resize-none rounded-lg border border-[var(--hair-2)] bg-surface px-3 py-3 text-[12px] font-medium leading-5 text-on-surface outline-none transition-colors placeholder:text-on-surface-muted/65 focus:border-[var(--hair-3)] disabled:opacity-50"
+        className="min-h-11 flex-1 resize-none rounded-lg border border-[var(--hair-2)] bg-surface px-3 py-3 text-[length:var(--ai-sidebar-font-size)] font-medium leading-5 text-on-surface outline-none transition-colors placeholder:text-on-surface-muted/65 focus:border-[var(--hair-3)] disabled:opacity-50"
       />
       <button
         onClick={handleSend}
