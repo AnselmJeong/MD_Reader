@@ -50,7 +50,7 @@ interface ChatState {
   switchContext: (contextMeta: ChatContextMeta | null, proposedContextKey: string | null) => Promise<void>
   loadSession: (sessionId: string) => Promise<void>
   startNewSession: () => Promise<void>
-  saveCurrentSession: (options?: { finalizeTitle?: boolean }) => Promise<void>
+  saveCurrentSession: (options?: { finalizeTitle?: boolean; refreshSessions?: boolean }) => Promise<void>
   stopStreaming: () => Promise<void>
   sendMessage: (params: {
     text: string
@@ -215,11 +215,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         systemPrompt,
         messages: toStoredMessages(messages)
       })
-      const refreshed = await window.api.chat.listSessions(currentContextMeta)
+      const refreshed = options?.refreshSessions === false
+        ? null
+        : await window.api.chat.listSessions(currentContextMeta)
       set({
         currentSessionId: result.sessionId,
         currentContextKey: result.contextKey,
-        availableSessions: refreshed.sessions,
+        ...(refreshed ? { availableSessions: refreshed.sessions } : {}),
         sessionTitle: result.title,
         titleStatus: nextTitleStatus,
         sessionDirty: false
@@ -234,7 +236,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (state.isStreaming) return
     const requestId = ++contextSwitchRequest
 
-    await state.saveCurrentSession({ finalizeTitle: true })
+    await state.saveCurrentSession({ finalizeTitle: false, refreshSessions: false })
     if (requestId !== contextSwitchRequest) return
 
     if (!contextMeta || !proposedContextKey) {
@@ -326,17 +328,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   startNewSession: async () => {
     contextSwitchRequest += 1
     const state = get()
-    await state.saveCurrentSession({ finalizeTitle: true })
-
-    const currentContextMeta = get().currentContextMeta
-    if (currentContextMeta) {
-      try {
-        const result = await window.api.chat.listSessions(currentContextMeta)
-        set({ availableSessions: result.sessions, currentContextKey: result.contextKey })
-      } catch (error) {
-        console.error('Failed to refresh chat sessions:', error)
-      }
+    const previous = {
+      currentContextMeta: state.currentContextMeta,
+      currentSessionId: state.currentSessionId,
+      messages: state.messages,
+      selectedModel: state.selectedModel,
+      systemPrompt: state.systemPrompt,
+      sessionTitle: state.sessionTitle,
+      titleStatus: state.titleStatus
     }
+
+    const currentContextMeta = state.currentContextMeta
 
     set({
       currentSessionId: null,
@@ -349,6 +351,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
       sessionDirty: false,
       sessionView: 'live'
     })
+
+    if (previous.currentContextMeta && previous.messages.length > 0) {
+      try {
+        await window.api.chat.saveSession({
+          sessionId: previous.currentSessionId,
+          contextMeta: previous.currentContextMeta,
+          title: previous.sessionTitle || getFallbackTitle(previous.messages, previous.currentContextMeta.contextTitle),
+          titleStatus: previous.sessionTitle ? previous.titleStatus : 'fallback',
+          model: previous.selectedModel || null,
+          systemPrompt: previous.systemPrompt,
+          messages: toStoredMessages(previous.messages)
+        })
+        const refreshed = currentContextMeta
+          ? await window.api.chat.listSessions(currentContextMeta)
+          : null
+        set((latest) => ({
+          availableSessions: refreshed?.sessions ?? latest.availableSessions,
+          currentContextKey: refreshed?.contextKey ?? latest.currentContextKey
+        }))
+      } catch (error) {
+        console.error('Failed to save previous chat session:', error)
+      }
+    }
   },
   stopStreaming: async () => {
     try {
