@@ -19,7 +19,7 @@ const store = new SimpleStore<AppSettings>('md-reader-settings', {
   contentWidth: 72,
   ollamaModel: '',
   ttsVoice: 'Christopher',
-  systemPrompt: 'You are a knowledgeable academic assistant. Answer questions about the provided document clearly and precisely, using appropriate scholarly terminology.'
+  systemPrompt: 'You are a knowledgeable academic assistant. Answer questions about the provided document clearly and precisely, using appropriate scholarly terminology.\nMake sure to Answer in Korean Language'
 })
 
 export function getSettings(key?: string): unknown {

@@ -9,6 +9,7 @@ interface BaseDocumentTab {
   fileName: string
   kind: DocumentKind
   content: string
+  documentHash: string
   wordCount: number
   readingTime: number
   isDirty: boolean
@@ -24,6 +25,8 @@ export interface EpubDocumentTab extends BaseDocumentTab {
   bibContent: null
   epubBase64: string
   currentLocation: string | null
+  currentChapterHref: string | null
+  currentChapterLabel: string | null
 }
 
 export type DocumentTab = MarkdownDocumentTab | EpubDocumentTab
@@ -38,6 +41,7 @@ interface DocumentState {
   content: string | null
   bibContent: string | null
   epubBase64: string | null
+  documentHash: string | null
   recentFiles: string[]
   wordCount: number
   readingTime: number
@@ -46,7 +50,12 @@ interface DocumentState {
   setDocument: (document: FileReadResult) => void
   updateContent: (content: string) => void
   updateEpubContent: (tabId: string, content: string) => void
-  updateEpubLocation: (tabId: string, currentLocation: string | null) => void
+  updateEpubLocation: (
+    tabId: string,
+    currentLocation: string | null,
+    chapterHref?: string | null,
+    chapterLabel?: string | null
+  ) => void
   markSaved: () => void
   clearDocument: () => void
   selectTab: (tabId: string) => void
@@ -75,9 +84,12 @@ function createDocumentTab(document: FileReadResult): DocumentTab {
       fileName,
       kind: 'epub',
       content: document.content,
+      documentHash: document.documentHash,
       bibContent: null,
       epubBase64: document.epubBase64,
       currentLocation: null,
+      currentChapterHref: null,
+      currentChapterLabel: null,
       wordCount: words,
       readingTime,
       isDirty: false
@@ -90,6 +102,7 @@ function createDocumentTab(document: FileReadResult): DocumentTab {
     fileName,
     kind: 'markdown',
     content: document.content,
+    documentHash: document.documentHash,
     bibContent: document.bibContent ?? null,
     wordCount: words,
     readingTime,
@@ -107,6 +120,7 @@ function activeFields(tab: DocumentTab | null) {
     content: tab?.content ?? null,
     bibContent: tab?.bibContent ?? null,
     epubBase64: tab?.kind === 'epub' ? tab.epubBase64 : null,
+    documentHash: tab?.documentHash ?? null,
     wordCount: tab?.wordCount ?? 0,
     readingTime: tab?.readingTime ?? 0,
     isDirty: tab?.isDirty ?? false
@@ -123,6 +137,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   content: null,
   bibContent: null,
   epubBase64: null,
+  documentHash: null,
   recentFiles: [],
   wordCount: 0,
   readingTime: 0,
@@ -136,7 +151,12 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         ? state.tabs.map((tab, index) => {
           if (index !== existingIndex) return tab
           if (tab.kind === 'epub' && nextTab.kind === 'epub') {
-            return { ...nextTab, currentLocation: tab.currentLocation }
+            return {
+              ...nextTab,
+              currentLocation: tab.currentLocation,
+              currentChapterHref: tab.currentChapterHref,
+              currentChapterLabel: tab.currentChapterLabel
+            }
           }
           return nextTab
         })
@@ -174,11 +194,16 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     })
   },
 
-  updateEpubLocation: (tabId, currentLocation) => {
+  updateEpubLocation: (tabId, currentLocation, chapterHref, chapterLabel) => {
     set((state) => {
       const tabs = state.tabs.map((tab) => (
         tab.id === tabId && tab.kind === 'epub'
-          ? { ...tab, currentLocation }
+          ? {
+            ...tab,
+            currentLocation,
+            currentChapterHref: chapterHref ?? tab.currentChapterHref,
+            currentChapterLabel: chapterLabel ?? tab.currentChapterLabel
+          }
           : tab
       ))
       if (state.activeTabId !== tabId) return { tabs }
@@ -207,6 +232,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       content: null,
       bibContent: null,
       epubBase64: null,
+      documentHash: null,
       wordCount: 0,
       readingTime: 0,
       isDirty: false

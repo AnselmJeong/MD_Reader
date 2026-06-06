@@ -26,7 +26,8 @@ export async function listModels(): Promise<OllamaModel[]> {
 
 export async function chatStream(
   params: ChatParams,
-  onToken: (token: string) => void
+  onToken: (token: string) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   const messages = [...params.messages]
 
@@ -37,6 +38,7 @@ export async function chatStream(
   const response = await fetch(`${OLLAMA_BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal,
     body: JSON.stringify({
       model: params.model,
       messages,
@@ -86,4 +88,45 @@ export async function chatStream(
       // skip
     }
   }
+}
+
+export async function generateChatTitle(params: {
+  model: string
+  contextTitle: string
+  messages: Array<{ role: string; content: string }>
+}): Promise<string> {
+  const transcript = params.messages
+    .slice(0, 6)
+    .map((message) => `${message.role === 'user' ? 'User' : 'Assistant'}: ${message.content.slice(0, 700)}`)
+    .join('\n\n')
+
+  const response = await fetch(`${OLLAMA_BASE}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: params.model,
+      stream: false,
+      messages: [
+        {
+          role: 'system',
+          content: 'Create a concise chat session title. Return only the title, with no quotes, no punctuation wrapper, and no explanation.'
+        },
+        {
+          role: 'user',
+          content: `Reading context: ${params.contextTitle}\n\nConversation:\n${transcript}\n\nTitle:`
+        }
+      ]
+    })
+  })
+
+  if (!response.ok) {
+    throw new Error(`Ollama API error: ${response.status} ${response.statusText}`)
+  }
+
+  const data = await response.json()
+  const raw = String(data.message?.content ?? '').trim()
+  return raw
+    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .slice(0, 80)
 }

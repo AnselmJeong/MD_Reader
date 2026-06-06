@@ -1,7 +1,13 @@
 import type { ElectronAPI } from '../../preload/index'
 export type {
+  ChatContextMeta,
+  ChatSessionRecord,
+  ChatSessionSummary,
+  ChatMessageRole,
   DocumentKind,
   FileReadResult,
+  SessionTitleStatus,
+  StoredChatMessage,
   TtsMode,
   TtsSpeakParams,
   TtsState,

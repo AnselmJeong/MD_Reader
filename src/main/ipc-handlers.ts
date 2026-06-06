@@ -1,8 +1,18 @@
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent } from './file-service'
-import { listModels, chatStream } from './ollama-service'
+import { listModels, chatStream, generateChatTitle } from './ollama-service'
 import { getSettings, setSettings } from './settings-service'
 import { controlTts, getTtsStatus, onTtsEvent, speakTts, TtsSpeakParams } from './tts-service'
+import {
+  archiveChatSession,
+  ChatContextMeta,
+  listChatSessions,
+  loadChatSession,
+  SaveChatSessionParams,
+  saveChatSession
+} from './chat-session-service'
+
+const activeOllamaRequests = new Map<number, AbortController>()
 
 export function registerIpcHandlers(): void {
   onTtsEvent((ttsEvent) => {
@@ -63,23 +73,58 @@ export function registerIpcHandlers(): void {
   }) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return { error: 'No window found' }
+    const controller = new AbortController()
+    activeOllamaRequests.get(event.sender.id)?.abort()
+    activeOllamaRequests.set(event.sender.id, controller)
 
     try {
       await chatStream(params, (token: string) => {
         if (!win.isDestroyed()) {
           win.webContents.send('ollama:token', token)
         }
-      })
+      }, controller.signal)
       if (!win.isDestroyed()) {
         win.webContents.send('ollama:done')
       }
       return { success: true }
     } catch (error) {
+      if (controller.signal.aborted) {
+        if (!win.isDestroyed()) {
+          win.webContents.send('ollama:stopped')
+        }
+        return { stopped: true }
+      }
       const message = error instanceof Error ? error.message : 'Unknown error'
       if (!win.isDestroyed()) {
         win.webContents.send('ollama:error', message)
       }
       return { error: message }
+    } finally {
+      if (activeOllamaRequests.get(event.sender.id) === controller) {
+        activeOllamaRequests.delete(event.sender.id)
+      }
+    }
+  })
+
+  ipcMain.handle('ollama:stop', async (event) => {
+    const controller = activeOllamaRequests.get(event.sender.id)
+    if (!controller) return { success: false }
+    controller.abort()
+    activeOllamaRequests.delete(event.sender.id)
+    return { success: true }
+  })
+
+  ipcMain.handle('ollama:generate-title', async (_event, params: {
+    model: string
+    contextTitle: string
+    messages: Array<{ role: string; content: string }>
+  }) => {
+    try {
+      const title = await generateChatTitle(params)
+      return { success: true, title }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      return { success: false, error: message }
     }
   })
 
@@ -128,6 +173,22 @@ export function registerIpcHandlers(): void {
     const fs = await import('fs/promises')
     await fs.writeFile(result.filePath, markdown, 'utf-8')
     return { success: true, filePath: result.filePath }
+  })
+
+  ipcMain.handle('chat:sessions:list', async (_event, contextMeta: ChatContextMeta) => {
+    return listChatSessions(contextMeta)
+  })
+
+  ipcMain.handle('chat:sessions:save', async (_event, params: SaveChatSessionParams) => {
+    return saveChatSession(params)
+  })
+
+  ipcMain.handle('chat:sessions:load', async (_event, sessionId: string) => {
+    return loadChatSession(sessionId)
+  })
+
+  ipcMain.handle('chat:sessions:archive', async (_event, sessionId: string) => {
+    return archiveChatSession(sessionId)
   })
 
   // ─── Shell ───

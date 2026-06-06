@@ -11,7 +11,14 @@ interface TextSelectionMenuProps {
 }
 
 export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: TextSelectionMenuProps) {
-  const { sendMessage, setInputDraft, requestInputFocus, selectedModel, isStreaming } = useChatStore()
+  const {
+    sendMessage,
+    setInputDraft,
+    setPendingQuotedText,
+    requestInputFocus,
+    selectedModel,
+    isStreaming
+  } = useChatStore()
   const { showChat } = useUIStore()
   const { toggleChat } = useUIStore()
   const { content } = useDocumentStore()
@@ -45,7 +52,8 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: 
 
   const handleAskAI = () => {
     ensureChatOpen()
-    setInputDraft(selectedText)
+    setPendingQuotedText(selectedText)
+    setInputDraft('')
     requestInputFocus()
     closeMenu()
   }

@@ -3,6 +3,7 @@ import path, { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc-handlers'
 import { shutdownTts } from './tts-service'
+import { closeChatSessionDb } from './chat-session-service'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -60,6 +61,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   shutdownTts()
+  closeChatSessionDb()
 })
 
 app.on('window-all-closed', () => {

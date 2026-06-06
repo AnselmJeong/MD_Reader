@@ -128,7 +128,7 @@ function emitEvent(event: SidecarEvent): void {
   if (event.type === 'status') {
     lastStatus = {
       ...lastStatus,
-      ...(event as TtsStatus),
+      ...(event as unknown as TtsStatus),
       state: (event.state as TtsState) || lastStatus.state
     }
   }

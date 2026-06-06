@@ -7,15 +7,56 @@ export type FileReadResult =
       kind: 'markdown'
       filePath: string
       content: string
+      documentHash: string
       bibContent?: string | null
     }
   | {
       kind: 'epub'
       filePath: string
       content: string
+      documentHash: string
       epubBase64: string
       bibContent?: null
     }
+
+export type ChatDocumentKind = 'markdown' | 'epub'
+export type ChatMessageRole = 'user' | 'assistant'
+export type SessionTitleStatus = 'pending' | 'generated' | 'fallback'
+
+export interface ChatContextMeta {
+  documentKind: ChatDocumentKind
+  documentId: string
+  fileName: string
+  lastFilePath?: string | null
+  contextTitle: string
+  chapterHref?: string | null
+  chapterLabel?: string | null
+  lastCfi?: string | null
+  contentHash?: string | null
+}
+
+export interface StoredChatMessage {
+  id: string
+  role: ChatMessageRole
+  content: string
+  timestamp: number
+  quotedText?: string | null
+}
+
+export interface ChatSessionSummary {
+  id: string
+  contextKey: string
+  title: string
+  titleStatus: SessionTitleStatus
+  messageCount: number
+  createdAt: number
+  updatedAt: number
+  model?: string | null
+}
+
+export interface ChatSessionRecord extends ChatSessionSummary {
+  systemPrompt?: string | null
+}
 
 export interface ElectronAPI {
   file: {
@@ -31,9 +72,16 @@ export interface ElectronAPI {
       messages: Array<{ role: string; content: string }>
       systemPrompt?: string
     }) => Promise<{ success?: boolean; error?: string }>
+    stop: () => Promise<{ success: boolean }>
     onToken: (callback: (token: string) => void) => () => void
     onDone: (callback: () => void) => () => void
+    onStopped: (callback: () => void) => () => void
     onError: (callback: (error: string) => void) => () => void
+    generateTitle: (params: {
+      model: string
+      contextTitle: string
+      messages: Array<{ role: string; content: string }>
+    }) => Promise<{ success: boolean; title?: string; error?: string }>
   }
   settings: {
     get: (key?: string) => Promise<unknown>
@@ -41,6 +89,18 @@ export interface ElectronAPI {
   }
   chat: {
     exportMarkdown: (markdown: string) => Promise<{ success: boolean; filePath?: string }>
+    listSessions: (contextMeta: ChatContextMeta) => Promise<{ contextKey: string; sessions: ChatSessionSummary[] }>
+    saveSession: (params: {
+      sessionId?: string | null
+      contextMeta: ChatContextMeta
+      title?: string | null
+      titleStatus?: SessionTitleStatus
+      model?: string | null
+      systemPrompt?: string | null
+      messages: StoredChatMessage[]
+    }) => Promise<{ sessionId: string; contextKey: string; title: string }>
+    loadSession: (sessionId: string) => Promise<{ session: ChatSessionRecord; messages: StoredChatMessage[] } | null>
+    archiveSession: (sessionId: string) => Promise<{ success: boolean }>
   }
   tts: {
     speak: (params: TtsSpeakParams) => Promise<{ success: boolean; error?: string }>
@@ -101,6 +161,7 @@ const api: ElectronAPI = {
   ollama: {
     listModels: () => ipcRenderer.invoke('ollama:list-models'),
     chat: (params) => ipcRenderer.invoke('ollama:chat', params),
+    stop: () => ipcRenderer.invoke('ollama:stop'),
     onToken: (callback: (token: string) => void) => {
       const handler = (_event: IpcRendererEvent, token: string) => callback(token)
       ipcRenderer.on('ollama:token', handler)
@@ -111,18 +172,28 @@ const api: ElectronAPI = {
       ipcRenderer.on('ollama:done', handler)
       return () => ipcRenderer.removeListener('ollama:done', handler)
     },
+    onStopped: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('ollama:stopped', handler)
+      return () => ipcRenderer.removeListener('ollama:stopped', handler)
+    },
     onError: (callback: (error: string) => void) => {
       const handler = (_event: IpcRendererEvent, error: string) => callback(error)
       ipcRenderer.on('ollama:error', handler)
       return () => ipcRenderer.removeListener('ollama:error', handler)
-    }
+    },
+    generateTitle: (params) => ipcRenderer.invoke('ollama:generate-title', params)
   },
   settings: {
     get: (key?: string) => ipcRenderer.invoke('settings:get', key),
     set: (key: string, value: unknown) => ipcRenderer.invoke('settings:set', key, value)
   },
   chat: {
-    exportMarkdown: (markdown: string) => ipcRenderer.invoke('chat:export', markdown)
+    exportMarkdown: (markdown: string) => ipcRenderer.invoke('chat:export', markdown),
+    listSessions: (contextMeta) => ipcRenderer.invoke('chat:sessions:list', contextMeta),
+    saveSession: (params) => ipcRenderer.invoke('chat:sessions:save', params),
+    loadSession: (sessionId) => ipcRenderer.invoke('chat:sessions:load', sessionId),
+    archiveSession: (sessionId) => ipcRenderer.invoke('chat:sessions:archive', sessionId)
   },
   tts: {
     speak: (params) => ipcRenderer.invoke('tts:speak', params),

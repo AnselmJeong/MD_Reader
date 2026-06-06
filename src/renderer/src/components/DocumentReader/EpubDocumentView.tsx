@@ -165,7 +165,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   const [progress, setProgress] = useState(0)
   const [selection, setSelection] = useState<EpubSelection | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [spreadMode, setSpreadMode] = useState<SpreadMode>('none')
+  const [spreadMode, setSpreadMode] = useState<SpreadMode>('always')
   const [returnCfi, setReturnCfi] = useState<string | null>(null)
   const [isEpubDragging, setIsEpubDragging] = useState(false)
 
@@ -304,6 +304,24 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       }
 
       const handleContentKeyDown = (event: KeyboardEvent) => {
+        const target = event.target as HTMLElement | null
+        if (target?.closest('input, textarea, select, [contenteditable="true"]')) {
+          searchKeyHandlerRef.current(event)
+          return
+        }
+
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault()
+          void rendition.prev()
+          return
+        }
+
+        if (event.key === 'ArrowRight') {
+          event.preventDefault()
+          void rendition.next()
+          return
+        }
+
         searchKeyHandlerRef.current(event)
       }
 
@@ -378,9 +396,11 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
         setProgress(Math.max(0, Math.min(100, percentage * 100)))
       }
       const cfi = location.start?.cfi ?? null
+      const chapterHref = location.start?.href?.split('#')[0] ?? null
+      const chapterLabel = findCurrentTocLabel(tocItemsRef.current, location.start?.href)
       currentCfiRef.current = cfi
-      updateEpubLocation(tab.id, cfi)
-      setSectionLabel((current) => findCurrentTocLabel(tocItemsRef.current, location.start?.href) ?? current)
+      updateEpubLocation(tab.id, cfi, chapterHref, chapterLabel)
+      setSectionLabel((current) => chapterLabel ?? current)
       requestAnimationFrame(() => updateVisibleText(rendition))
     })
 
@@ -515,7 +535,9 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     const rendition = renditionRef.current
     if (!rendition) return
     for (const contents of getRenditionContents(rendition)) {
-      const found = contents.window.find(searchQuery, false, backward, true, false, false, false)
+      const found = (contents.window as Window & {
+        find?: (...args: [string, boolean, boolean, boolean, boolean, boolean, boolean]) => boolean
+      }).find?.(searchQuery, false, backward, true, false, false, false)
       if (found) break
     }
   }, [searchQuery])

@@ -1,5 +1,6 @@
 import fs from 'fs/promises'
 import path from 'path'
+import { createHash } from 'crypto'
 import { SimpleStore } from './simple-store'
 
 interface FileStoreData {
@@ -11,12 +12,14 @@ export type DocumentFileResult =
       kind: 'markdown'
       filePath: string
       content: string
+      documentHash: string
       bibContent: string | null
     }
   | {
       kind: 'epub'
       filePath: string
       content: string
+      documentHash: string
       epubBase64: string
       bibContent: null
     }
@@ -64,6 +67,7 @@ export async function readDocumentFile(filePath: string): Promise<DocumentFileRe
       kind: 'epub',
       filePath,
       content: '',
+      documentHash: createHash('sha256').update(buffer).digest('hex'),
       epubBase64: buffer.toString('base64'),
       bibContent: null
     }
@@ -74,6 +78,7 @@ export async function readDocumentFile(filePath: string): Promise<DocumentFileRe
     kind: 'markdown',
     filePath,
     content,
+    documentHash: createHash('sha256').update(content.replace(/\r\n/g, '\n')).digest('hex'),
     bibContent
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useState } from 'react'
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react'
 import { Toolbar } from './components/Toolbar'
 import { DocumentReader } from './components/DocumentReader/DocumentReader'
 import { ChatPanel } from './components/ChatPanel/ChatPanel'
@@ -12,6 +12,7 @@ import { useSettingsStore } from './store/useSettingsStore'
 import { useUIStore } from './store/useUIStore'
 import { useTtsStore } from './store/useTtsStore'
 import { filterOllamaModels } from './utils/ollama-model-filter'
+import { getChatContextMeta, getProposedContextKey } from './utils/chat-context'
 
 export default function App() {
   const { activeTab, filePath, content, kind, isDirty, setDocument, setRecentFiles, markSaved } = useDocumentStore()
@@ -19,10 +20,26 @@ export default function App() {
   // Use selectors to avoid re-rendering App on every token stream (streamingContent/messages updates)
   const setAvailableModels = useChatStore(s => s.setAvailableModels)
   const setSelectedModel = useChatStore(s => s.setSelectedModel)
+  const switchChatContext = useChatStore(s => s.switchContext)
+  const saveCurrentSession = useChatStore(s => s.saveCurrentSession)
+  const chatMessages = useChatStore(s => s.messages)
+  const chatSessionDirty = useChatStore(s => s.sessionDirty)
+  const chatIsStreaming = useChatStore(s => s.isStreaming)
 
   const { fontSize, aiSidebarFontSize, lineHeight, contentWidth, setTheme, setFontSize, setAiSidebarFontSize, setLineHeight, setContentWidth, setTtsVoice, cycleTheme } = useSettingsStore()
   const { showChat, showSettings, toggleChat, toggleSettings, toggleToC, setShowSearch, chatWidth, setChatWidth } = useUIStore()
   const initializeTtsListeners = useTtsStore(s => s.initializeListeners)
+  const chatContextMeta = useMemo(() => getChatContextMeta(activeTab), [
+    activeTab?.kind,
+    activeTab?.filePath,
+    activeTab?.fileName,
+    activeTab?.documentHash,
+    activeTab?.content,
+    activeTab?.kind === 'epub' ? activeTab.currentChapterHref : null,
+    activeTab?.kind === 'epub' ? activeTab.currentChapterLabel : null,
+    activeTab?.kind === 'epub' ? activeTab.currentLocation : null
+  ])
+  const proposedChatContextKey = useMemo(() => getProposedContextKey(chatContextMeta), [chatContextMeta])
 
   // Resize logic
   const isResizing = useRef(false)
@@ -105,6 +122,26 @@ export default function App() {
     init()
     initializeTtsListeners()
   }, [initializeTtsListeners, setAiSidebarFontSize, setAvailableModels, setContentWidth, setFontSize, setLineHeight, setRecentFiles, setSelectedModel, setTheme, setTtsVoice])
+
+  useEffect(() => {
+    void switchChatContext(chatContextMeta, proposedChatContextKey)
+  }, [chatContextMeta, proposedChatContextKey, switchChatContext, chatIsStreaming])
+
+  useEffect(() => {
+    if (!chatSessionDirty || chatIsStreaming || chatMessages.length === 0) return
+    const timer = window.setTimeout(() => {
+      void saveCurrentSession({ finalizeTitle: false })
+    }, 900)
+    return () => window.clearTimeout(timer)
+  }, [chatMessages, chatSessionDirty, chatIsStreaming, saveCurrentSession])
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      void saveCurrentSession({ finalizeTitle: false })
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [saveCurrentSession])
 
   // File open handler
   const handleOpenFile = useCallback(async () => {
