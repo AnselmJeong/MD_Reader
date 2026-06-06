@@ -187,6 +187,13 @@ function buildContextKey(meta: ChatContextMeta): string {
   return `epub:${documentId}#${chapter}`
 }
 
+function getChapterIdentity(meta: ChatContextMeta): { chapterHref: string | null; chapterLabel: string | null } {
+  return {
+    chapterHref: normalizeChapterHref(meta.chapterHref),
+    chapterLabel: meta.chapterLabel?.trim() || null
+  }
+}
+
 function fallbackTitle(messages: StoredChatMessage[], contextTitle: string): string {
   const firstQuestion = messages.find((message) => message.role === 'user')?.content.trim()
   if (firstQuestion) {
@@ -209,6 +216,39 @@ function mapSession(row: SessionRow): ChatSessionSummary {
 }
 
 function findAliasContext(database: Database.Database, meta: ChatContextMeta): string | null {
+  if (meta.documentKind === 'epub') {
+    const { chapterHref, chapterLabel } = getChapterIdentity(meta)
+    const rows = database.prepare(`
+      SELECT context_key
+      FROM chat_contexts
+      WHERE document_kind = 'epub'
+        AND (
+          document_id = @documentId
+          OR file_name = @fileName
+        )
+        AND (
+          (
+            @chapterHref IS NOT NULL
+            AND COALESCE(chapter_href, '') = @chapterHref
+          )
+          OR (
+            @chapterHref IS NULL
+            AND @chapterLabel IS NOT NULL
+            AND COALESCE(chapter_label, '') = @chapterLabel
+          )
+        )
+      ORDER BY updated_at DESC
+      LIMIT 2
+    `).all({
+      documentId: meta.documentId,
+      fileName: meta.fileName,
+      chapterHref,
+      chapterLabel
+    }) as Array<{ context_key: string }>
+
+    return rows.length === 1 ? rows[0].context_key : null
+  }
+
   const alias = database.prepare(`
     SELECT context_key
     FROM chat_document_aliases
@@ -225,31 +265,24 @@ function findAliasContext(database: Database.Database, meta: ChatContextMeta): s
 
   if (alias?.context_key) return alias.context_key
 
-  const chapterHref = normalizeChapterHref(meta.chapterHref)
   const rows = database.prepare(`
     SELECT context_key
     FROM chat_contexts
     WHERE document_kind = @documentKind
       AND file_name = @fileName
-      AND (
-        (@documentKind = 'markdown')
-        OR (
-          @documentKind = 'epub'
-          AND COALESCE(chapter_href, '') = COALESCE(@chapterHref, '')
-        )
-      )
     ORDER BY updated_at DESC
     LIMIT 2
   `).all({
     documentKind: meta.documentKind,
-    fileName: meta.fileName,
-    chapterHref
+    fileName: meta.fileName
   }) as Array<{ context_key: string }>
 
   return rows.length === 1 ? rows[0].context_key : null
 }
 
 function upsertAlias(database: Database.Database, contextKey: string, meta: ChatContextMeta, confidence: 'fingerprint' | 'filename'): void {
+  if (meta.documentKind === 'epub') return
+
   const now = Date.now()
   const id = stableId(
     'alias',
@@ -283,10 +316,10 @@ function upsertAlias(database: Database.Database, contextKey: string, meta: Chat
 export function resolveChatContext(meta: ChatContextMeta): ContextRow {
   const database = getDb()
   const now = Date.now()
-  const chapterHref = normalizeChapterHref(meta.chapterHref)
-  const proposedKey = buildContextKey({ ...meta, chapterHref })
+  const { chapterHref, chapterLabel } = getChapterIdentity(meta)
+  const proposedKey = buildContextKey({ ...meta, chapterHref, chapterLabel })
   const exact = database.prepare('SELECT * FROM chat_contexts WHERE context_key = ?').get(proposedKey) as ContextRow | undefined
-  const contextKey = exact?.context_key ?? findAliasContext(database, { ...meta, chapterHref }) ?? proposedKey
+  const contextKey = exact?.context_key ?? findAliasContext(database, { ...meta, chapterHref, chapterLabel }) ?? proposedKey
   const existing = exact ?? database.prepare('SELECT * FROM chat_contexts WHERE context_key = ?').get(contextKey) as ContextRow | undefined
   const createdAt = existing?.created_at ?? now
 
@@ -320,7 +353,7 @@ export function resolveChatContext(meta: ChatContextMeta): ContextRow {
     lastFilePath: meta.lastFilePath ?? null,
     contextTitle: meta.contextTitle || meta.fileName,
     chapterHref,
-    chapterLabel: meta.chapterLabel ?? null,
+    chapterLabel,
     lastCfi: meta.lastCfi ?? null,
     contentHash: meta.contentHash ?? null,
     createdAt,
