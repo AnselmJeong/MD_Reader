@@ -79,11 +79,12 @@ function HistoricalTranscript({ messages }: { messages: ChatMessageType[] }) {
 
 export function ChatPanel() {
   const {
-    messages, isStreaming, streamingContent,
+    messages, isStreaming, streamingContent, streamingSources, streamingSearchQuery,
     selectedModel, availableModels,
     availableSessions, currentSessionId, sessionView, isLoadingSession, pendingQuotedText,
     addMessage, sendMessage, updateStreamingContent,
-    finalizeStreaming, cancelStreaming, setSelectedModel, loadSession, startNewSession
+    finalizeStreaming, cancelStreaming, setSelectedModel, loadSession, startNewSession,
+    setStreamingSearchQuery, setStreamingSources
   } = useChatStore()
   const { activeTab, content } = useDocumentStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -99,6 +100,15 @@ export function ChatPanel() {
     const unsubToken = window.api.ollama.onToken((token) => {
       updateStreamingContent(token)
     })
+    const unsubSearchStart = window.api.ollama.onSearchStart((payload) => {
+      setStreamingSearchQuery(payload.query)
+    })
+    const unsubSearchResults = window.api.ollama.onSearchResults((payload) => {
+      setStreamingSources(payload.sources)
+    })
+    const unsubMetadata = window.api.ollama.onMetadata((metadata) => {
+      setStreamingSources(metadata.sources ?? [])
+    })
     const unsubDone = window.api.ollama.onDone(() => {
       finalizeStreaming()
     })
@@ -111,6 +121,9 @@ export function ChatPanel() {
     })
     return () => {
       unsubToken()
+      unsubSearchStart()
+      unsubSearchResults()
+      unsubMetadata()
       unsubDone()
       unsubStopped()
       unsubError()
@@ -138,7 +151,12 @@ export function ChatPanel() {
 
   const handleExport = async () => {
     const md = messages
-      .map((m) => `### ${m.role === 'user' ? 'User' : 'Assistant'}\n\n${m.content}`)
+      .map((m) => {
+        const sources = m.sources?.length
+          ? `\n\nSources:\n${m.sources.map((source) => `- [${source.id}] [${source.title}](${source.url})`).join('\n')}`
+          : ''
+        return `### ${m.role === 'user' ? 'User' : 'Assistant'}\n\n${m.content}${sources}`
+      })
       .join('\n\n---\n\n')
     await window.api.chat.exportMarkdown(`# Chat Export\n\n${md}`)
   }
@@ -171,6 +189,7 @@ export function ChatPanel() {
                   title={selectedModel}
                   className="mt-1 block w-full max-w-[140px] appearance-none truncate bg-transparent text-[10px] font-medium uppercase leading-tight tracking-[0.08em] text-on-surface-muted outline-none"
                 >
+                  {!selectedModel && <option value="">Select model</option>}
                   {availableModels.map((m) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
@@ -249,13 +268,19 @@ export function ChatPanel() {
                 id: 'streaming',
                 role: 'assistant',
                 content: streamingContent,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                sources: streamingSources
               }}
               isStreaming
             />
           ) : (
             <div className="flex justify-start max-w-full">
               <div className="px-1 py-3 text-sm text-on-surface">
+                {streamingSearchQuery && (
+                  <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-on-surface-muted">
+                    Searching web...
+                  </div>
+                )}
                 <div className="flex gap-1">
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-on-surface-muted [animation-delay:-0.3s]"></span>
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-on-surface-muted [animation-delay:-0.15s]"></span>

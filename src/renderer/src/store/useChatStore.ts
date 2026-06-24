@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type {
   ChatContextMeta,
+  ChatSource,
   ChatSessionSummary,
   SessionTitleStatus,
   StoredChatMessage
@@ -12,12 +13,15 @@ export interface ChatMessage {
   content: string
   timestamp: number
   quotedText?: string
+  sources?: ChatSource[]
 }
 
 interface ChatState {
   messages: ChatMessage[]
   isStreaming: boolean
   streamingContent: string
+  streamingSources: ChatSource[]
+  streamingSearchQuery: string | null
   inputDraft: string
   pendingQuotedText: string | null
   focusInputRequest: number
@@ -37,6 +41,8 @@ interface ChatState {
 
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void
   updateStreamingContent: (token: string) => void
+  setStreamingSearchQuery: (query: string | null) => void
+  setStreamingSources: (sources: ChatSource[]) => void
   finalizeStreaming: () => void
   cancelStreaming: () => void
   startStreaming: () => void
@@ -80,7 +86,8 @@ function toStoredMessages(messages: ChatMessage[]): StoredChatMessage[] {
     role: message.role,
     content: message.content,
     timestamp: message.timestamp,
-    quotedText: message.quotedText ?? null
+    quotedText: message.quotedText ?? null,
+    sources: message.sources ?? []
   }))
 }
 
@@ -90,7 +97,8 @@ function fromStoredMessages(messages: StoredChatMessage[]): ChatMessage[] {
     role: message.role,
     content: message.content,
     timestamp: message.timestamp,
-    quotedText: message.quotedText ?? undefined
+    quotedText: message.quotedText ?? undefined,
+    sources: message.sources ?? []
   }))
 }
 
@@ -98,13 +106,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isStreaming: false,
   streamingContent: '',
+  streamingSources: [],
+  streamingSearchQuery: null,
   inputDraft: '',
   pendingQuotedText: null,
   focusInputRequest: 0,
   selectedModel: '',
   availableModels: [],
   systemPrompt:
-    'You are a knowledgeable academic assistant. Use your comprehensive knowledge base to answer questions, incorporating the provided document as context. feel free to integrate external knowledge, theoretical frameworks, and related concepts to provide rich, well-rounded answers. Do not limit yourself to the document content only.\nMake sure to Answer in Korean Language',
+    'You are a careful academic reading assistant. Answer in Korean.\n\nUse the provided document context first. When web sources are provided, use them to verify current or external factual claims and cite them with [S1], [S2] markers. If the provided document or sources do not support a claim, say so clearly instead of guessing.\n\nKeep answers precise, distinguish document evidence from web evidence, and avoid inventing citations.',
   currentContextMeta: null,
   currentProposedContextKey: null,
   currentContextKey: null,
@@ -125,37 +135,46 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }))
   },
 
-  startStreaming: () => set({ isStreaming: true, streamingContent: '' }),
+  startStreaming: () => set({ isStreaming: true, streamingContent: '', streamingSources: [], streamingSearchQuery: null }),
 
   updateStreamingContent: (token) =>
     set((state) => ({ streamingContent: state.streamingContent + token })),
 
+  setStreamingSearchQuery: (query) => set({ streamingSearchQuery: query }),
+  setStreamingSources: (sources) => set({ streamingSources: sources }),
+
   finalizeStreaming: () => {
-    const { streamingContent } = get()
+    const { streamingContent, streamingSources } = get()
     if (streamingContent) {
       const id = `msg-${++messageCounter}-${Date.now()}`
       set((state) => ({
         messages: [
           ...state.messages,
-          { id, role: 'assistant', content: streamingContent, timestamp: Date.now() }
+          { id, role: 'assistant', content: streamingContent, timestamp: Date.now(), sources: streamingSources }
         ],
         isStreaming: false,
         streamingContent: '',
+        streamingSources: [],
+        streamingSearchQuery: null,
         sessionDirty: true,
         sessionView: 'live'
       }))
     } else {
-      set({ isStreaming: false, streamingContent: '' })
+      set({ isStreaming: false, streamingContent: '', streamingSources: [], streamingSearchQuery: null })
     }
   },
   cancelStreaming: () => set({
     isStreaming: false,
-    streamingContent: ''
+    streamingContent: '',
+    streamingSources: [],
+    streamingSearchQuery: null
   }),
 
   clearMessages: () => set({
     messages: [],
     streamingContent: '',
+    streamingSources: [],
+    streamingSearchQuery: null,
     pendingQuotedText: null,
     currentSessionId: null,
     sessionTitle: null,
@@ -252,6 +271,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         titleStatus: 'pending',
         messages: [],
         streamingContent: '',
+        streamingSources: [],
+        streamingSearchQuery: null,
         pendingQuotedText: null,
         sessionDirty: false,
         sessionView: 'live'
@@ -273,6 +294,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         titleStatus: 'pending',
         messages: [],
         streamingContent: '',
+        streamingSources: [],
+        streamingSearchQuery: null,
         pendingQuotedText: null,
         sessionDirty: false,
         sessionView: 'live',
@@ -288,6 +311,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         currentSessionId: null,
         availableSessions: [],
         messages: [],
+        streamingSources: [],
+        streamingSearchQuery: null,
         pendingQuotedText: null,
         sessionDirty: false,
         sessionView: 'live',
@@ -316,6 +341,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         titleStatus: result.session.titleStatus,
         messages: fromStoredMessages(result.messages),
         streamingContent: '',
+        streamingSources: [],
+        streamingSearchQuery: null,
         pendingQuotedText: null,
         sessionDirty: false,
         sessionView: 'historical',
@@ -347,6 +374,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       titleStatus: 'pending',
       messages: [],
       streamingContent: '',
+      streamingSources: [],
+      streamingSearchQuery: null,
       inputDraft: '',
       pendingQuotedText: null,
       sessionDirty: false,
@@ -383,7 +412,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (error) {
       console.error('Failed to stop Ollama response:', error)
     }
-    set({ isStreaming: false, streamingContent: '' })
+    set({ isStreaming: false, streamingContent: '', streamingSources: [], streamingSearchQuery: null })
   },
   sendMessage: async ({ text, documentContent, quotedText }) => {
     const message = text.trim()
@@ -406,6 +435,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [...state.messages, userMessage],
       isStreaming: true,
       streamingContent: '',
+      streamingSources: [],
+      streamingSearchQuery: null,
       inputDraft: '',
       pendingQuotedText: null,
       sessionDirty: true,
@@ -452,6 +483,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
             timestamp: Date.now()
           }
         ],
+        streamingSources: [],
+        streamingSearchQuery: null,
         sessionDirty: true,
         sessionView: 'live'
       }))

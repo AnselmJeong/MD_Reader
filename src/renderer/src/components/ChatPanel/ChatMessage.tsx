@@ -41,6 +41,14 @@ function renderChatMarkdown(content: string, streaming: boolean): string {
   }
 }
 
+function getSourceLabel(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
+}
+
 export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
   const deferredContent = useDeferredValue(message.content)
   const contentForRender = isStreaming ? deferredContent : message.content
@@ -62,13 +70,17 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
     void window.api.shell.openExternal(href)
   }
 
+  const handleSourceClick = (url: string) => {
+    void window.api.shell.openExternal(url)
+  }
+
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[92%] text-[length:var(--ai-sidebar-font-size)] leading-relaxed ${
+        className={`min-w-0 text-[length:var(--ai-sidebar-font-size)] leading-relaxed ${
           isUser
-            ? 'rounded-[8px_8px_2px_8px] border border-[var(--hair-2)] bg-chat-user px-3.5 py-3 font-sans font-medium text-chat-user-fg'
-            : 'text-on-surface'
+            ? 'max-w-[92%] rounded-[8px_8px_2px_8px] border border-[var(--hair-2)] bg-chat-user px-3.5 py-3 font-sans font-medium text-chat-user-fg'
+            : 'w-full max-w-full text-on-surface'
         }`}
       >
         {!isUser && (
@@ -100,6 +112,23 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
         {/* Streaming cursor */}
         {isStreaming && (
           <span className="inline-block w-2 h-4 ml-0.5 bg-accent/60 animate-pulse rounded-sm" />
+        )}
+
+        {!isUser && Boolean(message.sources?.length) && (
+          <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border/50 pt-2">
+            {message.sources?.map((source) => (
+              <button
+                key={`${source.id}-${source.url}`}
+                onClick={() => handleSourceClick(source.url)}
+                className="max-w-full truncate rounded-full border border-[var(--hair-2)] bg-surface px-2.5 py-1 text-left text-[11px] leading-tight text-on-surface-muted transition-colors hover:border-[var(--hair-3)] hover:text-on-surface"
+                title={`${source.title}\n${source.url}${source.snippet ? `\n\n${source.snippet}` : ''}`}
+              >
+                <span className="font-semibold text-accent">{source.id}</span>
+                <span className="mx-1 text-on-surface-muted/70">·</span>
+                <span>{source.hostname || getSourceLabel(source.url)}</span>
+              </button>
+            ))}
+          </div>
         )}
 
         {/* Actions */}

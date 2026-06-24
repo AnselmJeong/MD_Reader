@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { TtsVoice, useSettingsStore } from '../store/useSettingsStore'
 import { useChatStore } from '../store/useChatStore'
 import { filterOllamaModels } from '../utils/ollama-model-filter'
-import type { AgentMemoryStatus } from '../global'
+import type { AgentMemoryStatus, AiProviderStatus } from '../global'
 
 interface SettingsModalProps {
   onClose: () => void
@@ -10,6 +10,11 @@ interface SettingsModalProps {
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
   const [memoryStatus, setMemoryStatus] = useState<AgentMemoryStatus | null>(null)
+  const [aiProviderStatus, setAiProviderStatus] = useState<AiProviderStatus | null>(null)
+  const [aiProviderDraft, setAiProviderDraft] = useState({
+    ollamaApiKey: '',
+    webSearchEnabled: true
+  })
   const [memoryDraft, setMemoryDraft] = useState({
     enabled: true,
     extractionEnabled: true,
@@ -58,9 +63,6 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
         const models = await window.api.ollama.listModels()
         const modelNames = filterOllamaModels(models.map((m) => m.name))
         setAvailableModels(modelNames)
-        if (modelNames.length > 0 && (!selectedModel || !modelNames.includes(selectedModel))) {
-          setSelectedModel(modelNames[0])
-        }
       } catch (e) {
         console.error('Failed to refresh models in settings:', e)
       }
@@ -89,6 +91,22 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     loadMemoryStatus()
   }, [])
 
+  useEffect(() => {
+    const loadAiProviderStatus = async () => {
+      try {
+        const status = await window.api.aiProvider.status()
+        setAiProviderStatus(status)
+        setAiProviderDraft((draft) => ({
+          ...draft,
+          webSearchEnabled: status.webSearchEnabled
+        }))
+      } catch (error) {
+        console.error('Failed to load AI provider status:', error)
+      }
+    }
+    loadAiProviderStatus()
+  }, [])
+
   const saveMemorySettings = async () => {
     try {
       const status = await window.api.agentMemory.updateSettings({
@@ -105,6 +123,25 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       setMemoryDraft((draft) => ({ ...draft, mem0ApiKey: '' }))
     } catch (error) {
       console.error('Failed to save agent memory settings:', error)
+    }
+  }
+
+  const saveAiProviderSettings = async () => {
+    try {
+      const status = await window.api.aiProvider.updateSettings({
+        ollamaApiKey: aiProviderDraft.ollamaApiKey.trim() || undefined,
+        webSearchEnabled: aiProviderDraft.webSearchEnabled
+      })
+      setAiProviderStatus(status)
+      setAiProviderDraft((draft) => ({ ...draft, ollamaApiKey: '' }))
+      const models = await window.api.ollama.listModels()
+      const modelNames = filterOllamaModels(models.map((m) => m.name))
+      setAvailableModels(modelNames)
+      if (!selectedModel && modelNames.length > 0) {
+        setSelectedModel(modelNames[0])
+      }
+    } catch (error) {
+      console.error('Failed to save AI provider settings:', error)
     }
   }
 
@@ -231,11 +268,57 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                   onChange={(e) => setSelectedModel(e.target.value)}
                   className="text-sm bg-surface border border-border rounded-md px-3 py-1 text-on-surface outline-none focus:border-accent w-44"
                 >
-                  {availableModels.length === 0 && <option>No models found</option>}
+                  {!selectedModel && <option value="">Select model</option>}
+                  {availableModels.length === 0 && <option value="">No models found</option>}
                   {availableModels.map((m) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
+              </div>
+
+              <div className="rounded-md border border-[var(--hair-2)] bg-surface px-3.5 py-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-on-surface">Ollama Cloud</div>
+                    <div className="mt-0.5 text-xs text-on-surface-muted">
+                      {aiProviderStatus?.hasOllamaApiKey
+                        ? `API key saved${aiProviderStatus.apiKeySource === 'env' ? ' from environment' : ''}`
+                        : 'API key required for cloud chat and web search'}
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-on-surface-muted">
+                    <input
+                      type="checkbox"
+                      checked={aiProviderDraft.webSearchEnabled}
+                      onChange={(e) => setAiProviderDraft((draft) => ({ ...draft, webSearchEnabled: e.target.checked }))}
+                      className="accent-accent"
+                    />
+                    Web Search
+                  </label>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm text-on-surface-muted">
+                    Ollama API Key {aiProviderStatus?.hasOllamaApiKey ? '(saved)' : ''}
+                  </label>
+                  <input
+                    type="password"
+                    value={aiProviderDraft.ollamaApiKey}
+                    onChange={(e) => setAiProviderDraft((draft) => ({ ...draft, ollamaApiKey: e.target.value }))}
+                    placeholder={aiProviderStatus?.hasOllamaApiKey ? 'Leave blank to keep existing key' : 'ollama_...'}
+                    className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
+                  />
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className="truncate text-xs text-on-surface-muted" title={aiProviderStatus?.ollamaBaseUrl}>
+                    {aiProviderStatus?.ollamaBaseUrl || 'https://ollama.com/v1'}
+                  </span>
+                  <button
+                    onClick={saveAiProviderSettings}
+                    className="rounded-md bg-accent px-3 py-1 text-xs text-white hover:bg-accent-hover"
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
 
               {/* System prompt */}

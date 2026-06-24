@@ -83,7 +83,11 @@ export default function App() {
           const modelNames = filterOllamaModels(models.map((m) => m.name))
           if (modelNames.length > 0) {
             setAvailableModels(modelNames)
-            setSelectedModel(preferredModel && modelNames.includes(preferredModel) ? preferredModel : modelNames[0])
+            if (preferredModel && modelNames.includes(preferredModel)) {
+              setSelectedModel(preferredModel)
+            } else if (!preferredModel) {
+              setSelectedModel(modelNames[0])
+            }
             return
           }
         } catch (e) {

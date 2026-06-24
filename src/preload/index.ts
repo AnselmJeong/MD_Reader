@@ -16,6 +16,10 @@ export type FileReadResult =
       content: string
       documentHash: string
       epubBase64: string
+      lastCfi?: string | null
+      lastChapterHref?: string | null
+      lastChapterLabel?: string | null
+      lastProgress?: number | null
       bibContent?: null
     }
 
@@ -24,6 +28,28 @@ export type ChatMessageRole = 'user' | 'assistant'
 export type SessionTitleStatus = 'pending' | 'generated' | 'fallback'
 export type EpubAnnotationStyle = 'yellow' | 'green' | 'blue' | 'pink' | 'red-underline'
 export type EpubAnnotationKind = 'highlight' | 'underline'
+
+export interface ChatSource {
+  id: string
+  title: string
+  url: string
+  hostname?: string
+  snippet?: string
+  fetchedTitle?: string
+}
+
+export interface ChatCompletionMetadata {
+  sources?: ChatSource[]
+}
+
+export interface AiProviderStatus {
+  hasOllamaApiKey: boolean
+  ollamaBaseUrl: string
+  ollamaSearchBaseUrl: string
+  webSearchEnabled: boolean
+  webSearchMaxResults: number
+  apiKeySource: 'env' | 'saved' | 'none'
+}
 
 export interface ChatContextMeta {
   documentKind: ChatDocumentKind
@@ -43,6 +69,7 @@ export interface StoredChatMessage {
   content: string
   timestamp: number
   quotedText?: string | null
+  sources?: ChatSource[]
 }
 
 export interface ChatSessionSummary {
@@ -91,6 +118,17 @@ export interface EpubAnnotationRecord {
   updatedAt: number
 }
 
+export interface EpubReadingProgressRecord {
+  documentId: string
+  fileName: string
+  filePath?: string | null
+  cfi: string
+  chapterHref?: string | null
+  chapterLabel?: string | null
+  progress?: number | null
+  updatedAt: number
+}
+
 export interface ElectronAPI {
   file: {
     openDialog: () => Promise<FileReadResult | null>
@@ -112,7 +150,10 @@ export interface ElectronAPI {
     }) => Promise<{ success?: boolean; error?: string }>
     stop: () => Promise<{ success: boolean }>
     onToken: (callback: (token: string) => void) => () => void
-    onDone: (callback: () => void) => () => void
+    onSearchStart: (callback: (payload: { query: string }) => void) => () => void
+    onSearchResults: (callback: (payload: { sources: ChatSource[] }) => void) => () => void
+    onMetadata: (callback: (metadata: ChatCompletionMetadata) => void) => () => void
+    onDone: (callback: (metadata?: ChatCompletionMetadata) => void) => () => void
     onStopped: (callback: () => void) => () => void
     onError: (callback: (error: string) => void) => () => void
     generateTitle: (params: {
@@ -124,6 +165,16 @@ export interface ElectronAPI {
   settings: {
     get: (key?: string) => Promise<unknown>
     set: (key: string, value: unknown) => Promise<{ success: boolean }>
+  }
+  aiProvider: {
+    status: () => Promise<AiProviderStatus>
+    updateSettings: (partial: {
+      ollamaApiKey?: string
+      ollamaBaseUrl?: string
+      ollamaSearchBaseUrl?: string
+      webSearchEnabled?: boolean
+      webSearchMaxResults?: number
+    }) => Promise<AiProviderStatus>
   }
   chat: {
     exportMarkdown: (markdown: string) => Promise<{ success: boolean; filePath?: string }>
@@ -177,6 +228,19 @@ export interface ElectronAPI {
       documentId: string
       cfiRange: string
     }) => Promise<{ success: boolean }>
+    getProgress: (params: {
+      documentId: string
+      filePath?: string | null
+    }) => Promise<EpubReadingProgressRecord | null>
+    saveProgress: (params: {
+      documentId: string
+      fileName: string
+      filePath?: string | null
+      cfi: string
+      chapterHref?: string | null
+      chapterLabel?: string | null
+      progress?: number | null
+    }) => Promise<EpubReadingProgressRecord>
   }
   tts: {
     speak: (params: TtsSpeakParams) => Promise<{ success: boolean; error?: string }>
@@ -243,8 +307,23 @@ const api: ElectronAPI = {
       ipcRenderer.on('ollama:token', handler)
       return () => ipcRenderer.removeListener('ollama:token', handler)
     },
-    onDone: (callback: () => void) => {
-      const handler = () => callback()
+    onSearchStart: (callback: (payload: { query: string }) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: { query: string }) => callback(payload)
+      ipcRenderer.on('ollama:search-start', handler)
+      return () => ipcRenderer.removeListener('ollama:search-start', handler)
+    },
+    onSearchResults: (callback: (payload: { sources: ChatSource[] }) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: { sources: ChatSource[] }) => callback(payload)
+      ipcRenderer.on('ollama:search-results', handler)
+      return () => ipcRenderer.removeListener('ollama:search-results', handler)
+    },
+    onMetadata: (callback: (metadata: ChatCompletionMetadata) => void) => {
+      const handler = (_event: IpcRendererEvent, metadata: ChatCompletionMetadata) => callback(metadata)
+      ipcRenderer.on('ollama:metadata', handler)
+      return () => ipcRenderer.removeListener('ollama:metadata', handler)
+    },
+    onDone: (callback: (metadata?: ChatCompletionMetadata) => void) => {
+      const handler = (_event: IpcRendererEvent, metadata?: ChatCompletionMetadata) => callback(metadata)
       ipcRenderer.on('ollama:done', handler)
       return () => ipcRenderer.removeListener('ollama:done', handler)
     },
@@ -264,6 +343,10 @@ const api: ElectronAPI = {
     get: (key?: string) => ipcRenderer.invoke('settings:get', key),
     set: (key: string, value: unknown) => ipcRenderer.invoke('settings:set', key, value)
   },
+  aiProvider: {
+    status: () => ipcRenderer.invoke('ai-provider:status'),
+    updateSettings: (partial) => ipcRenderer.invoke('ai-provider:update-settings', partial)
+  },
   chat: {
     exportMarkdown: (markdown: string) => ipcRenderer.invoke('chat:export', markdown),
     listSessions: (contextMeta) => ipcRenderer.invoke('chat:sessions:list', contextMeta),
@@ -280,7 +363,9 @@ const api: ElectronAPI = {
   epub: {
     listAnnotations: (params) => ipcRenderer.invoke('epub:annotations:list', params),
     saveAnnotation: (params) => ipcRenderer.invoke('epub:annotations:save', params),
-    deleteAnnotation: (params) => ipcRenderer.invoke('epub:annotations:delete', params)
+    deleteAnnotation: (params) => ipcRenderer.invoke('epub:annotations:delete', params),
+    getProgress: (params) => ipcRenderer.invoke('epub:progress:get', params),
+    saveProgress: (params) => ipcRenderer.invoke('epub:progress:save', params)
   },
   tts: {
     speak: (params) => ipcRenderer.invoke('tts:speak', params),

@@ -19,7 +19,7 @@ const store = new SimpleStore<AppSettings>('md-reader-settings', {
   contentWidth: 72,
   ollamaModel: '',
   ttsVoice: 'Christopher',
-  systemPrompt: 'You are a knowledgeable academic assistant. Answer questions about the provided document clearly and precisely, using appropriate scholarly terminology.\nMake sure to Answer in Korean Language'
+  systemPrompt: 'You are a careful academic reading assistant. Answer in Korean.\n\nUse the provided document context first. When web sources are provided, use them to verify current or external factual claims and cite them with [S1], [S2] markers. If the provided document or sources do not support a claim, say so clearly instead of guessing.\n\nKeep answers precise, distinguish document evidence from web evidence, and avoid inventing citations.'
 })
 
 export function getSettings(key?: string): unknown {

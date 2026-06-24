@@ -27,6 +27,7 @@ export interface EpubDocumentTab extends BaseDocumentTab {
   currentLocation: string | null
   currentChapterHref: string | null
   currentChapterLabel: string | null
+  lastProgress: number | null
 }
 
 export type DocumentTab = MarkdownDocumentTab | EpubDocumentTab
@@ -87,9 +88,10 @@ function createDocumentTab(document: FileReadResult): DocumentTab {
       documentHash: document.documentHash,
       bibContent: null,
       epubBase64: document.epubBase64,
-      currentLocation: null,
-      currentChapterHref: null,
-      currentChapterLabel: null,
+      currentLocation: document.lastCfi ?? null,
+      currentChapterHref: document.lastChapterHref ?? null,
+      currentChapterLabel: document.lastChapterLabel ?? null,
+      lastProgress: document.lastProgress ?? null,
       wordCount: words,
       readingTime,
       isDirty: false
@@ -155,7 +157,8 @@ export const useDocumentStore = create<DocumentState>((set) => ({
               ...nextTab,
               currentLocation: tab.currentLocation,
               currentChapterHref: tab.currentChapterHref,
-              currentChapterLabel: tab.currentChapterLabel
+              currentChapterLabel: tab.currentChapterLabel,
+              lastProgress: tab.lastProgress
             }
           }
           return nextTab

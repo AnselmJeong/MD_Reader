@@ -7,6 +7,15 @@ export type ChatDocumentKind = 'markdown' | 'epub'
 export type ChatMessageRole = 'user' | 'assistant'
 export type SessionTitleStatus = 'pending' | 'generated' | 'fallback'
 
+export interface ChatSource {
+  id: string
+  title: string
+  url: string
+  hostname?: string
+  snippet?: string
+  fetchedTitle?: string
+}
+
 export interface ChatContextMeta {
   documentKind: ChatDocumentKind
   documentId: string
@@ -25,6 +34,7 @@ export interface StoredChatMessage {
   content: string
   timestamp: number
   quotedText?: string | null
+  sources?: ChatSource[]
 }
 
 export interface ChatSessionSummary {
@@ -89,6 +99,7 @@ interface MessageRow {
   role: ChatMessageRole
   content: string
   quoted_text: string | null
+  sources_json?: string | null
   created_at: number
   ordinal: number
 }
@@ -168,6 +179,7 @@ export function getChatDb(): Database.Database {
       ON chat_messages(session_id, ordinal ASC);
   `)
   migrateAgentMemorySchema(db)
+  migrateChatSourcesSchema(db)
   return db
 }
 
@@ -235,6 +247,38 @@ function migrateAgentMemorySchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_agent_memory_items_session
       ON agent_memory_items(session_id, created_at DESC);
   `)
+}
+
+function migrateChatSourcesSchema(database: Database.Database): void {
+  addColumnIfMissing(database, 'chat_messages', 'sources_json', 'TEXT')
+}
+
+function parseSourcesJson(value?: string | null): ChatSource[] {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((source): source is ChatSource => (
+      source
+      && typeof source.id === 'string'
+      && typeof source.title === 'string'
+      && typeof source.url === 'string'
+    ))
+  } catch {
+    return []
+  }
+}
+
+function stringifySources(sources?: ChatSource[]): string | null {
+  if (!sources?.length) return null
+  return JSON.stringify(sources.map((source) => ({
+    id: source.id,
+    title: source.title,
+    url: source.url,
+    hostname: source.hostname,
+    snippet: source.snippet,
+    fetchedTitle: source.fetchedTitle
+  })))
 }
 
 function normalizeChapterHref(href?: string | null): string | null {
@@ -496,10 +540,10 @@ export function saveChatSession(params: SaveChatSessionParams): { sessionId: str
     database.prepare('DELETE FROM chat_messages WHERE session_id = ?').run(sessionId)
     const insertMessage = database.prepare(`
       INSERT INTO chat_messages (
-        id, session_id, role, content, quoted_text, created_at, ordinal
+        id, session_id, role, content, quoted_text, sources_json, created_at, ordinal
       )
       VALUES (
-        @id, @sessionId, @role, @content, @quotedText, @createdAt, @ordinal
+        @id, @sessionId, @role, @content, @quotedText, @sourcesJson, @createdAt, @ordinal
       )
     `)
 
@@ -510,6 +554,7 @@ export function saveChatSession(params: SaveChatSessionParams): { sessionId: str
         role: message.role,
         content: message.content,
         quotedText: message.quotedText ?? null,
+        sourcesJson: stringifySources(message.sources),
         createdAt: message.timestamp || now,
         ordinal: index
       })
@@ -533,7 +578,7 @@ export function loadChatSession(sessionId: string): { session: ChatSessionRecord
   if (!sessionRow) return null
 
   const messageRows = database.prepare(`
-    SELECT id, role, content, quoted_text, created_at, ordinal
+    SELECT id, role, content, quoted_text, sources_json, created_at, ordinal
     FROM chat_messages
     WHERE session_id = ?
     ORDER BY ordinal ASC
@@ -549,7 +594,8 @@ export function loadChatSession(sessionId: string): { session: ChatSessionRecord
       role: row.role,
       content: row.content,
       timestamp: row.created_at,
-      quotedText: row.quoted_text
+      quotedText: row.quoted_text,
+      sources: parseSourcesJson(row.sources_json)
     }))
   }
 }
@@ -574,7 +620,7 @@ export function loadChatSessionWithContext(sessionId: string): {
   if (!context) return null
 
   const messageRows = database.prepare(`
-    SELECT id, role, content, quoted_text, created_at, ordinal
+    SELECT id, role, content, quoted_text, sources_json, created_at, ordinal
     FROM chat_messages
     WHERE session_id = ?
     ORDER BY ordinal ASC
@@ -591,7 +637,8 @@ export function loadChatSessionWithContext(sessionId: string): {
       role: row.role,
       content: row.content,
       timestamp: row.created_at,
-      quotedText: row.quoted_text
+      quotedText: row.quoted_text,
+      sources: parseSourcesJson(row.sources_json)
     }))
   }
 }

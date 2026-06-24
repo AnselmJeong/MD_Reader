@@ -1,6 +1,8 @@
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent } from './file-service'
-import { listModels, chatStream, generateChatTitle } from './ollama-service'
+import { listModels, generateChatTitle } from './ollama-service'
+import { getAiProviderStatus, updateAiProviderSettings, AiProviderSettingsUpdate } from './ai-provider-settings'
+import { streamGroundedChat } from './ai-chat-service'
 import { getSettings, setSettings } from './settings-service'
 import { controlTts, getTtsStatus, onTtsEvent, speakTts, TtsSpeakParams } from './tts-service'
 import {
@@ -27,6 +29,12 @@ import {
   saveEpubAnnotation,
   SaveEpubAnnotationParams
 } from './epub-annotation-service'
+import {
+  getEpubReadingProgress,
+  GetEpubReadingProgressParams,
+  saveEpubReadingProgress,
+  SaveEpubReadingProgressParams
+} from './epub-reading-progress-service'
 
 const activeOllamaRequests = new Map<number, AbortController>()
 
@@ -111,13 +119,26 @@ export function registerIpcHandlers(): void {
         }
       }
 
-      await chatStream({ ...params, systemPrompt }, (token: string) => {
-        if (!win.isDestroyed()) {
-          win.webContents.send('ollama:token', token)
+      const metadata = await streamGroundedChat({ ...params, systemPrompt }, {
+        onSearchStart: (payload) => {
+          if (!win.isDestroyed()) {
+            win.webContents.send('ollama:search-start', payload)
+          }
+        },
+        onSources: (sources) => {
+          if (!win.isDestroyed()) {
+            win.webContents.send('ollama:search-results', { sources })
+          }
+        },
+        onToken: (token: string) => {
+          if (!win.isDestroyed()) {
+            win.webContents.send('ollama:token', token)
+          }
         }
       }, controller.signal)
       if (!win.isDestroyed()) {
-        win.webContents.send('ollama:done')
+        win.webContents.send('ollama:metadata', metadata)
+        win.webContents.send('ollama:done', metadata)
       }
       return { success: true }
     } catch (error) {
@@ -169,6 +190,14 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('settings:set', async (_event, key: string, value: unknown) => {
     setSettings(key, value)
     return { success: true }
+  })
+
+  ipcMain.handle('ai-provider:status', async () => {
+    return getAiProviderStatus()
+  })
+
+  ipcMain.handle('ai-provider:update-settings', async (_event, partial: AiProviderSettingsUpdate) => {
+    return updateAiProviderSettings(partial)
   })
 
   // ─── TTS ───
@@ -255,6 +284,14 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('epub:annotations:delete', async (_event, params: DeleteEpubAnnotationParams) => {
     return deleteEpubAnnotation(params)
+  })
+
+  ipcMain.handle('epub:progress:get', async (_event, params: GetEpubReadingProgressParams) => {
+    return getEpubReadingProgress(params)
+  })
+
+  ipcMain.handle('epub:progress:save', async (_event, params: SaveEpubReadingProgressParams) => {
+    return saveEpubReadingProgress(params)
   })
 
   // ─── Shell ───

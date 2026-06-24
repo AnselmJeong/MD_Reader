@@ -361,7 +361,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     setActiveAnnotationMenu(null)
     setReturnCfi(null)
     setIsEpubDragging(false)
-    setProgress(0)
+    setProgress(tab.lastProgress ?? 0)
     setTocItems([])
     tocItemsRef.current = []
 
@@ -481,8 +481,11 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
     rendition.on('relocated', (location: Location) => {
       const percentage = location.start?.percentage
+      const nextProgress = typeof percentage === 'number' && Number.isFinite(percentage)
+        ? Math.max(0, Math.min(1, percentage))
+        : null
       if (typeof percentage === 'number' && Number.isFinite(percentage)) {
-        setProgress(Math.max(0, Math.min(100, percentage * 100)))
+        setProgress(nextProgress ?? 0)
       }
       const cfi = location.start?.cfi ?? null
       const chapterHref = location.start?.href?.split('#')[0] ?? null
@@ -491,6 +494,19 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       latestChapterHrefRef.current = chapterHref
       latestChapterLabelRef.current = chapterLabel
       updateEpubLocation(tab.id, cfi, chapterHref, chapterLabel)
+      if (cfi) {
+        void window.api.epub.saveProgress({
+          documentId: tab.documentHash,
+          fileName: tab.fileName,
+          filePath: tab.filePath,
+          cfi,
+          chapterHref,
+          chapterLabel,
+          progress: nextProgress
+        }).catch((error) => {
+          console.error('Failed to save EPUB reading progress:', error)
+        })
+      }
       setSectionLabel((current) => chapterLabel ?? current)
       requestAnimationFrame(() => updateVisibleText(rendition))
     })
@@ -577,7 +593,9 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     spreadMode,
     tab.documentHash,
     tab.fileName,
+    tab.filePath,
     tab.id,
+    tab.lastProgress,
     updateEpubLocation,
     updateVisibleText,
     showAnnotationMenu

@@ -2,6 +2,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { createHash } from 'crypto'
 import { SimpleStore } from './simple-store'
+import { getEpubReadingProgress } from './epub-reading-progress-service'
 
 interface FileStoreData {
   recentFiles: string[]
@@ -21,6 +22,10 @@ export type DocumentFileResult =
       content: string
       documentHash: string
       epubBase64: string
+      lastCfi: string | null
+      lastChapterHref: string | null
+      lastChapterLabel: string | null
+      lastProgress: number | null
       bibContent: null
     }
 
@@ -63,12 +68,22 @@ export async function readDocumentFile(filePath: string): Promise<DocumentFileRe
 
   if (extension === '.epub') {
     const buffer = await fs.readFile(filePath)
+    const documentHash = createHash('sha256').update(buffer).digest('hex')
+    const progress = getEpubReadingProgress({
+      documentId: documentHash,
+      filePath
+    })
+
     return {
       kind: 'epub',
       filePath,
       content: '',
-      documentHash: createHash('sha256').update(buffer).digest('hex'),
+      documentHash,
       epubBase64: buffer.toString('base64'),
+      lastCfi: progress?.cfi ?? null,
+      lastChapterHref: progress?.chapterHref ?? null,
+      lastChapterLabel: progress?.chapterLabel ?? null,
+      lastProgress: progress?.progress ?? null,
       bibContent: null
     }
   }

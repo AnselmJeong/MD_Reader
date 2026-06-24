@@ -5,6 +5,7 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { shutdownTts } from './tts-service'
 import { closeChatSessionDb } from './chat-session-service'
 import { closeEpubAnnotationDb } from './epub-annotation-service'
+import { closeEpubReadingProgressDb } from './epub-reading-progress-service'
 import { initializeAgentMemoryStartupRoutine } from './agent-memory-service'
 
 let mainWindow: BrowserWindow | null = null
@@ -66,6 +67,7 @@ app.on('before-quit', () => {
   shutdownTts()
   closeChatSessionDb()
   closeEpubAnnotationDb()
+  closeEpubReadingProgressDb()
 })
 
 app.on('window-all-closed', () => {
