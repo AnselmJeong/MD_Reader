@@ -48,9 +48,13 @@ export function setAgentMemorySetting<K extends keyof AgentMemorySettings>(key: 
 
 export function updateAgentMemorySettings(partial: Partial<AgentMemorySettings>): AgentMemorySettings {
   const current = store.getAll()
+  const nextMem0ApiKey = typeof partial.mem0ApiKey === 'string' && partial.mem0ApiKey.trim()
+    ? partial.mem0ApiKey.trim()
+    : current.mem0ApiKey
   const next: AgentMemorySettings = {
     ...current,
     ...partial,
+    mem0ApiKey: nextMem0ApiKey,
     enabled: typeof partial.enabled === 'boolean' ? partial.enabled : current.enabled,
     extractionEnabled: typeof partial.extractionEnabled === 'boolean' ? partial.extractionEnabled : current.extractionEnabled,
     runtimeInjectionEnabled: typeof partial.runtimeInjectionEnabled === 'boolean' ? partial.runtimeInjectionEnabled : current.runtimeInjectionEnabled,

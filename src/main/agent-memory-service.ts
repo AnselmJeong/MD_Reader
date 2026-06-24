@@ -27,7 +27,19 @@ export interface RuntimeMemoryContext {
   error?: string
 }
 
+interface FailedInsightRow {
+  id: string
+  session_id: string
+  content: string
+  metadata_json: string
+}
+
+interface PendingSessionRow {
+  id: string
+}
+
 const processingSessions = new Set<string>()
+let startupRoutineStarted = false
 
 function createId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`
@@ -280,6 +292,133 @@ function recordExtractionItems(runId: string, sessionId: string, extraction: Mem
       status: 'rejected',
       metadata: { reason: item.reason }
     })
+  }
+}
+
+function parseMetadataJson(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+async function retryFailedMem0Insights(limit = 100): Promise<{ attempted: number; succeeded: number; failed: number }> {
+  const settings = getAgentMemorySettings()
+  const rows = getChatDb().prepare(`
+    SELECT id, session_id, content, metadata_json
+    FROM agent_memory_items
+    WHERE kind = 'insight'
+      AND status = 'failed'
+    ORDER BY created_at ASC
+    LIMIT ?
+  `).all(limit) as FailedInsightRow[]
+
+  let succeeded = 0
+  let failed = 0
+
+  for (const row of rows) {
+    const metadata = parseMetadataJson(row.metadata_json)
+    delete metadata.error
+
+    try {
+      const result = await addMem0Memory(settings, { content: row.content, metadata })
+      getChatDb().prepare(`
+        UPDATE agent_memory_items
+        SET status = 'sent_to_mem0',
+          mem0_id = @mem0Id,
+          metadata_json = @metadataJson
+        WHERE id = @id
+      `).run({
+        id: row.id,
+        mem0Id: result.memoryId ?? null,
+        metadataJson: JSON.stringify(metadata)
+      })
+      succeeded += 1
+    } catch (error) {
+      failed += 1
+      getChatDb().prepare(`
+        UPDATE agent_memory_items
+        SET metadata_json = @metadataJson
+        WHERE id = @id
+      `).run({
+        id: row.id,
+        metadataJson: JSON.stringify({
+          ...metadata,
+          error: error instanceof Error ? error.message : 'Unknown mem0 error'
+        })
+      })
+    }
+  }
+
+  return { attempted: rows.length, succeeded, failed }
+}
+
+export async function processPendingMemoryJobs(limit = 20): Promise<{ attempted: number }> {
+  const settings = getAgentMemorySettings()
+  if (!settings.enabled || !settings.extractionEnabled) return { attempted: 0 }
+
+  const rows = getChatDb().prepare(`
+    SELECT id
+    FROM chat_sessions
+    WHERE archived_at IS NULL
+      AND message_count > 0
+      AND (
+        memory_status IS NULL
+        OR memory_status = 'pending'
+        OR memory_status = 'failed'
+      )
+    ORDER BY updated_at ASC
+    LIMIT ?
+  `).all(limit) as PendingSessionRow[]
+
+  let attempted = 0
+  for (const row of rows) {
+    if (processingSessions.has(row.id)) continue
+    attempted += 1
+    await processSessionMemory(row.id)
+  }
+
+  return { attempted }
+}
+
+export async function initializeAgentMemoryStartupRoutine(): Promise<void> {
+  if (startupRoutineStarted) return
+  startupRoutineStarted = true
+
+  const settings = getAgentMemorySettings()
+  if (!settings.enabled) {
+    console.info('[AgentMemory] Startup routine skipped: memory is disabled.')
+    return
+  }
+
+  try {
+    await readAgentMemoryFiles()
+  } catch (error) {
+    console.warn('[AgentMemory] Failed to initialize memory files:', error)
+  }
+
+  const health = await checkMem0Health(settings)
+  if (!health.ok) {
+    console.warn(`[AgentMemory] mem0 startup check failed: ${health.error || 'mem0 is not reachable'}`)
+    return
+  }
+
+  console.info('[AgentMemory] mem0 startup check succeeded.')
+
+  try {
+    const pending = await processPendingMemoryJobs()
+    const retried = await retryFailedMem0Insights()
+    console.info(
+      `[AgentMemory] Startup routine complete: processed ${pending.attempted} pending session(s), ` +
+      `retried ${retried.attempted} failed mem0 insight(s), ` +
+      `${retried.succeeded} succeeded, ${retried.failed} failed.`
+    )
+  } catch (error) {
+    console.error('[AgentMemory] Startup routine failed:', error)
   }
 }
 

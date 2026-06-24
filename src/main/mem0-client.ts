@@ -21,6 +21,17 @@ function baseUrl(settings: AgentMemorySettings): string {
   return settings.mem0BaseUrl.replace(/\/+$/, '')
 }
 
+async function responseError(prefix: string, response: Response): Promise<Error> {
+  let detail = ''
+  try {
+    const body = await response.text()
+    if (body.trim()) detail = `: ${body.slice(0, 300)}`
+  } catch {
+    // Ignore body parse failures and keep the status-based error.
+  }
+  return new Error(`${prefix}: ${response.status} ${response.statusText}${detail}`)
+}
+
 export async function addMem0Memory(settings: AgentMemorySettings, params: {
   content: string
   metadata: Record<string, unknown>
@@ -37,7 +48,7 @@ export async function addMem0Memory(settings: AgentMemorySettings, params: {
   })
 
   if (!response.ok) {
-    throw new Error(`mem0 add failed: ${response.status} ${response.statusText}`)
+    throw await responseError('mem0 add failed', response)
   }
 
   const data = await response.json()
@@ -67,7 +78,7 @@ export async function searchMem0(settings: AgentMemorySettings, query: string, l
   })
 
   if (!response.ok) {
-    throw new Error(`mem0 search failed: ${response.status} ${response.statusText}`)
+    throw await responseError('mem0 search failed', response)
   }
 
   const data = await response.json()
@@ -82,11 +93,25 @@ export async function searchMem0(settings: AgentMemorySettings, query: string, l
 }
 
 export async function checkMem0Health(settings: AgentMemorySettings): Promise<{ ok: boolean; error?: string }> {
+  if (!settings.mem0BaseUrl.trim()) return { ok: false, error: 'mem0 Base URL is not configured' }
+  if (settings.mem0AuthMode !== 'none' && !settings.mem0ApiKey.trim()) {
+    return { ok: false, error: 'mem0 API key is not configured' }
+  }
+
   try {
-    const response = await fetch(`${baseUrl(settings)}/docs`, { method: 'GET' })
-    return { ok: response.ok }
+    const response = await fetch(`${baseUrl(settings)}/search`, {
+      method: 'POST',
+      headers: buildHeaders(settings),
+      body: JSON.stringify({
+        query: 'md-reader startup health check',
+        user_id: settings.userId,
+        limit: 1
+      })
+    })
+    if (response.ok) return { ok: true }
+    const error = await responseError('mem0 health check failed', response)
+    return { ok: false, error: error.message }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Unknown mem0 error' }
   }
 }
-

@@ -5,6 +5,7 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { shutdownTts } from './tts-service'
 import { closeChatSessionDb } from './chat-session-service'
 import { closeEpubAnnotationDb } from './epub-annotation-service'
+import { initializeAgentMemoryStartupRoutine } from './agent-memory-service'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -54,6 +55,7 @@ app.whenReady().then(() => {
 
   registerIpcHandlers()
   createWindow()
+  void initializeAgentMemoryStartupRoutine()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
