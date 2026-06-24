@@ -130,3 +130,30 @@ export async function generateChatTitle(params: {
     .replace(/\s+/g, ' ')
     .slice(0, 80)
 }
+
+export async function generateJsonResponse(params: {
+  model: string
+  systemPrompt: string
+  userPrompt: string
+}): Promise<string> {
+  const response = await fetch(`${OLLAMA_BASE}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: params.model,
+      stream: false,
+      format: 'json',
+      messages: [
+        { role: 'system', content: params.systemPrompt },
+        { role: 'user', content: params.userPrompt }
+      ]
+    })
+  })
+
+  if (!response.ok) {
+    throw new Error(`Ollama API error: ${response.status} ${response.statusText}`)
+  }
+
+  const data = await response.json()
+  return String(data.message?.content ?? '').trim()
+}

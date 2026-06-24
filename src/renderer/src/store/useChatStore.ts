@@ -50,7 +50,7 @@ interface ChatState {
   switchContext: (contextMeta: ChatContextMeta | null, proposedContextKey: string | null) => Promise<void>
   loadSession: (sessionId: string) => Promise<void>
   startNewSession: () => Promise<void>
-  saveCurrentSession: (options?: { finalizeTitle?: boolean; refreshSessions?: boolean }) => Promise<void>
+  saveCurrentSession: (options?: { finalizeTitle?: boolean; refreshSessions?: boolean; processMemory?: boolean }) => Promise<void>
   stopStreaming: () => Promise<void>
   sendMessage: (params: {
     text: string
@@ -213,7 +213,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         titleStatus: nextTitleStatus,
         model: selectedModel || null,
         systemPrompt,
-        messages: toStoredMessages(messages)
+        messages: toStoredMessages(messages),
+        processMemory: options?.processMemory ?? options?.finalizeTitle === true
       })
       const refreshed = options?.refreshSessions === false
         ? null
@@ -236,7 +237,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (state.isStreaming) return
     const requestId = ++contextSwitchRequest
 
-    await state.saveCurrentSession({ finalizeTitle: false, refreshSessions: false })
+    await state.saveCurrentSession({ finalizeTitle: false, refreshSessions: false, processMemory: true })
     if (requestId !== contextSwitchRequest) return
 
     if (!contextMeta || !proposedContextKey) {
@@ -361,7 +362,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           titleStatus: previous.sessionTitle ? previous.titleStatus : 'fallback',
           model: previous.selectedModel || null,
           systemPrompt: previous.systemPrompt,
-          messages: toStoredMessages(previous.messages)
+          messages: toStoredMessages(previous.messages),
+          processMemory: true
         })
         const refreshed = currentContextMeta
           ? await window.api.chat.listSessions(currentContextMeta)
@@ -387,7 +389,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const message = text.trim()
     if (!message) return { success: false, reason: 'empty' }
 
-    const { selectedModel, isStreaming, messages, systemPrompt } = get()
+    const { selectedModel, isStreaming, messages, systemPrompt, currentContextMeta } = get()
     if (!selectedModel) return { success: false, reason: 'no-model' }
     if (isStreaming) return { success: false, reason: 'streaming' }
 
@@ -428,7 +430,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       await window.api.ollama.chat({
         model: selectedModel,
         messages: chatMessages,
-        systemPrompt: fullSystemPrompt
+        systemPrompt: fullSystemPrompt,
+        memoryContext: {
+          userText: message,
+          contextTitle: currentContextMeta?.contextTitle ?? null,
+          quotedText: quotedText ?? null
+        }
       })
       return { success: true }
     } catch (error) {

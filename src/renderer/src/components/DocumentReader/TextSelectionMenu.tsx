@@ -1,16 +1,32 @@
+import { useState } from 'react'
 import { useChatStore } from '../../store/useChatStore'
 import { useUIStore } from '../../store/useUIStore'
 import { useDocumentStore } from '../../store/useDocumentStore'
 import { useTtsStore } from '../../store/useTtsStore'
+import type { EpubAnnotationStyle } from '../../global'
+
+const highlightChoices: Array<{
+  style: EpubAnnotationStyle
+  label: string
+  swatch: string
+  underline?: boolean
+}> = [
+  { style: 'yellow', label: 'Yellow highlight', swatch: 'rgba(238, 192, 68, 0.85)' },
+  { style: 'green', label: 'Green highlight', swatch: 'rgba(119, 184, 112, 0.82)' },
+  { style: 'blue', label: 'Blue highlight', swatch: 'rgba(93, 155, 214, 0.82)' },
+  { style: 'pink', label: 'Pink highlight', swatch: 'rgba(223, 118, 163, 0.82)' },
+  { style: 'red-underline', label: 'Red underline', swatch: 'rgba(214, 63, 55, 0.95)', underline: true }
+]
 
 interface TextSelectionMenuProps {
   rect: DOMRect
   selectedText: string
-  onHighlight: () => void
+  onHighlight: (style: EpubAnnotationStyle) => void
   onClose: () => void
 }
 
 export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: TextSelectionMenuProps) {
+  const [showHighlightChoices, setShowHighlightChoices] = useState(false)
   const {
     sendMessage,
     setInputDraft,
@@ -62,8 +78,8 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: 
     sendToAI(`Summarize the selected passage in 3-5 concise bullet points:\n\n${selectedText}`)
   }
 
-  const handleHighlight = () => {
-    onHighlight()
+  const handleHighlight = (style: EpubAnnotationStyle) => {
+    onHighlight(style)
     closeMenu()
   }
 
@@ -116,13 +132,40 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: 
         Summarize
       </button>
       <div className="h-4 w-px bg-white/10" />
-      <button
-        onClick={handleHighlight}
-        className={itemClass}
-      >
-        <svg className={iconClass} viewBox="0 0 16 16" aria-hidden="true"><path className="icon-stroke" d="M3 11.5l4.5-9 5.5 5.5-9 4.5zM8.5 3.5l4 4" /></svg>
-        Highlight
-      </button>
+      <div className="relative flex">
+        <button
+          onClick={() => setShowHighlightChoices((current) => !current)}
+          className={itemClass}
+        >
+          <svg className={iconClass} viewBox="0 0 16 16" aria-hidden="true"><path className="icon-stroke" d="M3 11.5l4.5-9 5.5 5.5-9 4.5zM8.5 3.5l4 4" /></svg>
+          Highlight
+        </button>
+        {showHighlightChoices && (
+          <div
+            className="selection-highlight-popover absolute left-1/2 top-[calc(100%+10px)] flex -translate-x-1/2 items-center gap-1 rounded-md border px-1.5 py-1.5"
+            style={{
+              background: 'var(--selection-menu-bg)',
+              borderColor: 'var(--selection-menu-hair)',
+              boxShadow: 'var(--shadow-md)'
+            }}
+          >
+            {highlightChoices.map((choice) => (
+              <button
+                key={choice.style}
+                onClick={() => handleHighlight(choice.style)}
+                className="selection-highlight-swatch"
+                title={choice.label}
+                aria-label={choice.label}
+              >
+                <span
+                  className={choice.underline ? 'selection-highlight-underline' : 'selection-highlight-fill'}
+                  style={choice.underline ? { borderBottomColor: choice.swatch } : { background: choice.swatch }}
+                />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="h-4 w-px bg-white/10" />
       <button
         onClick={handleSpeakSelection}

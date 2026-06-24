@@ -1,4 +1,5 @@
 import { RefObject, useCallback, useEffect, useState } from 'react'
+import type { EpubAnnotationStyle } from '../../../global'
 
 function findNthOccurrence(content: string, selectedText: string, targetOccurrence: number): number {
   if (!selectedText || targetOccurrence < 0) return -1
@@ -135,7 +136,7 @@ export function useTextSelectionHighlight({
     return () => document.removeEventListener('mouseup', handleSelection)
   }, [clearSelection, getSelectionOccurrence, rootRef])
 
-  const handleHighlightSelection = useCallback(() => {
+  const handleHighlightSelection = useCallback((_style?: EpubAnnotationStyle) => {
     if (!content || !selectedText) return
 
     const nextContent = wrapTextWithHighlight(content, selectedText, selectedOccurrence)

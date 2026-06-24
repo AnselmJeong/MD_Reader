@@ -6,6 +6,7 @@ import { ContentsRailButton } from './ContentsRailButton'
 import { useDocumentStore, type EpubDocumentTab } from '../../store/useDocumentStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useUIStore } from '../../store/useUIStore'
+import type { EpubAnnotationKind, EpubAnnotationRecord, EpubAnnotationStyle } from '../../global'
 
 interface EpubDocumentViewProps {
   tab: EpubDocumentTab
@@ -18,6 +19,11 @@ interface EpubSelection {
   contents: Contents
 }
 
+interface ActiveAnnotationMenu {
+  cfiRange: string
+  rect: DOMRect
+}
+
 interface TocItem {
   href: string
   label: string
@@ -27,6 +33,33 @@ interface TocItem {
 type SpreadMode = 'none' | 'always'
 
 const EPUB_SPREAD_GAP = 44
+const EPUB_ANNOTATION_CLASS = 'md-reader-epub-annotation'
+
+const epubAnnotationStyles: Record<EpubAnnotationStyle, {
+  kind: EpubAnnotationKind
+  styles: Record<string, string>
+}> = {
+  yellow: {
+    kind: 'highlight',
+    styles: { fill: 'rgba(238, 192, 68, 0.45)', 'fill-opacity': '0.45', 'mix-blend-mode': 'multiply' }
+  },
+  green: {
+    kind: 'highlight',
+    styles: { fill: 'rgba(119, 184, 112, 0.42)', 'fill-opacity': '0.42', 'mix-blend-mode': 'multiply' }
+  },
+  blue: {
+    kind: 'highlight',
+    styles: { fill: 'rgba(93, 155, 214, 0.38)', 'fill-opacity': '0.38', 'mix-blend-mode': 'multiply' }
+  },
+  pink: {
+    kind: 'highlight',
+    styles: { fill: 'rgba(223, 118, 163, 0.36)', 'fill-opacity': '0.36', 'mix-blend-mode': 'multiply' }
+  },
+  'red-underline': {
+    kind: 'underline',
+    styles: { 'mix-blend-mode': 'multiply' }
+  }
+}
 
 const createEpubBook = (
   ((epubModule as unknown as { default?: unknown }).default ?? epubModule) as (urlOrData: string | ArrayBuffer) => Book
@@ -99,6 +132,36 @@ function isSupportedDocumentFile(file: File) {
   return name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt') || name.endsWith('.epub')
 }
 
+function applyEpubAnnotation(
+  rendition: Rendition,
+  annotation: Pick<EpubAnnotationRecord, 'cfiRange' | 'text' | 'style'>,
+  onClick?: (event: Event, cfiRange: string) => void
+) {
+  const style = epubAnnotationStyles[annotation.style] ?? epubAnnotationStyles.yellow
+  rendition.annotations.remove(annotation.cfiRange, 'highlight')
+  rendition.annotations.remove(annotation.cfiRange, 'underline')
+  const handleClick = onClick ? (event: Event) => onClick(event, annotation.cfiRange) : undefined
+
+  if (style.kind === 'underline') {
+    rendition.annotations.underline(
+      annotation.cfiRange,
+      { text: annotation.text, style: annotation.style },
+      handleClick,
+      EPUB_ANNOTATION_CLASS,
+      style.styles
+    )
+    return
+  }
+
+  rendition.annotations.highlight(
+    annotation.cfiRange,
+    { text: annotation.text, style: annotation.style },
+    handleClick,
+    EPUB_ANNOTATION_CLASS,
+    style.styles
+  )
+}
+
 function EpubTableOfContents({
   items,
   onNavigate
@@ -148,6 +211,8 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   const renditionRef = useRef<Rendition | null>(null)
   const currentCfiRef = useRef<string | null>(tab.currentLocation)
   const latestTextRef = useRef('')
+  const latestChapterHrefRef = useRef<string | null>(tab.currentChapterHref)
+  const latestChapterLabelRef = useRef<string | null>(tab.currentChapterLabel)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchKeyHandlerRef = useRef<(event: KeyboardEvent) => void>(() => {})
   const resizeTimerRef = useRef<number | null>(null)
@@ -164,6 +229,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   const [sectionLabel, setSectionLabel] = useState('EPUB')
   const [progress, setProgress] = useState(0)
   const [selection, setSelection] = useState<EpubSelection | null>(null)
+  const [activeAnnotationMenu, setActiveAnnotationMenu] = useState<ActiveAnnotationMenu | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [spreadMode, setSpreadMode] = useState<SpreadMode>('always')
   const [returnCfi, setReturnCfi] = useState<string | null>(null)
@@ -192,6 +258,26 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       setDocument(document)
     }
   }, [setDocument])
+
+  const showAnnotationMenu = useCallback((event: Event, cfiRange: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const target = event.target instanceof Element ? event.target : null
+    const rect = target?.getBoundingClientRect()
+    if (!rect) return
+
+    setSelection(null)
+    setActiveAnnotationMenu({
+      cfiRange,
+      rect: DOMRect.fromRect({
+        x: rect.left,
+        y: rect.top,
+        width: rect.width,
+        height: rect.height
+      })
+    })
+  }, [])
 
   const resizeRenditionToSurface = useCallback(() => {
     const viewer = viewerRef.current
@@ -254,7 +340,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       '::selection': {
         background: 'rgba(220, 176, 73, 0.28)',
       },
-      '.epubjs-hl': {
+      [`.${EPUB_ANNOTATION_CLASS}`]: {
         fill: 'rgba(238, 192, 68, 0.45)',
         'fill-opacity': '0.45',
         'mix-blend-mode': 'multiply',
@@ -268,8 +354,11 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
     viewer.replaceChildren()
     currentCfiRef.current = tab.currentLocation
+    latestChapterHrefRef.current = tab.currentChapterHref
+    latestChapterLabelRef.current = tab.currentChapterLabel
     latestTextRef.current = ''
     setSelection(null)
+    setActiveAnnotationMenu(null)
     setReturnCfi(null)
     setIsEpubDragging(false)
     setProgress(0)
@@ -281,11 +370,10 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       width: '100%',
       height: '100%',
       flow: 'paginated',
-      layout: 'paginated',
       spread: spreadMode,
       minSpreadWidth: 760,
       gap: spreadMode === 'always' ? EPUB_SPREAD_GAP : 0,
-      ignoreClass: 'epubjs-hl',
+      ignoreClass: EPUB_ANNOTATION_CLASS,
       allowScriptedContent: false
     } as Parameters<Book['renderTo']>[1] & { gap: number })
 
@@ -301,6 +389,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
       const handleContentMouseDown = () => {
         setSelection(null)
+        setActiveAnnotationMenu(null)
       }
 
       const handleContentKeyDown = (event: KeyboardEvent) => {
@@ -399,6 +488,8 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       const chapterHref = location.start?.href?.split('#')[0] ?? null
       const chapterLabel = findCurrentTocLabel(tocItemsRef.current, location.start?.href)
       currentCfiRef.current = cfi
+      latestChapterHrefRef.current = chapterHref
+      latestChapterLabelRef.current = chapterLabel
       updateEpubLocation(tab.id, cfi, chapterHref, chapterLabel)
       setSectionLabel((current) => chapterLabel ?? current)
       requestAnimationFrame(() => updateVisibleText(rendition))
@@ -426,6 +517,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
         return
       }
       setSelection(null)
+      setActiveAnnotationMenu(null)
     }
     document.addEventListener('mousedown', handleOuterMouseDown)
 
@@ -449,6 +541,15 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     })
 
     const initialLocation = tab.currentLocation
+    void window.api.epub.listAnnotations({
+      documentId: tab.documentHash,
+      fileName: tab.fileName
+    }).then((annotations) => {
+      annotations.forEach((annotation) => applyEpubAnnotation(rendition, annotation, showAnnotationMenu))
+    }).catch((error) => {
+      console.error('Failed to load EPUB annotations:', error)
+    })
+
     void rendition.display(initialLocation ?? undefined).then(() => {
       updateVisibleText(rendition)
     }).catch((error) => {
@@ -470,7 +571,17 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       renditionRef.current = null
       bookRef.current = null
     }
-  }, [bookBuffer, openDroppedFiles, spreadMode, tab.id, updateEpubLocation, updateVisibleText])
+  }, [
+    bookBuffer,
+    openDroppedFiles,
+    spreadMode,
+    tab.documentHash,
+    tab.fileName,
+    tab.id,
+    updateEpubLocation,
+    updateVisibleText,
+    showAnnotationMenu
+  ])
 
   useEffect(() => {
     const rendition = renditionRef.current
@@ -519,16 +630,49 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     setSelection(null)
   }, [selection])
 
-  const handleHighlightSelection = useCallback(() => {
+  const handleHighlightSelection = useCallback((style: EpubAnnotationStyle) => {
     if (!selection) return
-    renditionRef.current?.annotations.highlight(
-      selection.cfiRange,
-      { text: selection.text },
-      undefined,
-      'epubjs-hl',
-      { fill: 'rgba(238, 192, 68, 0.45)', 'fill-opacity': '0.45' }
-    )
-  }, [selection])
+    const rendition = renditionRef.current
+    if (!rendition) return
+    const styleDefinition = epubAnnotationStyles[style] ?? epubAnnotationStyles.yellow
+
+    applyEpubAnnotation(rendition, {
+      cfiRange: selection.cfiRange,
+      text: selection.text,
+      style
+    }, showAnnotationMenu)
+
+    void window.api.epub.saveAnnotation({
+      documentId: tab.documentHash,
+      fileName: tab.fileName,
+      filePath: tab.filePath,
+      cfiRange: selection.cfiRange,
+      text: selection.text,
+      style,
+      kind: styleDefinition.kind,
+      chapterHref: latestChapterHrefRef.current,
+      chapterLabel: latestChapterLabelRef.current
+    }).catch((error) => {
+      console.error('Failed to save EPUB annotation:', error)
+    })
+  }, [selection, tab.documentHash, tab.fileName, tab.filePath, showAnnotationMenu])
+
+  const handleDeleteAnnotation = useCallback(() => {
+    if (!activeAnnotationMenu) return
+    const rendition = renditionRef.current
+    const { cfiRange } = activeAnnotationMenu
+
+    rendition?.annotations.remove(cfiRange, 'highlight')
+    rendition?.annotations.remove(cfiRange, 'underline')
+    setActiveAnnotationMenu(null)
+
+    void window.api.epub.deleteAnnotation({
+      documentId: tab.documentHash,
+      cfiRange
+    }).catch((error) => {
+      console.error('Failed to delete EPUB annotation:', error)
+    })
+  }, [activeAnnotationMenu, tab.documentHash])
 
   const runSearch = useCallback((backward = false) => {
     if (!searchQuery.trim()) return
@@ -717,6 +861,33 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
           2p
         </button>
       </div>
+
+      {activeAnnotationMenu && (
+        <div
+          data-selection-menu="true"
+          onMouseDown={(event) => event.preventDefault()}
+          className="epub-annotation-menu selection-floating-menu fixed z-50 flex items-center rounded-lg border px-1 py-1 ui-text"
+          style={{
+            top: `${Math.min(window.innerHeight - 48, activeAnnotationMenu.rect.bottom + 10)}px`,
+            left: `${Math.min(Math.max(activeAnnotationMenu.rect.left + activeAnnotationMenu.rect.width / 2, 84), window.innerWidth - 84)}px`,
+            transform: 'translateX(-50%)',
+            background: 'var(--selection-menu-bg)',
+            borderColor: 'var(--selection-menu-hair)',
+            boxShadow: 'var(--shadow-lg)'
+          }}
+        >
+          <button
+            onClick={handleDeleteAnnotation}
+            className="selection-menu-item text-[rgba(255,130,120,0.95)] hover:text-[rgba(255,165,155,1)]"
+            title="Delete highlight"
+          >
+            <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 16 16" aria-hidden="true">
+              <path className="icon-stroke" d="M3.5 4.5h9M6 4.5v-1h4v1M5 6.5l.4 6h5.2l.4-6M7 7.5v3.5M9 7.5v3.5" />
+            </svg>
+            Delete
+          </button>
+        </div>
+      )}
 
       {selection && (
         <TextSelectionMenu

@@ -50,9 +50,10 @@ export interface SaveChatSessionParams {
   model?: string | null
   systemPrompt?: string | null
   messages: StoredChatMessage[]
+  processMemory?: boolean
 }
 
-interface ContextRow {
+export interface ContextRow {
   context_key: string
   document_kind: ChatDocumentKind
   document_id: string
@@ -78,6 +79,9 @@ interface SessionRow {
   message_count: number
   created_at: number
   updated_at: number
+  memory_processed_at?: number | null
+  memory_status?: string | null
+  memory_error?: string | null
 }
 
 interface MessageRow {
@@ -91,7 +95,7 @@ interface MessageRow {
 
 let db: Database.Database | null = null
 
-function getDb(): Database.Database {
+export function getChatDb(): Database.Database {
   if (db) return db
 
   const dbPath = path.join(app.getPath('userData'), 'chat-sessions.sqlite')
@@ -163,7 +167,74 @@ function getDb(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_chat_messages_session_ordinal
       ON chat_messages(session_id, ordinal ASC);
   `)
+  migrateAgentMemorySchema(db)
   return db
+}
+
+function getDb(): Database.Database {
+  return getChatDb()
+}
+
+function hasColumn(database: Database.Database, table: string, column: string): boolean {
+  const rows = database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+  return rows.some((row) => row.name === column)
+}
+
+function addColumnIfMissing(database: Database.Database, table: string, column: string, definition: string): void {
+  if (hasColumn(database, table, column)) return
+  database.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run()
+}
+
+function migrateAgentMemorySchema(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS app_schema_migrations (
+      id TEXT PRIMARY KEY,
+      applied_at INTEGER NOT NULL
+    );
+  `)
+
+  addColumnIfMissing(database, 'chat_sessions', 'memory_processed_at', 'INTEGER')
+  addColumnIfMissing(database, 'chat_sessions', 'memory_status', "TEXT CHECK (memory_status IN ('pending', 'processing', 'completed', 'skipped', 'failed'))")
+  addColumnIfMissing(database, 'chat_sessions', 'memory_error', 'TEXT')
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS agent_memory_runs (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+      context_key TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('processing', 'completed', 'skipped', 'failed')),
+      extractor_model TEXT,
+      transcript_hash TEXT NOT NULL,
+      input_message_count INTEGER NOT NULL,
+      user_patch_count INTEGER NOT NULL DEFAULT 0,
+      soul_patch_count INTEGER NOT NULL DEFAULT 0,
+      insight_count INTEGER NOT NULL DEFAULT 0,
+      mem0_event_ids TEXT,
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      completed_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_memory_items (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES agent_memory_runs(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK (kind IN ('user_profile', 'soul_directive', 'insight', 'rejected')),
+      content TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      evidence_message_ids TEXT NOT NULL,
+      target TEXT,
+      status TEXT NOT NULL CHECK (status IN ('applied', 'queued', 'sent_to_mem0', 'rejected', 'failed')),
+      mem0_id TEXT,
+      metadata_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_memory_runs_session_hash
+      ON agent_memory_runs(session_id, transcript_hash);
+    CREATE INDEX IF NOT EXISTS idx_agent_memory_items_session
+      ON agent_memory_items(session_id, created_at DESC);
+  `)
 }
 
 function normalizeChapterHref(href?: string | null): string | null {
@@ -473,6 +544,48 @@ export function loadChatSession(sessionId: string): { session: ChatSessionRecord
       ...mapSession(sessionRow),
       systemPrompt: sessionRow.system_prompt
     },
+    messages: messageRows.map((row) => ({
+      id: row.id,
+      role: row.role,
+      content: row.content,
+      timestamp: row.created_at,
+      quotedText: row.quoted_text
+    }))
+  }
+}
+
+export function loadChatSessionWithContext(sessionId: string): {
+  session: ChatSessionRecord
+  context: ContextRow
+  messages: StoredChatMessage[]
+} | null {
+  const database = getDb()
+  const sessionRow = database.prepare(`
+    SELECT id, context_key, title, title_status, model, system_prompt, message_count, created_at, updated_at,
+      memory_processed_at, memory_status, memory_error
+    FROM chat_sessions
+    WHERE id = ?
+      AND archived_at IS NULL
+  `).get(sessionId) as SessionRow | undefined
+
+  if (!sessionRow) return null
+
+  const context = database.prepare('SELECT * FROM chat_contexts WHERE context_key = ?').get(sessionRow.context_key) as ContextRow | undefined
+  if (!context) return null
+
+  const messageRows = database.prepare(`
+    SELECT id, role, content, quoted_text, created_at, ordinal
+    FROM chat_messages
+    WHERE session_id = ?
+    ORDER BY ordinal ASC
+  `).all(sessionId) as MessageRow[]
+
+  return {
+    session: {
+      ...mapSession(sessionRow),
+      systemPrompt: sessionRow.system_prompt
+    },
+    context,
     messages: messageRows.map((row) => ({
       id: row.id,
       role: row.role,

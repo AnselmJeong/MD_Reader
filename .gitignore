@@ -4,6 +4,7 @@ dist/
 .tmp/
 .npm-cache/
 .electron-cache/
+.DS_Store
 *.log
 tts/.venv/
 tts/.python-version

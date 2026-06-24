@@ -22,6 +22,8 @@ export type FileReadResult =
 export type ChatDocumentKind = 'markdown' | 'epub'
 export type ChatMessageRole = 'user' | 'assistant'
 export type SessionTitleStatus = 'pending' | 'generated' | 'fallback'
+export type EpubAnnotationStyle = 'yellow' | 'green' | 'blue' | 'pink' | 'red-underline'
+export type EpubAnnotationKind = 'highlight' | 'underline'
 
 export interface ChatContextMeta {
   documentKind: ChatDocumentKind
@@ -58,6 +60,37 @@ export interface ChatSessionRecord extends ChatSessionSummary {
   systemPrompt?: string | null
 }
 
+export interface AgentMemoryStatus {
+  settings: {
+    enabled?: boolean
+    extractionEnabled?: boolean
+    runtimeInjectionEnabled?: boolean
+    mem0BaseUrl?: string
+    mem0AuthMode?: string
+    userId?: string
+    extractorModel?: string
+    hasMem0ApiKey?: boolean
+  }
+  paths: { dir: string; user: string; soul: string; reviewQueue: string }
+  mem0: { ok: boolean; error?: string }
+}
+
+export interface EpubAnnotationRecord {
+  id: string
+  documentId: string
+  fileName: string
+  filePath?: string | null
+  cfiRange: string
+  text: string
+  style: EpubAnnotationStyle
+  kind: EpubAnnotationKind
+  chapterHref?: string | null
+  chapterLabel?: string | null
+  note?: string | null
+  createdAt: number
+  updatedAt: number
+}
+
 export interface ElectronAPI {
   file: {
     openDialog: () => Promise<FileReadResult | null>
@@ -71,6 +104,11 @@ export interface ElectronAPI {
       model: string
       messages: Array<{ role: string; content: string }>
       systemPrompt?: string
+      memoryContext?: {
+        userText: string
+        contextTitle?: string | null
+        quotedText?: string | null
+      }
     }) => Promise<{ success?: boolean; error?: string }>
     stop: () => Promise<{ success: boolean }>
     onToken: (callback: (token: string) => void) => () => void
@@ -98,9 +136,47 @@ export interface ElectronAPI {
       model?: string | null
       systemPrompt?: string | null
       messages: StoredChatMessage[]
+      processMemory?: boolean
     }) => Promise<{ sessionId: string; contextKey: string; title: string }>
     loadSession: (sessionId: string) => Promise<{ session: ChatSessionRecord; messages: StoredChatMessage[] } | null>
     archiveSession: (sessionId: string) => Promise<{ success: boolean }>
+  }
+  agentMemory: {
+    status: () => Promise<AgentMemoryStatus>
+    updateSettings: (partial: {
+      enabled?: boolean
+      extractionEnabled?: boolean
+      runtimeInjectionEnabled?: boolean
+      mem0BaseUrl?: string
+      mem0ApiKey?: string
+      mem0AuthMode?: 'x-api-key' | 'bearer' | 'none'
+      userId?: string
+      extractorModel?: string
+    }) => Promise<AgentMemoryStatus>
+    processSession: (sessionId: string) => Promise<{ success: boolean }>
+    openFolder: () => Promise<{ success: boolean; error?: string }>
+  }
+  epub: {
+    listAnnotations: (params: {
+      documentId: string
+      fileName: string
+    }) => Promise<EpubAnnotationRecord[]>
+    saveAnnotation: (params: {
+      documentId: string
+      fileName: string
+      filePath?: string | null
+      cfiRange: string
+      text: string
+      style: EpubAnnotationStyle
+      kind: EpubAnnotationKind
+      chapterHref?: string | null
+      chapterLabel?: string | null
+      note?: string | null
+    }) => Promise<EpubAnnotationRecord>
+    deleteAnnotation: (params: {
+      documentId: string
+      cfiRange: string
+    }) => Promise<{ success: boolean }>
   }
   tts: {
     speak: (params: TtsSpeakParams) => Promise<{ success: boolean; error?: string }>
@@ -194,6 +270,17 @@ const api: ElectronAPI = {
     saveSession: (params) => ipcRenderer.invoke('chat:sessions:save', params),
     loadSession: (sessionId) => ipcRenderer.invoke('chat:sessions:load', sessionId),
     archiveSession: (sessionId) => ipcRenderer.invoke('chat:sessions:archive', sessionId)
+  },
+  agentMemory: {
+    status: () => ipcRenderer.invoke('agent-memory:status'),
+    updateSettings: (partial) => ipcRenderer.invoke('agent-memory:update-settings', partial),
+    processSession: (sessionId) => ipcRenderer.invoke('agent-memory:process-session', sessionId),
+    openFolder: () => ipcRenderer.invoke('agent-memory:open-folder')
+  },
+  epub: {
+    listAnnotations: (params) => ipcRenderer.invoke('epub:annotations:list', params),
+    saveAnnotation: (params) => ipcRenderer.invoke('epub:annotations:save', params),
+    deleteAnnotation: (params) => ipcRenderer.invoke('epub:annotations:delete', params)
   },
   tts: {
     speak: (params) => ipcRenderer.invoke('tts:speak', params),

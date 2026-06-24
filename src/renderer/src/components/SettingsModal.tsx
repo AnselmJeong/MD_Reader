@@ -2,12 +2,23 @@ import { useState, useEffect } from 'react'
 import { TtsVoice, useSettingsStore } from '../store/useSettingsStore'
 import { useChatStore } from '../store/useChatStore'
 import { filterOllamaModels } from '../utils/ollama-model-filter'
+import type { AgentMemoryStatus } from '../global'
 
 interface SettingsModalProps {
   onClose: () => void
 }
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
+  const [memoryStatus, setMemoryStatus] = useState<AgentMemoryStatus | null>(null)
+  const [memoryDraft, setMemoryDraft] = useState({
+    enabled: true,
+    extractionEnabled: true,
+    runtimeInjectionEnabled: true,
+    mem0BaseUrl: 'http://127.0.0.1:8888',
+    mem0ApiKey: '',
+    userId: 'md-reader-user',
+    extractorModel: ''
+  })
   const {
     theme,
     fontSize,
@@ -56,6 +67,46 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     }
     refreshModels()
   }, [selectedModel, setAvailableModels, setSelectedModel])
+
+  useEffect(() => {
+    const loadMemoryStatus = async () => {
+      try {
+        const status = await window.api.agentMemory.status()
+        setMemoryStatus(status)
+        setMemoryDraft((draft) => ({
+          ...draft,
+          enabled: status.settings.enabled ?? draft.enabled,
+          extractionEnabled: status.settings.extractionEnabled ?? draft.extractionEnabled,
+          runtimeInjectionEnabled: status.settings.runtimeInjectionEnabled ?? draft.runtimeInjectionEnabled,
+          mem0BaseUrl: status.settings.mem0BaseUrl ?? draft.mem0BaseUrl,
+          userId: status.settings.userId ?? draft.userId,
+          extractorModel: status.settings.extractorModel ?? draft.extractorModel
+        }))
+      } catch (error) {
+        console.error('Failed to load agent memory status:', error)
+      }
+    }
+    loadMemoryStatus()
+  }, [])
+
+  const saveMemorySettings = async () => {
+    try {
+      const status = await window.api.agentMemory.updateSettings({
+        enabled: memoryDraft.enabled,
+        extractionEnabled: memoryDraft.extractionEnabled,
+        runtimeInjectionEnabled: memoryDraft.runtimeInjectionEnabled,
+        mem0BaseUrl: memoryDraft.mem0BaseUrl.trim(),
+        mem0ApiKey: memoryDraft.mem0ApiKey.trim() || undefined,
+        mem0AuthMode: 'x-api-key',
+        userId: memoryDraft.userId.trim(),
+        extractorModel: memoryDraft.extractorModel.trim()
+      })
+      setMemoryStatus(status)
+      setMemoryDraft((draft) => ({ ...draft, mem0ApiKey: '' }))
+    } catch (error) {
+      console.error('Failed to save agent memory settings:', error)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -224,6 +275,96 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                       {voice.label}
                     </button>
                   ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ─── Agent Memory ─── */}
+          <section>
+            <h3 className="text-sm font-semibold text-on-surface mb-3">Agent Memory</h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-sm text-on-surface-muted">Enable Memory</label>
+                <input
+                  type="checkbox"
+                  checked={memoryDraft.enabled}
+                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, enabled: e.target.checked }))}
+                  className="accent-accent"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-sm text-on-surface-muted">Extract on Session End</label>
+                <input
+                  type="checkbox"
+                  checked={memoryDraft.extractionEnabled}
+                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, extractionEnabled: e.target.checked }))}
+                  className="accent-accent"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-sm text-on-surface-muted">Use in Chat</label>
+                <input
+                  type="checkbox"
+                  checked={memoryDraft.runtimeInjectionEnabled}
+                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, runtimeInjectionEnabled: e.target.checked }))}
+                  className="accent-accent"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-on-surface-muted block mb-1.5">mem0 Base URL</label>
+                <input
+                  value={memoryDraft.mem0BaseUrl}
+                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, mem0BaseUrl: e.target.value }))}
+                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-on-surface-muted block mb-1.5">
+                  mem0 API Key {memoryStatus?.settings.hasMem0ApiKey ? '(saved)' : ''}
+                </label>
+                <input
+                  type="password"
+                  value={memoryDraft.mem0ApiKey}
+                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, mem0ApiKey: e.target.value }))}
+                  placeholder={memoryStatus?.settings.hasMem0ApiKey ? 'Leave blank to keep existing key' : 'm0sk_...'}
+                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-on-surface-muted block mb-1.5">Memory User ID</label>
+                <input
+                  value={memoryDraft.userId}
+                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, userId: e.target.value }))}
+                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-on-surface-muted block mb-1.5">Extractor Model</label>
+                <input
+                  value={memoryDraft.extractorModel}
+                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, extractorModel: e.target.value }))}
+                  placeholder={selectedModel || 'Uses saved chat model if blank'}
+                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className={`text-xs ${memoryStatus?.mem0.ok ? 'text-green-600' : 'text-on-surface-muted'}`}>
+                  {memoryStatus?.mem0.ok ? 'mem0 reachable' : memoryStatus?.mem0.error || 'mem0 not checked'}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => void window.api.agentMemory.openFolder()}
+                    className="px-3 py-1 rounded-md text-xs bg-surface border border-border text-on-surface-muted hover:text-on-surface"
+                  >
+                    Folder
+                  </button>
+                  <button
+                    onClick={saveMemorySettings}
+                    className="px-3 py-1 rounded-md text-xs bg-accent text-white hover:bg-accent-hover"
+                  >
+                    Save
+                  </button>
                 </div>
               </div>
             </div>

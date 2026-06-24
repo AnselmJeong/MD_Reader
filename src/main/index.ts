@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc-handlers'
 import { shutdownTts } from './tts-service'
 import { closeChatSessionDb } from './chat-session-service'
+import { closeEpubAnnotationDb } from './epub-annotation-service'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -62,6 +63,7 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   shutdownTts()
   closeChatSessionDb()
+  closeEpubAnnotationDb()
 })
 
 app.on('window-all-closed', () => {

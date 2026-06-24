@@ -11,6 +11,22 @@ import {
   SaveChatSessionParams,
   saveChatSession
 } from './chat-session-service'
+import {
+  buildMemoryContextForPrompt,
+  getAgentMemoryStatus,
+  openAgentMemoryFolder,
+  processSessionMemory,
+  queueMemoryExtraction
+} from './agent-memory-service'
+import { AgentMemorySettings, updateAgentMemorySettings } from './agent-memory-settings'
+import {
+  deleteEpubAnnotation,
+  DeleteEpubAnnotationParams,
+  listEpubAnnotations,
+  ListEpubAnnotationsParams,
+  saveEpubAnnotation,
+  SaveEpubAnnotationParams
+} from './epub-annotation-service'
 
 const activeOllamaRequests = new Map<number, AbortController>()
 
@@ -70,6 +86,11 @@ export function registerIpcHandlers(): void {
     model: string
     messages: Array<{ role: string; content: string }>
     systemPrompt?: string
+    memoryContext?: {
+      userText: string
+      contextTitle?: string | null
+      quotedText?: string | null
+    }
   }) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return { error: 'No window found' }
@@ -78,7 +99,19 @@ export function registerIpcHandlers(): void {
     activeOllamaRequests.set(event.sender.id, controller)
 
     try {
-      await chatStream(params, (token: string) => {
+      let systemPrompt = params.systemPrompt
+      if (params.memoryContext) {
+        try {
+          const memory = await buildMemoryContextForPrompt(params.memoryContext)
+          if (memory.block) {
+            systemPrompt = systemPrompt ? `${systemPrompt}\n\n${memory.block}` : memory.block
+          }
+        } catch (error) {
+          console.error('[AgentMemory] Failed to build runtime context:', error)
+        }
+      }
+
+      await chatStream({ ...params, systemPrompt }, (token: string) => {
         if (!win.isDestroyed()) {
           win.webContents.send('ollama:token', token)
         }
@@ -180,7 +213,9 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('chat:sessions:save', async (_event, params: SaveChatSessionParams) => {
-    return saveChatSession(params)
+    const result = saveChatSession(params)
+    if (params.processMemory) queueMemoryExtraction(result.sessionId)
+    return result
   })
 
   ipcMain.handle('chat:sessions:load', async (_event, sessionId: string) => {
@@ -189,6 +224,37 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('chat:sessions:archive', async (_event, sessionId: string) => {
     return archiveChatSession(sessionId)
+  })
+
+  ipcMain.handle('agent-memory:status', async () => {
+    return getAgentMemoryStatus()
+  })
+
+  ipcMain.handle('agent-memory:update-settings', async (_event, partial: Partial<AgentMemorySettings>) => {
+    updateAgentMemorySettings(partial)
+    return getAgentMemoryStatus()
+  })
+
+  ipcMain.handle('agent-memory:process-session', async (_event, sessionId: string) => {
+    await processSessionMemory(sessionId)
+    return { success: true }
+  })
+
+  ipcMain.handle('agent-memory:open-folder', async () => {
+    return openAgentMemoryFolder()
+  })
+
+  // ─── EPUB Annotations ───
+  ipcMain.handle('epub:annotations:list', async (_event, params: ListEpubAnnotationsParams) => {
+    return listEpubAnnotations(params)
+  })
+
+  ipcMain.handle('epub:annotations:save', async (_event, params: SaveEpubAnnotationParams) => {
+    return saveEpubAnnotation(params)
+  })
+
+  ipcMain.handle('epub:annotations:delete', async (_event, params: DeleteEpubAnnotationParams) => {
+    return deleteEpubAnnotation(params)
   })
 
   // ─── Shell ───

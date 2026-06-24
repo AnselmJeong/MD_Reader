@@ -19,6 +19,9 @@ mac:
   target: dmg
   icon: build/icon.png
   category: public.app-category.productivity
+  identity: null
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
 dmg:
   title: "${productName} ${version}"
   icon: build/icon.png
