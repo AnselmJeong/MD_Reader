@@ -21,6 +21,22 @@ function baseUrl(settings: AgentMemorySettings): string {
   return settings.mem0BaseUrl.replace(/\/+$/, '')
 }
 
+function coerceMem0Timestamp(value: unknown): unknown {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const millis = value > 10_000_000_000 ? value : value * 1000
+    return new Date(millis).toISOString()
+  }
+  return value
+}
+
+function sanitizeMem0Metadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...metadata,
+    created_at: coerceMem0Timestamp(metadata.created_at),
+    updated_at: coerceMem0Timestamp(metadata.updated_at)
+  }
+}
+
 async function responseError(prefix: string, response: Response): Promise<Error> {
   let detail = ''
   try {
@@ -42,7 +58,7 @@ export async function addMem0Memory(settings: AgentMemorySettings, params: {
     body: JSON.stringify({
       messages: [{ role: 'user', content: params.content }],
       user_id: settings.userId,
-      metadata: params.metadata,
+      metadata: sanitizeMem0Metadata(params.metadata),
       infer: false
     })
   })
@@ -72,7 +88,7 @@ export async function searchMem0(settings: AgentMemorySettings, query: string, l
     headers: buildHeaders(settings),
     body: JSON.stringify({
       query,
-      user_id: settings.userId,
+      filters: { user_id: settings.userId },
       limit
     })
   })
@@ -104,7 +120,7 @@ export async function checkMem0Health(settings: AgentMemorySettings): Promise<{ 
       headers: buildHeaders(settings),
       body: JSON.stringify({
         query: 'md-reader startup health check',
-        user_id: settings.userId,
+        filters: { user_id: settings.userId },
         limit: 1
       })
     })

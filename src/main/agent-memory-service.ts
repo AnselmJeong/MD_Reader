@@ -214,7 +214,7 @@ async function storeInsight(runId: string, sessionId: string, insight: Extracted
     novelty: insight.novelty,
     reuse_scenario: insight.reuse_scenario,
     tags: insight.tags,
-    created_at: Date.now()
+    created_at: new Date().toISOString()
   }
 
   try {
