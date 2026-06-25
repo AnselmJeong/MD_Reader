@@ -23,8 +23,52 @@ function escapeHtml(content: string): string {
     .replace(/'/g, '&#39;')
 }
 
+function normalizeCjkAdjacentEmphasis(content: string): string {
+  return content
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+    .map((segment) => {
+      if (segment.startsWith('```') || segment.startsWith('`')) return segment
+      return segment.replace(/(?<=[^*\s])(\*{1,3})(?=\p{Script=Hangul})/gu, '$1&#8203;')
+    })
+    .join('')
+}
+
+type HastNode = {
+  type: string
+  tagName?: string
+  properties?: Record<string, unknown>
+  children?: HastNode[]
+}
+
+function wrapTableNodes(node: HastNode) {
+  if (!node.children) return
+
+  for (let index = 0; index < node.children.length; index += 1) {
+    const child = node.children[index]
+
+    if (child.type === 'element' && child.tagName === 'table') {
+      node.children[index] = {
+        type: 'element',
+        tagName: 'div',
+        properties: { className: ['chat-table-scroll'] },
+        children: [child]
+      }
+      continue
+    }
+
+    wrapTableNodes(child)
+  }
+}
+
+function rehypeWrapChatTables() {
+  return function transformer(tree: HastNode) {
+    wrapTableNodes(tree)
+  }
+}
+
 function renderChatMarkdown(content: string, streaming: boolean): string {
   try {
+    const normalizedContent = normalizeCjkAdjacentEmphasis(content)
     const result = unified()
       .use(remarkParse)
       .use(remarkMath)
@@ -32,8 +76,9 @@ function renderChatMarkdown(content: string, streaming: boolean): string {
       .use(remarkRehype, { allowDangerousHtml: true })
       .use(rehypeKatex)
       .use(rehypeHighlight, { detect: !streaming })
+      .use(rehypeWrapChatTables)
       .use(rehypeStringify, { allowDangerousHtml: true })
-      .processSync(content)
+      .processSync(normalizedContent)
     return String(result)
   } catch {
     // During incomplete streaming markdown/math, keep content readable and safe.
