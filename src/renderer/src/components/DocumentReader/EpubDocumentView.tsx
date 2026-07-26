@@ -100,6 +100,52 @@ function extractVisibleText(rendition: Rendition): string {
   )
 }
 
+function getEpubParagraphViewportRects(paragraph: HTMLElement) {
+  const frame = paragraph.ownerDocument.defaultView?.frameElement as HTMLElement | null
+  const viewport = frame?.closest('.epub-container') as HTMLElement | null
+  if (!frame || !viewport) return null
+
+  const frameRect = frame.getBoundingClientRect()
+  const viewportRect = viewport.getBoundingClientRect()
+  const paragraphRects = Array.from(paragraph.getClientRects())
+    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .map((rect) => ({
+      top: frameRect.top + rect.top,
+      right: frameRect.left + rect.right,
+      bottom: frameRect.top + rect.bottom,
+      left: frameRect.left + rect.left
+    }))
+
+  return { paragraphRects, viewportRect }
+}
+
+function isEpubParagraphVisible(paragraph: HTMLElement): boolean {
+  const geometry = getEpubParagraphViewportRects(paragraph)
+  if (!geometry) return false
+
+  const { paragraphRects, viewportRect } = geometry
+  return paragraphRects.some((rect) => (
+    rect.right > viewportRect.left
+    && rect.left < viewportRect.right
+    && rect.bottom > viewportRect.top
+    && rect.top < viewportRect.bottom
+  ))
+}
+
+function doesEpubParagraphContinuePastViewport(
+  paragraph: HTMLElement,
+  direction: 'next' | 'previous'
+): boolean {
+  const geometry = getEpubParagraphViewportRects(paragraph)
+  if (!geometry) return false
+
+  const { paragraphRects, viewportRect } = geometry
+  const tolerance = 1
+  return direction === 'next'
+    ? paragraphRects.some((rect) => rect.right > viewportRect.right + tolerance)
+    : paragraphRects.some((rect) => rect.left < viewportRect.left - tolerance)
+}
+
 function getSelectionClientRect(contents: Contents): DOMRect | null {
   const selection = contents.window.getSelection()
   if (!selection || selection.rangeCount === 0) return null
@@ -220,6 +266,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   const focusKeyHandlerRef = useRef<(event: KeyboardEvent) => boolean>(() => false)
   const focusModeRef = useRef(false)
   const activeParagraphIndexRef = useRef(0)
+  const focusPageTurnInFlightRef = useRef(false)
   const resizeTimerRef = useRef<number | null>(null)
   const tocItemsRef = useRef<TocItem[]>([])
   const epubDragDepthRef = useRef(0)
@@ -318,6 +365,45 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
     }
   }, [getFocusParagraphs, updateEpubFocusAppearance])
+
+  const navigateEpubFocus = useCallback((direction: 'next' | 'previous') => {
+    if (focusPageTurnInFlightRef.current) return
+
+    const rendition = renditionRef.current
+    const paragraphs = getFocusParagraphs()
+    if (!rendition || paragraphs.length === 0) return
+
+    const activeIndex = Math.max(
+      0,
+      Math.min(paragraphs.length - 1, activeParagraphIndexRef.current)
+    )
+    const activeParagraph = paragraphs[activeIndex]
+    const shouldTurnPage = doesEpubParagraphContinuePastViewport(activeParagraph, direction)
+
+    if (!shouldTurnPage) {
+      activateEpubParagraph(activeIndex + (direction === 'next' ? 1 : -1))
+      return
+    }
+
+    focusPageTurnInFlightRef.current = true
+    const pageTurn = direction === 'next' ? rendition.next() : rendition.prev()
+    void pageTurn
+      .then(() => {
+        requestAnimationFrame(() => {
+          activateEpubParagraph(activeIndex, false)
+          focusEpubReadingSurface()
+          focusPageTurnInFlightRef.current = false
+        })
+      })
+      .catch((error) => {
+        focusPageTurnInFlightRef.current = false
+        console.error('Failed to turn EPUB page while preserving focus:', error)
+      })
+  }, [
+    activateEpubParagraph,
+    focusEpubReadingSurface,
+    getFocusParagraphs
+  ])
 
   const handleToggleFocusMode = useCallback(() => {
     const willEnable = !focusModeRef.current
@@ -790,17 +876,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     if (!focusMode) return
 
     const paragraphs = getFocusParagraphs()
-    const visibleIndex = paragraphs.findIndex((paragraph) => {
-      const rect = paragraph.getBoundingClientRect()
-      const view = paragraph.ownerDocument.defaultView
-      return Boolean(
-        view
-        && rect.right > 0
-        && rect.left < view.innerWidth
-        && rect.bottom > 0
-        && rect.top < view.innerHeight
-      )
-    })
+    const visibleIndex = paragraphs.findIndex(isEpubParagraphVisible)
     activateEpubParagraph(visibleIndex >= 0 ? visibleIndex : activeParagraphIndexRef.current, false)
   }, [
     activateEpubParagraph,
@@ -836,10 +912,10 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
       event.preventDefault()
       event.stopPropagation()
-      activateEpubParagraph(activeParagraphIndexRef.current + (key === 'j' ? 1 : -1))
+      navigateEpubFocus(key === 'j' ? 'next' : 'previous')
       return true
     }
-  }, [activateEpubParagraph, handleToggleFocusMode])
+  }, [handleToggleFocusMode, navigateEpubFocus])
 
   useEffect(() => {
     const handleFocusKeyDown = (event: KeyboardEvent) => {
