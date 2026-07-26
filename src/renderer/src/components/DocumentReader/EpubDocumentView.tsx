@@ -404,6 +404,10 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     const muted = styles.getPropertyValue('--reader-ink-soft').trim()
       || styles.getPropertyValue('--color-on-surface-muted').trim()
       || '#766d64'
+    const quoteInk = styles.getPropertyValue('--reader-quote-ink').trim()
+      || foreground
+    const focusQuoteInk = styles.getPropertyValue('--reader-focus-quote-ink').trim()
+      || foreground
     const background = styles.getPropertyValue('--reader-paper').trim()
       || styles.getPropertyValue('--color-surface').trim()
       || '#fbf8f1'
@@ -421,6 +425,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
         margin: '0',
         padding: '0',
         '--md-reader-focus-accent': accent,
+        '--md-reader-focus-quote-ink': focusQuoteInk,
       },
       body: {
         color: foreground,
@@ -439,6 +444,12 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       },
       p: {
         'line-height': String(lineHeight),
+      },
+      blockquote: {
+        color: `${quoteInk} !important`,
+      },
+      'blockquote *': {
+        color: 'inherit !important',
       },
       a: {
         color: foreground,
@@ -499,11 +510,34 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
             transition: opacity 220ms ease, background 220ms ease, transform 240ms cubic-bezier(0.2, 0, 0, 1), box-shadow 220ms ease;
           }
           body.md-reader-epub-focus :is(p, blockquote, li).md-reader-epub-focus-active {
+            position: relative;
             opacity: 1;
-            border-radius: 3px;
-            background: color-mix(in oklch, var(--md-reader-focus-accent) 6%, transparent);
-            box-shadow: -14px 0 0 -11px var(--md-reader-focus-accent);
-            transform: translateX(4px);
+            background: transparent;
+            box-shadow: none;
+            transform: none;
+          }
+          body.md-reader-epub-focus blockquote:is(
+            .md-reader-epub-focus-active,
+            :has(.md-reader-epub-focus-active)
+          ) {
+            opacity: 1;
+            color: var(--md-reader-focus-quote-ink) !important;
+          }
+          body.md-reader-epub-focus blockquote:is(
+            .md-reader-epub-focus-active,
+            :has(.md-reader-epub-focus-active)
+          ) :is(p, li, span, em, strong) {
+            opacity: 1;
+            color: inherit !important;
+          }
+          body.md-reader-epub-focus :is(p, blockquote, li).md-reader-epub-focus-active::before {
+            position: absolute;
+            inset-block: 0.12em;
+            inset-inline-start: -20px;
+            width: 2px;
+            border-radius: 999px;
+            background: color-mix(in oklch, var(--md-reader-focus-accent) 78%, transparent);
+            content: '';
           }
           @media (prefers-reduced-motion: reduce) {
             body.md-reader-epub-focus :is(p, blockquote, li) { transition: none; }
