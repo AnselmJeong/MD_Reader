@@ -6,6 +6,7 @@ import type {
   SessionTitleStatus,
   StoredChatMessage
 } from '../global'
+import { DEFAULT_AI_SYSTEM_PROMPT, resolveAiSystemPrompt } from '../../../shared/ai-prompts'
 
 export interface ChatMessage {
   id: string
@@ -49,7 +50,7 @@ interface ChatState {
   clearMessages: () => void
   setSelectedModel: (model: string) => void
   setAvailableModels: (models: string[]) => void
-  setSystemPrompt: (prompt: string) => void
+  setSystemPrompt: (prompt: string, persist?: boolean) => void
   setInputDraft: (text: string) => void
   setPendingQuotedText: (text: string | null) => void
   requestInputFocus: () => void
@@ -113,8 +114,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   focusInputRequest: 0,
   selectedModel: '',
   availableModels: [],
-  systemPrompt:
-    'You are a careful academic reading assistant. Answer in Korean.\n\nUse the provided document context first. When web sources are provided, use them to verify current or external factual claims and cite them with [S1], [S2] markers. If the provided document or sources do not support a claim, say so clearly instead of guessing.\n\nKeep answers precise, distinguish document evidence from web evidence, and avoid inventing citations.',
+  systemPrompt: DEFAULT_AI_SYSTEM_PROMPT,
   currentContextMeta: null,
   currentProposedContextKey: null,
   currentContextKey: null,
@@ -187,7 +187,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     persistSetting('ollamaModel', model)
   },
   setAvailableModels: (models) => set({ availableModels: models }),
-  setSystemPrompt: (prompt) => set({ systemPrompt: prompt }),
+  setSystemPrompt: (prompt, persist = true) => {
+    set({ systemPrompt: prompt })
+    if (persist) persistSetting('systemPrompt', prompt)
+  },
   setInputDraft: (text) => set({ inputDraft: text }),
   setPendingQuotedText: (text) => set({ pendingQuotedText: text?.trim() ? text.trim() : null }),
   requestInputFocus: () => set((state) => ({ focusInputRequest: state.focusInputRequest + 1 })),
@@ -339,6 +342,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         currentContextKey: result.session.contextKey,
         sessionTitle: result.session.title,
         titleStatus: result.session.titleStatus,
+        systemPrompt: resolveAiSystemPrompt(result.session.systemPrompt),
         messages: fromStoredMessages(result.messages),
         streamingContent: '',
         streamingSources: [],

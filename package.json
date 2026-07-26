@@ -1,6 +1,6 @@
 {
   "name": "md-reader",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "Academic Markdown Reader with AI Assistant",
   "main": "./out/main/index.js",
   "scripts": {

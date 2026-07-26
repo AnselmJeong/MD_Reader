@@ -13,6 +13,7 @@ import { useUIStore } from './store/useUIStore'
 import { useTtsStore } from './store/useTtsStore'
 import { filterOllamaModels } from './utils/ollama-model-filter'
 import { getChatContextMeta, getProposedContextKey } from './utils/chat-context'
+import { resolveAiSystemPrompt } from '../../shared/ai-prompts'
 
 function toReaderFontStack(fontFamily: string): string {
   if (!fontFamily) return 'Newsreader, "Noto Serif KR", Georgia, serif'
@@ -33,6 +34,7 @@ export default function App() {
   // Use selectors to avoid re-rendering App on every token stream (streamingContent/messages updates)
   const setAvailableModels = useChatStore(s => s.setAvailableModels)
   const setSelectedModel = useChatStore(s => s.setSelectedModel)
+  const setSystemPrompt = useChatStore(s => s.setSystemPrompt)
   const switchChatContext = useChatStore(s => s.switchContext)
   const saveCurrentSession = useChatStore(s => s.saveCurrentSession)
   const chatMessages = useChatStore(s => s.messages)
@@ -125,6 +127,7 @@ export default function App() {
         if (settings?.ttsVoice === 'Ava' || settings?.ttsVoice === 'Christopher') {
           setTtsVoice(settings.ttsVoice)
         }
+        setSystemPrompt(resolveAiSystemPrompt(settings?.systemPrompt), false)
         await loadModels(typeof settings?.ollamaModel === 'string' ? settings.ollamaModel : undefined)
       } catch (e) {
         console.error('Settings init error:', e)
@@ -141,7 +144,7 @@ export default function App() {
     }
     init()
     initializeTtsListeners()
-  }, [initializeTtsListeners, setAiSidebarFontSize, setAvailableModels, setContentWidth, setFontSize, setLineHeight, setReaderFontFamily, setRecentFiles, setSelectedModel, setTheme, setTtsVoice])
+  }, [initializeTtsListeners, setAiSidebarFontSize, setAvailableModels, setContentWidth, setFontSize, setLineHeight, setReaderFontFamily, setRecentFiles, setSelectedModel, setSystemPrompt, setTheme, setTtsVoice])
 
   useEffect(() => {
     void switchChatContext(chatContextMeta, proposedChatContextKey)

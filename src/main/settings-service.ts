@@ -1,4 +1,5 @@
 import { SimpleStore } from './simple-store'
+import { DEFAULT_AI_SYSTEM_PROMPT, resolveAiSystemPrompt } from '../shared/ai-prompts'
 
 interface AppSettings {
   theme: 'light' | 'sepia' | 'dark'
@@ -21,8 +22,13 @@ const store = new SimpleStore<AppSettings>('md-reader-settings', {
   readerFontFamily: '',
   ollamaModel: '',
   ttsVoice: 'Christopher',
-  systemPrompt: 'You are a careful academic reading assistant. Answer in Korean.\n\nUse the provided document context first. When web sources are provided, use them to verify current or external factual claims and cite them with [S1], [S2] markers. If the provided document or sources do not support a claim, say so clearly instead of guessing.\n\nKeep answers precise, distinguish document evidence from web evidence, and avoid inventing citations.'
+  systemPrompt: DEFAULT_AI_SYSTEM_PROMPT
 })
+
+const resolvedSystemPrompt = resolveAiSystemPrompt(store.get('systemPrompt'))
+if (resolvedSystemPrompt !== store.get('systemPrompt')) {
+  store.set('systemPrompt', resolvedSystemPrompt)
+}
 
 export function getSettings(key?: string): unknown {
   if (key) {

@@ -8,6 +8,13 @@ interface SearchResult {
   content?: string
 }
 
+export interface FetchedWebPage {
+  title?: string
+  url: string
+  content: string
+  links: string[]
+}
+
 function truncate(value: string | undefined, maxLength: number): string | undefined {
   const normalized = value?.replace(/\s+/g, ' ').trim()
   if (!normalized) return undefined
@@ -32,7 +39,7 @@ function normalizeSource(result: SearchResult, index: number): ChatSource | null
     title: truncate(result.title, 120) || hostname || url,
     url,
     hostname,
-    snippet: truncate(result.content, 500)
+    snippet: truncate(result.content, 800)
   }
 }
 
@@ -74,7 +81,18 @@ export async function webSearch(
     .filter((source): source is ChatSource => Boolean(source))
 }
 
-export async function webFetch(url: string, signal?: AbortSignal): Promise<ChatSource | null> {
+export async function webFetch(url: string, signal?: AbortSignal): Promise<FetchedWebPage | null> {
+  const normalizedUrl = url.trim()
+  if (!normalizedUrl || (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://'))) {
+    return null
+  }
   const data = await postJson<{ title?: string; content?: string; links?: string[] }>('/web_fetch', { url }, signal)
-  return normalizeSource({ title: data.title, url, content: data.content }, 0)
+  const content = data.content?.trim()
+  if (!content) return null
+  return {
+    title: truncate(data.title, 160),
+    url: normalizedUrl,
+    content,
+    links: Array.isArray(data.links) ? data.links.filter((link): link is string => typeof link === 'string') : []
+  }
 }
