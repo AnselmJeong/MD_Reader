@@ -5,7 +5,7 @@ MD Reader uses a Python sidecar for local text-to-speech with NeuTTS-Air and PyA
 ## Setup
 
 ```bash
-brew install uv espeak-ng portaudio ffmpeg
+brew install uv ccache espeak-ng portaudio ffmpeg
 
 cd /Volumes/Aquatope/_DEV_/MD_Reader
 uv sync --directory tts

@@ -19,7 +19,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     enabled: true,
     extractionEnabled: true,
     runtimeInjectionEnabled: true,
-    mem0BaseUrl: 'http://127.0.0.1:8888',
+    mem0BaseUrl: 'http://anselmjeong.synology.me:8888',
     mem0ApiKey: '',
     userId: 'md-reader-user',
     extractorModel: ''

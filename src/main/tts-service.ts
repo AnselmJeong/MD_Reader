@@ -119,6 +119,21 @@ function getReferenceCacheDir(root: string): string {
   return path.join(root, 'tts', '.cache', 'reference-codes')
 }
 
+function getSidecarPath(): string {
+  const existing = process.env.PATH || ''
+  const additions = [
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',
+    '/usr/local/sbin'
+  ]
+  const parts = existing.split(path.delimiter).filter(Boolean)
+  for (const entry of additions) {
+    if (!parts.includes(entry)) parts.unshift(entry)
+  }
+  return parts.join(path.delimiter)
+}
+
 function getConfiguredVoice(): string | undefined {
   const voice = getSettings('ttsVoice')
   return typeof voice === 'string' && voice ? voice : undefined
@@ -195,6 +210,7 @@ function ensureProcess(): ChildProcessWithoutNullStreams {
     cwd: launch.cwd,
     env: {
       ...process.env,
+      PATH: getSidecarPath(),
       PYTHONUNBUFFERED: '1',
       UV_PROJECT_ENVIRONMENT: getUvEnvironmentPath(root),
       HF_HOME: getHuggingFaceHome(),

@@ -16,11 +16,17 @@ export interface AgentMemorySettings {
   minConfidenceToStoreInsight: number
 }
 
+const DEFAULT_MEM0_BASE_URL = 'http://anselmjeong.synology.me:8888'
+const LEGACY_LOCAL_MEM0_BASE_URLS = new Set([
+  'http://127.0.0.1:8888',
+  'http://localhost:8888'
+])
+
 const store = new SimpleStore<AgentMemorySettings>('agent-memory-settings', {
   enabled: true,
   extractionEnabled: true,
   runtimeInjectionEnabled: true,
-  mem0BaseUrl: 'http://127.0.0.1:8888',
+  mem0BaseUrl: DEFAULT_MEM0_BASE_URL,
   mem0ApiKey: '',
   mem0AuthMode: 'x-api-key',
   userId: 'md-reader-user',
@@ -29,6 +35,15 @@ const store = new SimpleStore<AgentMemorySettings>('agent-memory-settings', {
   minConfidenceToApplyUser: 0.72,
   minConfidenceToStoreInsight: 0.68
 })
+
+function migrateLegacyMem0BaseUrl(): void {
+  const current = store.get('mem0BaseUrl').replace(/\/+$/, '')
+  if (LEGACY_LOCAL_MEM0_BASE_URLS.has(current)) {
+    store.set('mem0BaseUrl', DEFAULT_MEM0_BASE_URL)
+  }
+}
+
+migrateLegacyMem0BaseUrl()
 
 export function getAgentMemorySettings(): AgentMemorySettings {
   const settings = store.getAll()

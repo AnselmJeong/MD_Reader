@@ -15,7 +15,7 @@ const highlightChoices: Array<{
   { style: 'green', label: 'Green highlight', swatch: 'rgba(119, 184, 112, 0.82)' },
   { style: 'blue', label: 'Blue highlight', swatch: 'rgba(93, 155, 214, 0.82)' },
   { style: 'pink', label: 'Pink highlight', swatch: 'rgba(223, 118, 163, 0.82)' },
-  { style: 'red-underline', label: 'Red underline', swatch: 'rgba(214, 63, 55, 0.95)', underline: true }
+  { style: 'red-underline', label: 'Red underline (U)', swatch: 'rgba(214, 63, 55, 0.95)', underline: true }
 ]
 
 interface TextSelectionMenuProps {
