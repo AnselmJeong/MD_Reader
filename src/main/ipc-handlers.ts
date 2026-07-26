@@ -4,6 +4,7 @@ import { listModels, generateChatTitle } from './ollama-service'
 import { getAiProviderStatus, updateAiProviderSettings, AiProviderSettingsUpdate } from './ai-provider-settings'
 import { streamGroundedChat } from './ai-chat-service'
 import { getSettings, setSettings } from './settings-service'
+import { listKoreanSystemFonts } from './system-font-service'
 import { controlTts, getTtsStatus, onTtsEvent, speakTts, TtsSpeakParams } from './tts-service'
 import {
   archiveChatSession,
@@ -190,6 +191,10 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('settings:set', async (_event, key: string, value: unknown) => {
     setSettings(key, value)
     return { success: true }
+  })
+
+  ipcMain.handle('fonts:list-korean', async () => {
+    return listKoreanSystemFonts()
   })
 
   ipcMain.handle('ai-provider:status', async () => {

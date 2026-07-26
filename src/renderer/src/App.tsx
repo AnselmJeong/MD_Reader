@@ -14,6 +14,19 @@ import { useTtsStore } from './store/useTtsStore'
 import { filterOllamaModels } from './utils/ollama-model-filter'
 import { getChatContextMeta, getProposedContextKey } from './utils/chat-context'
 
+function toReaderFontStack(fontFamily: string): string {
+  if (!fontFamily) return 'Newsreader, "Noto Serif KR", Georgia, serif'
+  const escapedFontFamily = fontFamily.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
+  return `"${escapedFontFamily}", "Noto Serif KR", Georgia, serif`
+}
+
+function toReaderPageWidth(contentWidth: number, spread: boolean): string {
+  const normalized = Math.max(0, Math.min(1, (contentWidth - 52) / 30))
+  const minimum = spread ? 75 : 58
+  const maximum = spread ? 98 : 86
+  return `${minimum + normalized * (maximum - minimum)}%`
+}
+
 export default function App() {
   const { activeTab, filePath, content, kind, isDirty, setDocument, setRecentFiles, markSaved } = useDocumentStore()
   
@@ -26,7 +39,7 @@ export default function App() {
   const chatSessionDirty = useChatStore(s => s.sessionDirty)
   const chatIsStreaming = useChatStore(s => s.isStreaming)
 
-  const { fontSize, aiSidebarFontSize, lineHeight, contentWidth, setTheme, setFontSize, setAiSidebarFontSize, setLineHeight, setContentWidth, setTtsVoice, cycleTheme } = useSettingsStore()
+  const { fontSize, aiSidebarFontSize, lineHeight, contentWidth, readerFontFamily, setTheme, setFontSize, setAiSidebarFontSize, setLineHeight, setContentWidth, setReaderFontFamily, setTtsVoice, cycleTheme } = useSettingsStore()
   const { showChat, showSettings, toggleChat, toggleSettings, toggleToC, setShowSearch, chatWidth, setChatWidth } = useUIStore()
   const initializeTtsListeners = useTtsStore(s => s.initializeListeners)
   const chatContextMeta = useMemo(() => getChatContextMeta(activeTab), [
@@ -106,6 +119,9 @@ export default function App() {
         if (settings?.aiSidebarFontSize) setAiSidebarFontSize(settings.aiSidebarFontSize as number)
         if (settings?.lineHeight) setLineHeight(settings.lineHeight as number)
         if (settings?.contentWidth) setContentWidth(settings.contentWidth as number)
+        if (typeof settings?.readerFontFamily === 'string') {
+          setReaderFontFamily(settings.readerFontFamily)
+        }
         if (settings?.ttsVoice === 'Ava' || settings?.ttsVoice === 'Christopher') {
           setTtsVoice(settings.ttsVoice)
         }
@@ -125,7 +141,7 @@ export default function App() {
     }
     init()
     initializeTtsListeners()
-  }, [initializeTtsListeners, setAiSidebarFontSize, setAvailableModels, setContentWidth, setFontSize, setLineHeight, setRecentFiles, setSelectedModel, setTheme, setTtsVoice])
+  }, [initializeTtsListeners, setAiSidebarFontSize, setAvailableModels, setContentWidth, setFontSize, setLineHeight, setReaderFontFamily, setRecentFiles, setSelectedModel, setTheme, setTtsVoice])
 
   useEffect(() => {
     void switchChatContext(chatContextMeta, proposedChatContextKey)
@@ -271,7 +287,10 @@ export default function App() {
               style={{
                 '--font-size': `${fontSize}px`,
                 '--line-height': `${lineHeight}`,
-                '--content-width': `${contentWidth}`
+                '--content-width': `${contentWidth}`,
+                '--reader-page-width': toReaderPageWidth(contentWidth, false),
+                '--reader-spread-width': toReaderPageWidth(contentWidth, true),
+                '--reader-font-family': toReaderFontStack(readerFontFamily)
               } as React.CSSProperties}
             >
               {activeTab ? <DocumentReader /> : <WelcomeScreen onOpenFile={handleOpenFile} />}

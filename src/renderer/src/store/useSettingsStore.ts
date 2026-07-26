@@ -9,6 +9,7 @@ interface SettingsState {
   aiSidebarFontSize: number
   lineHeight: number
   contentWidth: number
+  readerFontFamily: string
   ttsVoice: TtsVoice
 
   setTheme: (theme: Theme) => void
@@ -16,6 +17,7 @@ interface SettingsState {
   setAiSidebarFontSize: (size: number) => void
   setLineHeight: (height: number) => void
   setContentWidth: (width: number) => void
+  setReaderFontFamily: (fontFamily: string) => void
   setTtsVoice: (voice: TtsVoice) => void
   cycleTheme: () => void
 }
@@ -31,7 +33,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   fontSize: 17,
   aiSidebarFontSize: 14,
   lineHeight: 1.75,
-  contentWidth: 72,
+  contentWidth: 64,
+  readerFontFamily: '',
   ttsVoice: 'Christopher',
 
   setTheme: (theme) => {
@@ -57,8 +60,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     persistSetting('lineHeight', height)
   },
   setContentWidth: (width) => {
-    set({ contentWidth: width })
-    persistSetting('contentWidth', width)
+    const clamped = Math.min(82, Math.max(52, width))
+    set({ contentWidth: clamped })
+    persistSetting('contentWidth', clamped)
+  },
+  setReaderFontFamily: (fontFamily) => {
+    set({ readerFontFamily: fontFamily })
+    persistSetting('readerFontFamily', fontFamily)
   },
   setTtsVoice: (voice) => {
     set({ ttsVoice: voice })

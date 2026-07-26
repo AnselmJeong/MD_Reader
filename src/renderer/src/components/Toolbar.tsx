@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useSettingsStore } from '../store/useSettingsStore'
 import { useUIStore } from '../store/useUIStore'
 import { useDocumentStore } from '../store/useDocumentStore'
 import { useTtsStore } from '../store/useTtsStore'
@@ -17,7 +16,6 @@ const iconPaths: Record<string, string[]> = {
   toc: ['M5.5 4h8', 'M5.5 8h8', 'M5.5 12h8', 'M2.75 4h.5', 'M2.75 8h.5', 'M2.75 12h.5'],
   search: ['M7.2 12.2a5 5 0 1 0 0-10 5 5 0 0 0 0 10z', 'M10.8 10.8l3 3'],
   headphones: ['M2.75 8.5a5.25 5.25 0 0 1 10.5 0', 'M2.75 8.5v3.75h2v-4h-2z', 'M13.25 8.5v3.75h-2v-4h2z'],
-  sun: ['M8 10.75A2.75 2.75 0 1 0 8 5.25a2.75 2.75 0 0 0 0 5.5z', 'M8 1.5v1.2', 'M8 13.3v1.2', 'M1.5 8h1.2', 'M13.3 8h1.2', 'M3.4 3.4l.85.85', 'M11.75 11.75l.85.85', 'M12.6 3.4l-.85.85', 'M4.25 11.75l-.85.85'],
   spark: ['M8 1.75l.9 3.35L12.25 6l-3.35.9L8 10.25l-.9-3.35L3.75 6l3.35-.9L8 1.75z'],
   cog: ['M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z', 'M8 1.75v1.4', 'M8 12.85v1.4', 'M1.75 8h1.4', 'M12.85 8h1.4', 'M3.6 3.6l1 1', 'M11.4 11.4l1 1', 'M12.4 3.6l-1 1', 'M4.6 11.4l-1 1']
 }
@@ -32,7 +30,6 @@ function Icon({ name, className = 'h-3.5 w-3.5' }: { name: keyof typeof iconPath
 
 export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarProps) {
   const [isTtsErrorOpen, setIsTtsErrorOpen] = useState(false)
-  const { theme, fontSize, setFontSize, cycleTheme } = useSettingsStore()
   const { toggleSearch, toggleChat, showChat, toggleSettings } = useUIStore()
   const { activeTab, content, fileName, kind, isDirty: documentIsDirty } = useDocumentStore()
   const { mode: ttsMode, state: ttsState, error: ttsError, speakDocument, resume, stop, restart, clearError } = useTtsStore()
@@ -146,41 +143,6 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
             </button>
           </>
         )}
-      </div>
-
-      <div className="mx-2 h-5 w-px bg-border" />
-
-      {/* Font size */}
-      <div className="titlebar-no-drag flex items-center gap-0 rounded-md border border-border bg-surface">
-        <button
-          onClick={() => setFontSize(fontSize - 1)}
-          className="px-2 py-1 text-[12px] font-medium text-on-surface-muted hover:text-on-surface"
-          title="Decrease font size (⌘-)"
-        >
-          A-
-        </button>
-        <span className="w-8 border-x border-border text-center text-[12px] text-on-surface">{fontSize}</span>
-        <button
-          onClick={() => setFontSize(fontSize + 1)}
-          className="px-2 py-1 text-[12px] font-medium text-on-surface-muted hover:text-on-surface"
-          title="Increase font size (⌘+)"
-        >
-          A+
-        </button>
-      </div>
-
-      <div className="mx-2 h-5 w-px bg-border" />
-
-      {/* Theme */}
-      <div className="titlebar-no-drag flex items-center gap-1">
-        <button
-          onClick={cycleTheme}
-          className="flex items-center gap-1.5 rounded-[5px] px-2.5 py-1 text-[11.5px] font-medium text-on-surface hover:bg-[var(--ink-3)]"
-          title="Cycle Theme (⌘⇧D)"
-        >
-          <Icon name="sun" />
-          <span>{theme.charAt(0).toUpperCase() + theme.slice(1)}</span>
-        </button>
       </div>
 
       <div className="pointer-events-none mx-3 flex min-w-0 flex-1 justify-center px-2 text-[11.5px] font-medium text-on-surface-muted">

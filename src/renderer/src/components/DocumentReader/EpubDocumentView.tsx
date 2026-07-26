@@ -1,8 +1,7 @@
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import epubModule, { type Book, type Contents, type Location, type NavItem, type Rendition } from 'epubjs'
 import { TextSelectionMenu } from './TextSelectionMenu'
-import { ReadingProgress } from './ReadingProgress'
-import { ContentsRailButton } from './ContentsRailButton'
+import { ReadingPaneFooter, ReadingPaneHeader, ReadingSensesPanel } from './ReadingChrome'
 import { useDocumentStore, type EpubDocumentTab } from '../../store/useDocumentStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useUIStore } from '../../store/useUIStore'
@@ -34,6 +33,8 @@ type SpreadMode = 'none' | 'always'
 
 const EPUB_SPREAD_GAP = 44
 const EPUB_ANNOTATION_CLASS = 'md-reader-epub-annotation'
+const EPUB_FOCUS_STYLE_ID = 'md-reader-focus-style'
+const EPUB_FOCUS_BLOCK_SELECTOR = 'p, blockquote, li'
 
 const epubAnnotationStyles: Record<EpubAnnotationStyle, {
   kind: EpubAnnotationKind
@@ -214,14 +215,25 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   const latestChapterHrefRef = useRef<string | null>(tab.currentChapterHref)
   const latestChapterLabelRef = useRef<string | null>(tab.currentChapterLabel)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const readerPageRef = useRef<HTMLElement>(null)
   const searchKeyHandlerRef = useRef<(event: KeyboardEvent) => void>(() => {})
+  const focusKeyHandlerRef = useRef<(event: KeyboardEvent) => boolean>(() => false)
+  const focusModeRef = useRef(false)
+  const activeParagraphIndexRef = useRef(0)
   const resizeTimerRef = useRef<number | null>(null)
   const tocItemsRef = useRef<TocItem[]>([])
   const epubDragDepthRef = useRef(0)
   const epubDropCleanupRef = useRef<Array<() => void>>([])
 
-  const { showToC, showSearch, setShowSearch, toggleToC } = useUIStore()
-  const { fontSize, lineHeight } = useSettingsStore()
+  const {
+    focusMode,
+    showToC,
+    showSearch,
+    setShowSearch,
+    toggleFocusMode,
+    toggleToC
+  } = useUIStore()
+  const { theme, fontSize, lineHeight, contentWidth, readerFontFamily } = useSettingsStore()
   const { setDocument, updateEpubContent, updateEpubLocation } = useDocumentStore()
 
   const [tocItems, setTocItems] = useState<TocItem[]>([])
@@ -236,6 +248,85 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   const [isEpubDragging, setIsEpubDragging] = useState(false)
 
   const bookBuffer = useMemo(() => base64ToArrayBuffer(tab.epubBase64), [tab.epubBase64])
+
+  const getFocusParagraphs = useCallback(() => {
+    const rendition = renditionRef.current
+    if (!rendition) return []
+    return getRenditionContents(rendition).flatMap((contents) => (
+      Array.from(contents.document.querySelectorAll<HTMLElement>(EPUB_FOCUS_BLOCK_SELECTOR))
+        .filter((element) => {
+          if (normalizeText(element.textContent ?? '').length === 0) return false
+          if (element.matches('blockquote, li') && element.querySelector('p, blockquote, li')) return false
+          return true
+        })
+    ))
+  }, [])
+
+  const updateEpubFocusAppearance = useCallback((enabled: boolean) => {
+    const rendition = renditionRef.current
+    if (!rendition) return
+
+    getRenditionContents(rendition).forEach((contents) => {
+      contents.document.body?.classList.toggle('md-reader-epub-focus', enabled)
+      if (!enabled) {
+        contents.document.querySelectorAll('.md-reader-epub-focus-active').forEach((element) => {
+          element.classList.remove('md-reader-epub-focus-active')
+        })
+      }
+    })
+  }, [])
+
+  const focusEpubReadingSurface = useCallback(() => {
+    const body = renditionRef.current
+      ? getRenditionContents(renditionRef.current)
+        .map((contents) => contents.document.body)
+        .find((candidate) => candidate != null)
+      : null
+
+    if (body) {
+      body.tabIndex = -1
+      body.focus({ preventScroll: true })
+      return
+    }
+    readerPageRef.current?.focus({ preventScroll: true })
+  }, [])
+
+  const activateEpubParagraph = useCallback((index: number, shouldNavigate = true) => {
+    const paragraphs = getFocusParagraphs()
+    if (paragraphs.length === 0) return
+
+    const nextIndex = Math.max(0, Math.min(paragraphs.length - 1, index))
+    paragraphs.forEach((paragraph, paragraphIndex) => {
+      paragraph.classList.toggle('md-reader-epub-focus-active', paragraphIndex === nextIndex)
+    })
+    activeParagraphIndexRef.current = nextIndex
+    updateEpubFocusAppearance(true)
+
+    const target = paragraphs[nextIndex]
+    if (shouldNavigate) {
+      const rendition = renditionRef.current
+      const targetContents = rendition
+        ? getRenditionContents(rendition).find((contents) => contents.document === target.ownerDocument)
+        : null
+      const targetCfi = targetContents?.cfiFromNode(target, EPUB_ANNOTATION_CLASS)
+      if (rendition && targetCfi) {
+        void rendition.display(targetCfi).then(() => {
+          requestAnimationFrame(() => activateEpubParagraph(activeParagraphIndexRef.current, false))
+        })
+        return
+      }
+      target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+    }
+  }, [getFocusParagraphs, updateEpubFocusAppearance])
+
+  const handleToggleFocusMode = useCallback(() => {
+    const willEnable = !focusModeRef.current
+    focusModeRef.current = willEnable
+    toggleFocusMode()
+    if (willEnable) {
+      requestAnimationFrame(focusEpubReadingSurface)
+    }
+  }, [focusEpubReadingSurface, toggleFocusMode])
 
   const updateVisibleText = useCallback((rendition: Rendition) => {
     const text = extractVisibleText(rendition)
@@ -305,20 +396,36 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   }, [resizeRenditionToSurface])
 
   const applyTheme = useCallback((rendition: Rendition) => {
-    const styles = window.getComputedStyle(document.documentElement)
-    const foreground = styles.getPropertyValue('--color-on-surface').trim() || '#191714'
-    const muted = styles.getPropertyValue('--color-on-surface-muted').trim() || '#6f6a61'
-    const background = styles.getPropertyValue('--color-surface').trim() || '#fbfaf7'
+    const readerSurface = viewerRef.current?.closest('.reading-stage') ?? document.documentElement
+    const styles = window.getComputedStyle(readerSurface)
+    const foreground = styles.getPropertyValue('--reader-ink').trim()
+      || styles.getPropertyValue('--color-on-surface').trim()
+      || '#332c27'
+    const muted = styles.getPropertyValue('--reader-ink-soft').trim()
+      || styles.getPropertyValue('--color-on-surface-muted').trim()
+      || '#766d64'
+    const background = styles.getPropertyValue('--reader-paper').trim()
+      || styles.getPropertyValue('--color-surface').trim()
+      || '#fbf8f1'
+    const accent = styles.getPropertyValue('--reader-accent').trim()
+      || styles.getPropertyValue('--color-accent').trim()
+      || '#914c35'
+    const escapedFontFamily = readerFontFamily.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
+    const fontFamily = readerFontFamily
+      ? `"${escapedFontFamily}", "Noto Serif KR", Georgia, serif`
+      : 'Newsreader, "Noto Serif KR", Georgia, serif'
     const bodyPadding = spreadMode === 'always' ? '1.25rem 1.75rem' : '1.25rem 3rem'
     rendition.themes.default({
       html: {
         background,
         margin: '0',
         padding: '0',
+        '--md-reader-focus-accent': accent,
       },
       body: {
         color: foreground,
         background,
+        'font-family': fontFamily,
         'font-size': `${fontSize}px`,
         'line-height': String(lineHeight),
         margin: '0',
@@ -346,7 +453,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
         'mix-blend-mode': 'multiply',
       }
     })
-  }, [fontSize, lineHeight, spreadMode])
+  }, [fontSize, lineHeight, readerFontFamily, spreadMode, theme])
 
   useEffect(() => {
     const viewer = viewerRef.current
@@ -371,7 +478,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       height: '100%',
       flow: 'paginated',
       spread: spreadMode,
-      minSpreadWidth: 760,
+      minSpreadWidth: 0,
       gap: spreadMode === 'always' ? EPUB_SPREAD_GAP : 0,
       ignoreClass: EPUB_ANNOTATION_CLASS,
       allowScriptedContent: false
@@ -382,6 +489,33 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     applyTheme(rendition)
 
     rendition.hooks.content.register((contents: Contents) => {
+      let focusStyle = contents.document.getElementById(EPUB_FOCUS_STYLE_ID) as HTMLStyleElement | null
+      if (!focusStyle) {
+        focusStyle = contents.document.createElement('style')
+        focusStyle.id = EPUB_FOCUS_STYLE_ID
+        focusStyle.textContent = `
+          body.md-reader-epub-focus :is(p, blockquote, li) {
+            opacity: 0.48;
+            transition: opacity 220ms ease, background 220ms ease, transform 240ms cubic-bezier(0.2, 0, 0, 1), box-shadow 220ms ease;
+          }
+          body.md-reader-epub-focus :is(p, blockquote, li).md-reader-epub-focus-active {
+            opacity: 1;
+            border-radius: 3px;
+            background: color-mix(in oklch, var(--md-reader-focus-accent) 6%, transparent);
+            box-shadow: -14px 0 0 -11px var(--md-reader-focus-accent);
+            transform: translateX(4px);
+          }
+          @media (prefers-reduced-motion: reduce) {
+            body.md-reader-epub-focus :is(p, blockquote, li) { transition: none; }
+          }
+        `
+        contents.document.head.appendChild(focusStyle)
+      }
+      if (contents.document.body) {
+        contents.document.body.tabIndex = -1
+        contents.document.body.classList.toggle('md-reader-epub-focus', focusModeRef.current)
+      }
+
       contents.on('linkClicked', () => {
         const cfi = currentCfiRef.current ?? rendition.location?.start?.cfi ?? null
         if (cfi) setReturnCfi(cfi)
@@ -398,6 +532,8 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
           searchKeyHandlerRef.current(event)
           return
         }
+
+        if (focusKeyHandlerRef.current(event)) return
 
         if (event.key === 'ArrowLeft') {
           event.preventDefault()
@@ -444,7 +580,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       }
 
       contents.document.addEventListener('mousedown', handleContentMouseDown)
-      contents.document.addEventListener('keydown', handleContentKeyDown)
+      contents.document.addEventListener('keydown', handleContentKeyDown, true)
       contents.document.addEventListener('dragenter', handleDragEnter)
       contents.document.addEventListener('dragover', handleDragOver)
       contents.document.addEventListener('dragleave', handleDragLeave)
@@ -452,7 +588,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
       epubDropCleanupRef.current.push(() => {
         contents.document.removeEventListener('mousedown', handleContentMouseDown)
-        contents.document.removeEventListener('keydown', handleContentKeyDown)
+        contents.document.removeEventListener('keydown', handleContentKeyDown, true)
         contents.document.removeEventListener('dragenter', handleDragEnter)
         contents.document.removeEventListener('dragover', handleDragOver)
         contents.document.removeEventListener('dragleave', handleDragLeave)
@@ -477,6 +613,12 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
     rendition.on('rendered', () => {
       updateVisibleText(rendition)
+      if (focusModeRef.current) {
+        requestAnimationFrame(() => {
+          activateEpubParagraph(activeParagraphIndexRef.current, false)
+          focusEpubReadingSurface()
+        })
+      }
     })
 
     rendition.on('relocated', (location: Location) => {
@@ -598,13 +740,80 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     tab.lastProgress,
     updateEpubLocation,
     updateVisibleText,
-    showAnnotationMenu
+    showAnnotationMenu,
+    activateEpubParagraph,
+    focusEpubReadingSurface
   ])
 
   useEffect(() => {
     const rendition = renditionRef.current
     if (rendition) applyTheme(rendition)
   }, [applyTheme])
+
+  useEffect(() => {
+    focusModeRef.current = focusMode
+    updateEpubFocusAppearance(focusMode)
+    if (!focusMode) return
+
+    const paragraphs = getFocusParagraphs()
+    const visibleIndex = paragraphs.findIndex((paragraph) => {
+      const rect = paragraph.getBoundingClientRect()
+      const view = paragraph.ownerDocument.defaultView
+      return Boolean(
+        view
+        && rect.right > 0
+        && rect.left < view.innerWidth
+        && rect.bottom > 0
+        && rect.top < view.innerHeight
+      )
+    })
+    activateEpubParagraph(visibleIndex >= 0 ? visibleIndex : activeParagraphIndexRef.current, false)
+  }, [
+    activateEpubParagraph,
+    focusMode,
+    getFocusParagraphs,
+    updateEpubFocusAppearance
+  ])
+
+  useEffect(() => {
+    focusKeyHandlerRef.current = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (
+        event.metaKey
+        || event.ctrlKey
+        || event.altKey
+        || target?.closest('input, textarea, select, [contenteditable="true"]')
+      ) return false
+
+      const key = event.code === 'KeyF'
+        ? 'f'
+        : event.code === 'KeyJ'
+          ? 'j'
+          : event.code === 'KeyK'
+            ? 'k'
+            : event.key.toLowerCase()
+      if (key === 'f') {
+        event.preventDefault()
+        event.stopPropagation()
+        handleToggleFocusMode()
+        return true
+      }
+      if (!focusModeRef.current || (key !== 'j' && key !== 'k')) return false
+
+      event.preventDefault()
+      event.stopPropagation()
+      activateEpubParagraph(activeParagraphIndexRef.current + (key === 'j' ? 1 : -1))
+      return true
+    }
+  }, [activateEpubParagraph, handleToggleFocusMode])
+
+  useEffect(() => {
+    const handleFocusKeyDown = (event: KeyboardEvent) => {
+      focusKeyHandlerRef.current(event)
+    }
+    window.addEventListener('keydown', handleFocusKeyDown, true)
+    return () => window.removeEventListener('keydown', handleFocusKeyDown, true)
+  }, [])
 
   useEffect(() => {
     const viewer = viewerRef.current
@@ -621,7 +830,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   useEffect(() => {
     requestAnimationFrame(resizeRenditionToSurface)
     scheduleRenditionResize(120)
-  }, [resizeRenditionToSurface, scheduleRenditionResize, showToC])
+  }, [contentWidth, resizeRenditionToSurface, scheduleRenditionResize, showToC])
 
   const handleNavigate = useCallback((href: string) => {
     setReturnCfi(null)
@@ -754,17 +963,31 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   }, [])
 
   const normalizedSectionLabel = sectionLabel === 'EPUB' ? title : sectionLabel
+  const normalizedPageWidth = Math.max(0, Math.min(1, (contentWidth - 52) / 30))
+  const pageWidthPercentage = spreadMode === 'always'
+    ? 75 + normalizedPageWidth * 23
+    : 58 + normalizedPageWidth * 28
 
   return (
-    <div className="relative flex h-full">
-      <ReadingProgress progress={progress} />
+    <div className={`reading-stage epub-reading-stage ${focusMode ? 'focus-mode' : ''}`}>
+      <ReadingPaneHeader
+        label={normalizedSectionLabel}
+        progress={progress}
+        showToC={showToC}
+        onToggleFocusMode={handleToggleFocusMode}
+        onToggleToC={toggleToC}
+      />
 
-      {showToC && <EpubTableOfContents items={tocItems} onNavigate={handleNavigate} />}
+      {showToC && (
+        <div className="reading-toc-panel">
+          <EpubTableOfContents items={tocItems} onNavigate={handleNavigate} />
+        </div>
+      )}
 
       {showSearch && (
         <div
           data-search-panel="true"
-          className="absolute top-3 right-4 z-30 flex items-center gap-2 rounded-lg border border-border bg-surface-alt px-2 py-1.5 shadow-md"
+          className="absolute right-4 top-[64px] z-30 flex items-center gap-2 rounded-lg border border-border bg-surface-alt px-2 py-1.5 shadow-md"
         >
           <input
             ref={searchInputRef}
@@ -816,21 +1039,13 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
         </div>
       )}
 
-      <div className="min-w-0 flex-1">
-        <div className="flex h-full min-h-0">
-          <aside className="sticky top-0 hidden h-[calc(100vh-98px)] w-14 shrink-0 border-r border-border bg-surface-alt md:block">
-            <ContentsRailButton active={showToC} onClick={toggleToC} />
-            <div className="reader-rail-label small-caps text-on-surface-muted">
-              EPUB · {normalizedSectionLabel}
-            </div>
-            <div className="absolute bottom-10 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2" aria-hidden="true">
-              <span className="h-1.5 w-1.5 rounded-full bg-on-surface-muted/35" />
-              <span className="h-1.5 w-1.5 rounded-full bg-on-surface-muted/35" />
-              <span className="h-4 w-px bg-accent" />
-              <span className="h-1.5 w-1.5 rounded-full bg-on-surface-muted/35" />
-              <span className="h-1.5 w-1.5 rounded-full bg-on-surface-muted/35" />
-            </div>
-          </aside>
+      <div className="reading-viewport epub-reading-viewport">
+        <article
+          ref={readerPageRef}
+          className={`reader-page-canvas epub-reader-page epub-reader-page-${spreadMode}`}
+          style={{ width: `${pageWidthPercentage}%` }}
+          tabIndex={-1}
+        >
           <div className="epub-document-body flex min-w-0 flex-1 flex-col">
             <div className={`epub-viewer-shell epub-viewer-shell-${spreadMode} min-h-0 flex-1`}>
               <div ref={viewerRef as RefObject<HTMLDivElement>} className="epub-render-surface" />
@@ -846,7 +1061,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
               )}
             </div>
           </div>
-        </div>
+        </article>
       </div>
 
       <button
@@ -879,6 +1094,8 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
           2p
         </button>
       </div>
+      <ReadingPaneFooter progress={progress} detail="EPUB" />
+      <ReadingSensesPanel />
 
       {activeAnnotationMenu && (
         <div

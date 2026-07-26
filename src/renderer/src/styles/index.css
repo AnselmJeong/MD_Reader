@@ -1,6 +1,7 @@
 @import './themes.css';
 @import './typography.css';
 @import './markdown.css';
+@import './reader.css';
 @import 'katex/dist/katex.min.css';
 
 @tailwind base;

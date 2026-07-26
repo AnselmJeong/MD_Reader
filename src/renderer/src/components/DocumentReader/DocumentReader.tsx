@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { MetadataCard } from './MetadataCard'
 import { TableOfContents } from './TableOfContents'
-import { ReadingProgress } from './ReadingProgress'
 import { TextSelectionMenu } from './TextSelectionMenu'
 import { EpubDocumentView } from './EpubDocumentView'
 import { LinkTooltip } from './LinkTooltip'
-import { ContentsRailButton } from './ContentsRailButton'
+import { ReadingPaneFooter, ReadingPaneHeader, ReadingSensesPanel } from './ReadingChrome'
 import { useDocumentSearch } from './hooks/useDocumentSearch'
+import { useParagraphFocus } from './hooks/useParagraphFocus'
 import { useTextSelectionHighlight } from './hooks/useTextSelectionHighlight'
 import { useLinkTooltip } from './hooks/useLinkTooltip'
 import { useDocumentStore, type MarkdownDocumentTab } from '../../store/useDocumentStore'
@@ -26,7 +26,7 @@ function stripPrimaryHeading(content: string): string {
 
 function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
   const { updateContent } = useDocumentStore()
-  const { showToC, showSearch, setShowSearch, toggleToC } = useUIStore()
+  const { focusMode, showToC, showSearch, setShowSearch, toggleFocusMode, toggleToC } = useUIStore()
   const { activeUtteranceId, state: ttsState, utterances } = useTtsStore()
   const { content, bibContent, fileName, wordCount, readingTime } = tab
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -55,6 +55,57 @@ function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
   })
   const sectionLabel = getPrimaryHeading(content)
   const renderedContent = stripPrimaryHeading(content)
+  useParagraphFocus({
+    enabled: focusMode,
+    rootRef: documentBodyRef,
+    scrollRef,
+    contentKey: content
+  })
+
+  const handleToggleFocusMode = useCallback(() => {
+    const willEnable = !focusMode
+    toggleFocusMode()
+    if (willEnable) {
+      requestAnimationFrame(() => scrollRef.current?.focus({ preventScroll: true }))
+    }
+  }, [focusMode, toggleFocusMode])
+
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) return
+
+    const updateProgress = () => {
+      const scrollable = container.scrollHeight - container.clientHeight
+      setScrollProgress(scrollable > 0 ? Math.max(0, Math.min(1, container.scrollTop / scrollable)) : 1)
+    }
+    updateProgress()
+    container.addEventListener('scroll', updateProgress, { passive: true })
+    const resizeObserver = new ResizeObserver(updateProgress)
+    resizeObserver.observe(container)
+    return () => {
+      container.removeEventListener('scroll', updateProgress)
+      resizeObserver.disconnect()
+    }
+  }, [content])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (
+        event.defaultPrevented
+        || event.metaKey
+        || event.ctrlKey
+        || event.altKey
+        || target?.closest('input, textarea, select, [contenteditable="true"]')
+      ) return
+      if (event.code !== 'KeyF' && event.key.toLowerCase() !== 'f') return
+
+      event.preventDefault()
+      handleToggleFocusMode()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleToggleFocusMode])
 
   useEffect(() => {
     const root = documentBodyRef.current
@@ -73,17 +124,26 @@ function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
   if (!content) return null
 
   return (
-    <div className="relative flex h-full">
-      {/* Reading progress bar */}
-      <ReadingProgress progress={scrollProgress} />
+    <div className={`reading-stage ${focusMode ? 'focus-mode' : ''}`}>
+      <ReadingPaneHeader
+        label={sectionLabel}
+        progress={scrollProgress}
+        showToC={showToC}
+        onToggleFocusMode={handleToggleFocusMode}
+        onToggleToC={toggleToC}
+      />
 
       {/* Table of Contents overlay */}
-      {showToC && <TableOfContents content={content} scrollContainer={scrollRef as React.RefObject<HTMLDivElement>} />}
+      {showToC && (
+        <div className="reading-toc-panel">
+          <TableOfContents content={content} scrollContainer={scrollRef as React.RefObject<HTMLDivElement>} />
+        </div>
+      )}
 
       {showSearch && (
         <div
           data-search-panel="true"
-          className="absolute top-3 right-4 z-30 flex items-center gap-2 rounded-lg border border-border bg-surface-alt px-2 py-1.5 shadow-md"
+          className="absolute right-4 top-[64px] z-30 flex items-center gap-2 rounded-lg border border-border bg-surface-alt px-2 py-1.5 shadow-md"
         >
           <input
             ref={searchInputRef}
@@ -124,56 +184,35 @@ function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
       )}
 
       {/* Document content */}
-      <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
-        <div className="flex min-h-full">
-          <aside className="sticky top-0 hidden h-[calc(100vh-98px)] w-14 shrink-0 border-r border-border bg-surface-alt md:block">
-            <ContentsRailButton active={showToC} onClick={toggleToC} />
-            <div className="reader-rail-label small-caps text-on-surface-muted">
-              § · {sectionLabel}
-            </div>
-            <div className="absolute bottom-10 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2" aria-hidden="true">
-              <span className="h-1.5 w-1.5 rounded-full bg-on-surface-muted/35" />
-              <span className="h-1.5 w-1.5 rounded-full bg-on-surface-muted/35" />
-              <span className="h-4 w-px bg-accent" />
-              <span className="h-1.5 w-1.5 rounded-full bg-on-surface-muted/35" />
-              <span className="h-1.5 w-1.5 rounded-full bg-on-surface-muted/35" />
-            </div>
-          </aside>
-          <div ref={documentBodyRef} className="document-body flex-1">
+      <div className="reading-viewport">
+        <article ref={scrollRef} className="reader-page-canvas" tabIndex={-1}>
+          <div ref={documentBodyRef} className="document-body reader-page-inner">
             <div className="document-preface">
               <div className="document-breadcrumb">
                 <span>{fileName?.replace(/\.[^.]+$/, '') || 'Markdown'}</span>
-                <span>/</span>
-                <span>Reader</span>
-                <span>/</span>
-                <span>{sectionLabel}</span>
+                <span>·</span>
+                <span>{wordCount.toLocaleString()} words</span>
+                <span>·</span>
+                <span>약 {readingTime}분</span>
               </div>
-              <div className="document-section-label">document</div>
-              <h1 className="reader-title">{sectionLabel}</h1>
-              <div className="document-meta-strip">
-                <div>
-                  <span>Section</span>
-                  <strong>1 of 1</strong>
-                </div>
-                <div>
-                  <span>Words</span>
-                  <strong>{wordCount.toLocaleString()}</strong>
-                </div>
-                <div>
-                  <span>Read</span>
-                  <strong>≈ {readingTime} min</strong>
-                </div>
-                <div>
-                  <span>Updated</span>
-                  <strong>Now</strong>
-                </div>
-              </div>
+              <div className="document-section-label">Reading document</div>
+              <h1 className={`reader-title ${sectionLabel.length > 64 ? 'reader-title-long' : ''}`}>
+                {sectionLabel}
+              </h1>
             </div>
             <MetadataCard content={content} />
-            <MarkdownRenderer content={renderedContent} />
+            <div className="reader-markdown-content">
+              <MarkdownRenderer content={renderedContent} />
+            </div>
           </div>
-        </div>
+        </article>
       </div>
+
+      <ReadingPaneFooter
+        progress={scrollProgress}
+        detail={scrollProgress >= 0.99 ? '읽기 완료' : `약 ${Math.max(1, Math.ceil(readingTime * (1 - scrollProgress)))}분 남음`}
+      />
+      <ReadingSensesPanel />
 
       {/* Link hover tooltip */}
       {hoveredLink && (

@@ -166,6 +166,9 @@ export interface ElectronAPI {
     get: (key?: string) => Promise<unknown>
     set: (key: string, value: unknown) => Promise<{ success: boolean }>
   }
+  fonts: {
+    listKorean: () => Promise<string[]>
+  }
   aiProvider: {
     status: () => Promise<AiProviderStatus>
     updateSettings: (partial: {
@@ -342,6 +345,9 @@ const api: ElectronAPI = {
   settings: {
     get: (key?: string) => ipcRenderer.invoke('settings:get', key),
     set: (key: string, value: unknown) => ipcRenderer.invoke('settings:set', key, value)
+  },
+  fonts: {
+    listKorean: () => ipcRenderer.invoke('fonts:list-korean')
   },
   aiProvider: {
     status: () => ipcRenderer.invoke('ai-provider:status'),

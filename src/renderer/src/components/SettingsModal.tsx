@@ -222,19 +222,20 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                 </div>
               </div>
 
-              {/* Content width */}
+              {/* Page width */}
               <div className="flex items-center justify-between">
-                <label className="text-sm text-on-surface-muted">Content Width</label>
+                <label className="text-sm text-on-surface-muted">Page Width</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="range"
-                    min={50}
-                    max={100}
+                    min={52}
+                    max={82}
+                    step={2}
                     value={contentWidth}
                     onChange={(e) => setContentWidth(Number(e.target.value))}
                     className="w-28 accent-accent"
                   />
-                  <span className="text-xs text-on-surface-muted w-8 text-right">{contentWidth}ch</span>
+                  <span className="text-xs text-on-surface-muted w-8 text-right">{contentWidth}</span>
                 </div>
               </div>
             </div>
