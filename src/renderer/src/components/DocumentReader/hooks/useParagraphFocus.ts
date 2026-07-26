@@ -12,7 +12,9 @@ const READING_BLOCK_SELECTOR = [
 
 function isEditableTarget(target: EventTarget | null) {
   return target instanceof HTMLElement
-    && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+    && Boolean(target.closest(
+      'input, textarea, select, [contenteditable="true"], button, a, [role="button"], [role="slider"], [role="menuitem"]'
+    ))
 }
 
 interface UseParagraphFocusOptions {
@@ -81,15 +83,10 @@ export function useParagraphFocus({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || isEditableTarget(event.target)) return
-      const key = event.code === 'KeyJ'
-        ? 'j'
-        : event.code === 'KeyK'
-          ? 'k'
-          : event.key.toLowerCase()
-      if (key !== 'j' && key !== 'k') return
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
 
       event.preventDefault()
-      activate(activeIndexRef.current + (key === 'j' ? 1 : -1))
+      activate(activeIndexRef.current + (event.key === 'ArrowRight' ? 1 : -1))
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)

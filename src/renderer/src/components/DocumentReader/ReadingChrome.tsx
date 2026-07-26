@@ -71,7 +71,7 @@ export function ReadingPaneHeader({
         >
           <ReaderIcon name="focus" />
           <span>집중</span>
-          {focusMode && <kbd>J · K</kbd>}
+          {focusMode && <kbd>← · →</kbd>}
         </button>
         <button
           type="button"

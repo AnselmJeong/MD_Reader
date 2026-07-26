@@ -648,7 +648,9 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
       const handleContentKeyDown = (event: KeyboardEvent) => {
         const target = event.target as HTMLElement | null
-        if (target?.closest('input, textarea, select, [contenteditable="true"]')) {
+        if (target?.closest(
+          'input, textarea, select, [contenteditable="true"], button, a, [role="button"], [role="slider"], [role="menuitem"]'
+        )) {
           searchKeyHandlerRef.current(event)
           return
         }
@@ -775,7 +777,9 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
-      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (target?.closest(
+        'input, textarea, select, [contenteditable="true"], button, a, [role="button"], [role="slider"], [role="menuitem"]'
+      )) return
 
       if (event.key === 'ArrowLeft') {
         event.preventDefault()
@@ -895,24 +899,22 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
         || target?.closest('input, textarea, select, [contenteditable="true"]')
       ) return false
 
-      const key = event.code === 'KeyF'
-        ? 'f'
-        : event.code === 'KeyJ'
-          ? 'j'
-          : event.code === 'KeyK'
-            ? 'k'
-            : event.key.toLowerCase()
+      const key = event.code === 'KeyF' ? 'f' : event.key
       if (key === 'f') {
         event.preventDefault()
         event.stopPropagation()
         handleToggleFocusMode()
         return true
       }
-      if (!focusModeRef.current || (key !== 'j' && key !== 'k')) return false
+      if (
+        !focusModeRef.current
+        || (key !== 'ArrowLeft' && key !== 'ArrowRight')
+        || target?.closest('button, a, [role="button"], [role="slider"], [role="menuitem"]')
+      ) return false
 
       event.preventDefault()
       event.stopPropagation()
-      navigateEpubFocus(key === 'j' ? 'next' : 'previous')
+      navigateEpubFocus(key === 'ArrowRight' ? 'next' : 'previous')
       return true
     }
   }, [handleToggleFocusMode, navigateEpubFocus])
