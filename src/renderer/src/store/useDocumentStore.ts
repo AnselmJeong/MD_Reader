@@ -55,7 +55,8 @@ interface DocumentState {
     tabId: string,
     currentLocation: string | null,
     chapterHref?: string | null,
-    chapterLabel?: string | null
+    chapterLabel?: string | null,
+    progress?: number | null
   ) => void
   markSaved: () => void
   clearDocument: () => void
@@ -197,7 +198,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     })
   },
 
-  updateEpubLocation: (tabId, currentLocation, chapterHref, chapterLabel) => {
+  updateEpubLocation: (tabId, currentLocation, chapterHref, chapterLabel, progress) => {
     set((state) => {
       const tabs = state.tabs.map((tab) => (
         tab.id === tabId && tab.kind === 'epub'
@@ -205,7 +206,10 @@ export const useDocumentStore = create<DocumentState>((set) => ({
             ...tab,
             currentLocation,
             currentChapterHref: chapterHref ?? tab.currentChapterHref,
-            currentChapterLabel: chapterLabel ?? tab.currentChapterLabel
+            currentChapterLabel: chapterLabel ?? tab.currentChapterLabel,
+            lastProgress: typeof progress === 'number' && Number.isFinite(progress)
+              ? Math.max(0, Math.min(1, progress))
+              : tab.lastProgress
           }
           : tab
       ))

@@ -134,7 +134,10 @@ export function saveEpubReadingProgress(
       cfi = excluded.cfi,
       chapter_href = excluded.chapter_href,
       chapter_label = excluded.chapter_label,
-      progress = excluded.progress,
+      -- A location can arrive before EPUB.js has finished building its
+      -- whole-book location index. Keep the last known percentage until the
+      -- subsequent indexed update supplies one.
+      progress = COALESCE(excluded.progress, epub_reading_progress.progress),
       updated_at = excluded.updated_at
   `).run({
     documentId: params.documentId,

@@ -779,19 +779,24 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
     rendition.on('relocated', (location: Location) => {
       const percentage = location.start?.percentage
-      const nextProgress = typeof percentage === 'number' && Number.isFinite(percentage)
-        ? Math.max(0, Math.min(1, percentage))
-        : null
-      if (typeof percentage === 'number' && Number.isFinite(percentage)) {
-        setProgress(nextProgress ?? 0)
-      }
       const cfi = location.start?.cfi ?? null
+      // `location.start.percentage` is only populated after the book-wide
+      // EPUB.js location index exists. Use it when available, then fall back
+      // to the index directly once it has been generated.
+      const percentageFromCfi = cfi ? book.locations.percentageFromCfi(cfi) : null
+      const rawProgress = typeof percentage === 'number' && Number.isFinite(percentage)
+        ? percentage
+        : percentageFromCfi
+      const nextProgress = typeof rawProgress === 'number' && Number.isFinite(rawProgress)
+        ? Math.max(0, Math.min(1, rawProgress))
+        : null
+      if (nextProgress != null) setProgress(nextProgress)
       const chapterHref = location.start?.href?.split('#')[0] ?? null
       const chapterLabel = findCurrentTocLabel(tocItemsRef.current, location.start?.href)
       currentCfiRef.current = cfi
       latestChapterHrefRef.current = chapterHref
       latestChapterLabelRef.current = chapterLabel
-      updateEpubLocation(tab.id, cfi, chapterHref, chapterLabel)
+      updateEpubLocation(tab.id, cfi, chapterHref, chapterLabel, nextProgress)
       if (cfi) {
         void window.api.epub.saveProgress({
           documentId: tab.documentHash,
@@ -808,6 +813,44 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       setSectionLabel((current) => chapterLabel ?? current)
       requestAnimationFrame(() => updateVisibleText(rendition))
     })
+
+    // EPUB.js deliberately does not generate global reading locations by
+    // default. Without this index every relocated event has an undefined
+    // percentage, which leaves the reader at 0% and persists null progress.
+    // Keep initial rendering responsive, then reconcile the current CFI as
+    // soon as the index is ready.
+    let disposed = false
+    void book.ready
+      .then(() => book.locations.generate(1600))
+      .then(() => {
+        if (disposed) return
+
+        const cfi = currentCfiRef.current ?? rendition.location?.start?.cfi ?? null
+        if (!cfi) return
+
+        const calculatedProgress = book.locations.percentageFromCfi(cfi)
+        if (typeof calculatedProgress !== 'number' || !Number.isFinite(calculatedProgress)) return
+
+        const nextProgress = Math.max(0, Math.min(1, calculatedProgress))
+        const chapterHref = latestChapterHrefRef.current
+        const chapterLabel = latestChapterLabelRef.current
+        setProgress(nextProgress)
+        updateEpubLocation(tab.id, cfi, chapterHref, chapterLabel, nextProgress)
+        void window.api.epub.saveProgress({
+          documentId: tab.documentHash,
+          fileName: tab.fileName,
+          filePath: tab.filePath,
+          cfi,
+          chapterHref,
+          chapterLabel,
+          progress: nextProgress
+        }).catch((error) => {
+          console.error('Failed to save indexed EPUB reading progress:', error)
+        })
+      })
+      .catch((error) => {
+        console.error('Failed to generate EPUB reading locations:', error)
+      })
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
@@ -880,6 +923,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     })
 
     return () => {
+      disposed = true
       window.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('mousedown', handleOuterMouseDown)
       epubDropCleanupRef.current.forEach((cleanup) => cleanup())
@@ -902,7 +946,6 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     tab.fileName,
     tab.filePath,
     tab.id,
-    tab.lastProgress,
     updateEpubLocation,
     updateVisibleText,
     showAnnotationMenu,
