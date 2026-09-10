@@ -1,5 +1,5 @@
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
-import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent } from './file-service'
+import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent, setDocumentBibliography } from './file-service'
 import { listModels, generateChatTitle } from './ollama-service'
 import { getAiProviderStatus, updateAiProviderSettings, AiProviderSettingsUpdate } from './ai-provider-settings'
 import { streamGroundedChat } from './ai-chat-service'
@@ -69,6 +69,22 @@ export function registerIpcHandlers(): void {
     const document = await readDocumentFile(filePath)
     await addRecentFile(filePath)
     return document
+  })
+
+  ipcMain.handle('file:select-bibliography', async (event, filePath: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Choose bibliography for this document',
+      properties: ['openFile'],
+      filters: [{ name: 'BibTeX', extensions: ['bib'] }]
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return setDocumentBibliography(filePath, result.filePaths[0])
+  })
+
+  ipcMain.handle('file:reset-bibliography', async (_event, filePath: string) => {
+    return setDocumentBibliography(filePath, null)
   })
 
   ipcMain.handle('file:recent-list', async () => {

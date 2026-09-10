@@ -1,6 +1,6 @@
 {
   "name": "md-reader",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "Academic Markdown Reader with AI Assistant",
   "main": "./out/main/index.js",
   "scripts": {
@@ -19,6 +19,7 @@
     "hast-util-to-jsx-runtime": "^2.3.2",
     "katex": "^0.16.21",
     "mermaid": "^11.4.1",
+    "micromark-core-commonmark": "^2.0.3",
     "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
     "rehype-stringify": "^10.0.1",

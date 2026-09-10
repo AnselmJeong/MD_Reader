@@ -32,7 +32,7 @@ function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const documentBodyRef = useRef<HTMLDivElement>(null)
   const [scrollProgress, setScrollProgress] = useState(0)
-  const hoveredLink = useLinkTooltip({ bibContent, scrollRef })
+  const { hoveredLink, tooltipRef } = useLinkTooltip({ bibContent, content, documentKey: tab.id, scrollRef })
   const {
     activeSearchIndex,
     goToNextMatch,
@@ -216,7 +216,7 @@ function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
 
       {/* Link hover tooltip */}
       {hoveredLink && (
-        <LinkTooltip url={hoveredLink.url} title={hoveredLink.title} rect={hoveredLink.rect} />
+        <LinkTooltip key={`${hoveredLink.url}:${hoveredLink.title}`} tooltipRef={tooltipRef} url={hoveredLink.url} title={hoveredLink.title} rect={hoveredLink.rect} />
       )}
 
       {/* Text selection menu */}

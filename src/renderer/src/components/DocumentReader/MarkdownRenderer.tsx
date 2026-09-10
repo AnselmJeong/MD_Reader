@@ -1,6 +1,7 @@
 import { memo, MouseEvent, useCallback, useMemo } from 'react'
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
+import { remarkKoreanStrong } from './utils/remarkKoreanStrong'
 import remarkMath from 'remark-math'
 import remarkGfm from 'remark-gfm'
 import remarkFrontmatter from 'remark-frontmatter'
@@ -62,6 +63,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: Mark
       const withHighlights = transformHighlightSyntax(stripped)
       const result = unified()
         .use(remarkParse)
+        .use(remarkKoreanStrong)
         .use(remarkFrontmatter, ['yaml'])
         .use(remarkMath)
         .use(remarkGfm)

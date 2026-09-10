@@ -1,3 +1,4 @@
+import { BibliographyControl } from './BibliographyControl'
 import { useState } from 'react'
 import { useUIStore } from '../store/useUIStore'
 import { useDocumentStore } from '../store/useDocumentStore'
@@ -80,6 +81,7 @@ export function Toolbar({ onOpenFile, onSaveFile, canSave, isDirty }: ToolbarPro
           <Icon name="save" />
           <span>Save{isDirty ? ' *' : ''}</span>
         </button>
+        {activeTab?.kind === 'markdown' && <BibliographyControl key={activeTab.id} tab={activeTab} />}
       </div>
 
       <div className="mx-2 h-5 w-px bg-border" />

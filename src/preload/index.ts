@@ -1,15 +1,15 @@
+import type { BibliographyResult } from '../shared/bibliography'
 import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron'
 
 export type DocumentKind = 'markdown' | 'epub'
 
 export type FileReadResult =
-  | {
+  | (BibliographyResult & {
       kind: 'markdown'
       filePath: string
       content: string
       documentHash: string
-      bibContent?: string | null
-    }
+    })
   | {
       kind: 'epub'
       filePath: string
@@ -131,6 +131,8 @@ export interface EpubReadingProgressRecord {
 
 export interface ElectronAPI {
   file: {
+    selectBibliography: (path: string) => Promise<BibliographyResult | null>
+    resetBibliography: (path: string) => Promise<BibliographyResult>
     openDialog: () => Promise<FileReadResult | null>
     read: (path: string) => Promise<FileReadResult>
     getRecent: () => Promise<string[]>
@@ -296,6 +298,8 @@ export interface TtsUtteranceEvent {
 
 const api: ElectronAPI = {
   file: {
+    selectBibliography: (path: string) => ipcRenderer.invoke('file:select-bibliography', path),
+    resetBibliography: (path: string) => ipcRenderer.invoke('file:reset-bibliography', path),
     openDialog: () => ipcRenderer.invoke('file:open-dialog'),
     read: (path: string) => ipcRenderer.invoke('file:read', path),
     getRecent: () => ipcRenderer.invoke('file:recent-list'),

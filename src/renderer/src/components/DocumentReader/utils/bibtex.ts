@@ -26,13 +26,28 @@ export function parseBibTeX(content: string): Record<string, BibEntry> {
       const key = raw.slice(firstBrace + 1, firstComma).trim()
 
       const extractField = (fieldName: string) => {
-        const regex = new RegExp(`${fieldName}\\s*=\\s*[\\{"]([\\s\\S]*?)[\\}"]`, 'i')
-        const match = raw.match(regex)
+        const regex = new RegExp(`(?:^|,)\\s*${fieldName}\\s*=\\s*`, 'i')
+        const match = regex.exec(raw)
         if (!match) return null
-
-        let value = match[1].replace(/[\{\}]/g, '')
-        value = value.replace(/\s+/g, ' ').trim()
-        return value
+        const start = match.index + match[0].length
+        const opener = raw[start]
+        let end = start
+        if (opener === '{' || opener === '"') {
+          let depth = opener === '{' ? 1 : 0
+          for (end = start + 1; end < raw.length; end += 1) {
+            if (raw[end] === '\\') { end += 1; continue }
+            if (raw[end] === '{') depth += 1
+            if (raw[end] === '}') {
+              depth -= 1
+              if (opener === '{' && depth === 0) break
+            }
+            if (opener === '"' && raw[end] === '"' && depth === 0) break
+          }
+        } else {
+          while (end < raw.length && !/[,}\n]/.test(raw[end])) end += 1
+        }
+        return raw.slice(start + (opener === '{' || opener === '"' ? 1 : 0), end)
+          .replace(/[{}]/g, '').replace(/\s+/g, ' ').trim()
       }
 
       entries[key.toLowerCase()] = {
@@ -51,6 +66,18 @@ export function parseBibTeX(content: string): Record<string, BibEntry> {
   return entries
 }
 
+export function normalizeDoi(value: string | null): string | null {
+  if (!value) return null
+  let doi = value.trim().replace(/^doi:\s*/i, '').replace(/^(https?:\/\/)?(dx\.)?doi\.org\//i, '')
+  try { doi = decodeURIComponent(doi) } catch { return null }
+  return /^10\.\d{4,9}\/[^\s]+$/i.test(doi) ? doi : null
+}
+
+export function getDoiUrl(value: string | null): string | null {
+  const doi = normalizeDoi(value)
+  return doi ? `https://doi.org/${doi.split('/').map(encodeURIComponent).join('/')}` : null
+}
+
 export function buildBibIndex(content: string | null): BibIndex {
   if (!content) {
     return { byKey: {}, byDoi: {}, byAuthorYear: {} }
@@ -62,8 +89,8 @@ export function buildBibIndex(content: string | null): BibIndex {
 
   Object.values(byKey).forEach((entry) => {
     if (entry.doi) {
-      const cleanDoi = entry.doi.replace(/^(https?:\/\/)?(dx\.)?doi\.org\//i, '').toLowerCase()
-      byDoi[cleanDoi] = entry
+      const cleanDoi = normalizeDoi(entry.doi)?.toLowerCase()
+      if (cleanDoi) byDoi[cleanDoi] = entry
     }
 
     if (!entry.author || !entry.year) return
@@ -97,9 +124,9 @@ export function formatBibEntry(entry: BibEntry): string {
 }
 
 export function findBibEntryForExternalLink(href: string, text: string, index: BibIndex): BibEntry | null {
-  const doiMatch = href.match(/doi\.org\/(10\..+)/i)
-  if (doiMatch) {
-    const byDoiEntry = index.byDoi[doiMatch[1].toLowerCase()]
+  const doi = /^https?:\/\/(dx\.)?doi\.org\//i.test(href) ? normalizeDoi(href) : null
+  if (doi) {
+    const byDoiEntry = index.byDoi[doi.toLowerCase()]
     if (byDoiEntry) return byDoiEntry
   }
 

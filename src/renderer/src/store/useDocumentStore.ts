@@ -1,3 +1,4 @@
+import type { BibliographyResult } from '../../../shared/bibliography'
 import { create } from 'zustand'
 import type { FileReadResult } from '../global'
 
@@ -15,7 +16,7 @@ interface BaseDocumentTab {
   isDirty: boolean
 }
 
-export interface MarkdownDocumentTab extends BaseDocumentTab {
+export interface MarkdownDocumentTab extends BaseDocumentTab, BibliographyResult {
   kind: 'markdown'
   bibContent: string | null
 }
@@ -48,6 +49,7 @@ interface DocumentState {
   readingTime: number
   isDirty: boolean
 
+  updateBibliography: (tabId: string, bibliography: BibliographyResult) => void
   setDocument: (document: FileReadResult) => void
   updateContent: (content: string) => void
   updateEpubContent: (tabId: string, content: string) => void
@@ -107,6 +109,9 @@ function createDocumentTab(document: FileReadResult): DocumentTab {
     content: document.content,
     documentHash: document.documentHash,
     bibContent: document.bibContent ?? null,
+    bibFilePath: document.bibFilePath,
+    customBibFilePath: document.customBibFilePath,
+    bibError: document.bibError,
     wordCount: words,
     readingTime,
     isDirty: false
@@ -169,6 +174,13 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       return { tabs, ...activeFields(active) }
     })
   },
+
+  updateBibliography: (tabId, bibliography) => set((state) => {
+    const tabs = state.tabs.map((tab) => tab.id === tabId && tab.kind === 'markdown'
+      ? { ...tab, ...bibliography } : tab)
+    const active = tabs.find((tab) => tab.id === state.activeTabId) ?? null
+    return { tabs, ...activeFields(active) }
+  }),
 
   updateContent: (content) => {
     const { words, readingTime } = getDocumentStats(content)
