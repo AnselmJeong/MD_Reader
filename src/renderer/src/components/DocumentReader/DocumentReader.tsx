@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { metadataText, readDocumentMetadata } from '../../../../shared/document-metadata'
+import { extractQuartoHeadings } from './utils/headings'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { MetadataCard } from './MetadataCard'
 import { TableOfContents } from './TableOfContents'
@@ -53,8 +55,11 @@ function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
     rootRef: documentBodyRef,
     updateContent
   })
-  const sectionLabel = getPrimaryHeading(content)
-  const renderedContent = stripPrimaryHeading(content)
+  const quarto = /\.qmd$/i.test(tab.filePath)
+  const sectionLabel = useMemo(() => quarto
+    ? metadataText(readDocumentMetadata(content).title) || extractQuartoHeadings(content)[0]?.text || fileName
+    : getPrimaryHeading(content), [content, quarto, fileName])
+  const renderedContent = quarto ? content : stripPrimaryHeading(content)
   useParagraphFocus({
     enabled: focusMode,
     rootRef: documentBodyRef,
@@ -136,7 +141,7 @@ function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
       {/* Table of Contents overlay */}
       {showToC && (
         <div className="reading-toc-panel">
-          <TableOfContents content={content} scrollContainer={scrollRef as React.RefObject<HTMLDivElement>} />
+          <TableOfContents quarto={quarto} content={content} scrollContainer={scrollRef as React.RefObject<HTMLDivElement>} />
         </div>
       )}
 
@@ -200,9 +205,9 @@ function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
                 {sectionLabel}
               </h1>
             </div>
-            <MetadataCard content={content} />
+            <MetadataCard content={content} hideTitle={quarto} />
             <div className="reader-markdown-content">
-              <MarkdownRenderer content={renderedContent} />
+              <MarkdownRenderer content={renderedContent} filePath={tab.filePath} quarto={quarto} />
             </div>
           </div>
         </article>

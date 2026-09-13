@@ -1,16 +1,17 @@
 import { useMemo, RefObject } from 'react'
 import { useUIStore } from '../../store/useUIStore'
-import { extractMarkdownHeadings, createHeadingSlug } from './utils/headings'
+import { extractMarkdownHeadings, extractQuartoHeadings, createHeadingSlug } from './utils/headings'
 
 interface TableOfContentsProps {
+  quarto?: boolean
   content: string
   scrollContainer: RefObject<HTMLDivElement>
 }
 
-export function TableOfContents({ content, scrollContainer }: TableOfContentsProps) {
+export function TableOfContents({ content, scrollContainer, quarto = false }: TableOfContentsProps) {
   const { toggleToC } = useUIStore()
 
-  const headings = useMemo(() => extractMarkdownHeadings(content), [content])
+  const headings = useMemo(() => quarto ? extractQuartoHeadings(content) : extractMarkdownHeadings(content), [content, quarto])
 
   const handleClick = (id: string) => {
     const container = scrollContainer.current

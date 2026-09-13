@@ -208,7 +208,7 @@ function findCurrentTocLabel(tocItems: TocItem[], href: string | undefined) {
 
 function isSupportedDocumentFile(file: File) {
   const name = file.name.toLowerCase()
-  return name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt') || name.endsWith('.epub')
+  return name.endsWith('.qmd') || name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt') || name.endsWith('.epub')
 }
 
 function applyEpubAnnotation(

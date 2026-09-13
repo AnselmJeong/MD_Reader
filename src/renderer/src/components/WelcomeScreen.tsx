@@ -49,7 +49,7 @@ export function WelcomeScreen({ onOpenFile }: WelcomeScreenProps) {
               Open Document
             </button>
             <span className="text-[13px] font-medium text-on-surface-muted">
-              or drop .md / .epub <kbd className="ml-2 rounded border border-border bg-surface-alt px-1.5 py-1 font-mono text-[11px] text-on-surface">⌘</kbd>
+              or drop .md / .qmd / .epub <kbd className="ml-2 rounded border border-border bg-surface-alt px-1.5 py-1 font-mono text-[11px] text-on-surface">⌘</kbd>
               <kbd className="ml-1 rounded border border-border bg-surface-alt px-1.5 py-1 font-mono text-[11px] text-on-surface">O</kbd>
             </span>
           </div>

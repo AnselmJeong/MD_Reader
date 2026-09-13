@@ -30,7 +30,7 @@ export function useLinkTooltip({ bibContent, content, documentKey, scrollRef }: 
     if (!container) return
     setHoveredLink(null)
     let hideTimeout: ReturnType<typeof setTimeout> | null = null
-    let activeAnchor: HTMLAnchorElement | null = null
+    let activeAnchor: Element | null = null
 
     const cancelHide = () => {
       if (hideTimeout) clearTimeout(hideTimeout)
@@ -50,7 +50,7 @@ export function useLinkTooltip({ bibContent, content, documentKey, scrollRef }: 
         cancelHide()
         return
       }
-      const anchor = target.closest('a')
+      const anchor = target.closest('[data-cite-key], a')
       if (!anchor || !container.contains(anchor)) {
         scheduleHide()
         return
@@ -59,8 +59,11 @@ export function useLinkTooltip({ bibContent, content, documentKey, scrollRef }: 
       if (anchor === activeAnchor) return
       activeAnchor = anchor
       const href = anchor.getAttribute('href') || ''
+      const citeKey = anchor.getAttribute('data-cite-key')
       const isExternal = /^https?:\/\//i.test(href)
-      const entry = isExternal
+      const entry = citeKey
+        ? bibIndex.byKey[citeKey.toLowerCase()] ?? null
+        : isExternal
         ? findBibEntryForExternalLink(href, anchor.textContent || '', bibIndex)
         : href.startsWith('#') ? findBibEntryForInternalLink(href.slice(1), bibIndex) : null
       let title = (entry && formatBibEntry(entry)) || anchor.getAttribute('title') || ''

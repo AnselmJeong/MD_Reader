@@ -239,6 +239,13 @@
 .citation:hover {
   text-decoration: underline;
 }
+.citation[data-cite-key] {
+  cursor: help;
+}
+.citation:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
 
 /* ─── Markdown Highlight ─── */
 .document-body mark {
@@ -270,3 +277,20 @@
   padding: 0.05em 0.1em;
   border-radius: 3px;
 }
+
+/* Static Quarto figures and table captions share the reader's typography. */
+.reader-markdown-content figure.quarto-figure,
+.reader-markdown-content figure.quarto-table {
+  margin: 1.75em 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.reader-markdown-content .quarto-figure > img { display: block; margin: 0 auto; }
+.reader-markdown-content figcaption {
+  color: var(--ink-2);
+  font-size: 0.88em;
+  line-height: 1.6;
+  margin: 0.75em 0;
+}
+.reader-markdown-content [id] { scroll-margin-top: 1.5rem; }
+.reader-markdown-content .quarto-unresolved-ref { text-decoration: underline dotted; }

@@ -1,3 +1,4 @@
+import { readDocumentImage } from './document-image-service'
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent, setDocumentBibliography } from './file-service'
 import { listModels, generateChatTitle } from './ollama-service'
@@ -53,8 +54,9 @@ export function registerIpcHandlers(): void {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
       filters: [
-        { name: 'Readable Documents', extensions: ['md', 'markdown', 'txt', 'epub'] },
+        { name: 'Readable Documents', extensions: ['md', 'markdown', 'qmd', 'txt', 'epub'] },
         { name: 'Markdown', extensions: ['md', 'markdown', 'txt'] },
+        { name: 'Quarto', extensions: ['qmd'] },
         { name: 'EPUB', extensions: ['epub'] }
       ]
     })
@@ -64,6 +66,8 @@ export function registerIpcHandlers(): void {
     await addRecentFile(filePath)
     return document
   })
+
+  ipcMain.handle('file:read-image', (_event, documentPath: string, source: string) => readDocumentImage(documentPath, source))
 
   ipcMain.handle('file:read', async (_event, filePath: string) => {
     const document = await readDocumentFile(filePath)

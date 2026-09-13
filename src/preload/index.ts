@@ -135,6 +135,7 @@ export interface ElectronAPI {
     resetBibliography: (path: string) => Promise<BibliographyResult>
     openDialog: () => Promise<FileReadResult | null>
     read: (path: string) => Promise<FileReadResult>
+    readImage: (documentPath: string, source: string) => Promise<string | null>
     getRecent: () => Promise<string[]>
     save: (path: string, content: string) => Promise<{ success: boolean; error?: string }>
   }
@@ -302,6 +303,7 @@ const api: ElectronAPI = {
     resetBibliography: (path: string) => ipcRenderer.invoke('file:reset-bibliography', path),
     openDialog: () => ipcRenderer.invoke('file:open-dialog'),
     read: (path: string) => ipcRenderer.invoke('file:read', path),
+    readImage: (documentPath: string, source: string) => ipcRenderer.invoke('file:read-image', documentPath, source),
     getRecent: () => ipcRenderer.invoke('file:recent-list'),
     save: (path: string, content: string) => ipcRenderer.invoke('file:save', path, content)
   },

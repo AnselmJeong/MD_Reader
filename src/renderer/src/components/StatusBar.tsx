@@ -37,7 +37,7 @@ export function StatusBar() {
             <span>·</span>
             {kind && (
               <>
-                <span className="shrink-0">{kind.toUpperCase()}</span>
+                <span className="shrink-0">{/\.qmd$/i.test(fileName) ? 'QUARTO' : kind.toUpperCase()}</span>
                 <span>·</span>
               </>
             )}
@@ -46,7 +46,7 @@ export function StatusBar() {
             <span className="shrink-0">≈ {readingTime} Min</span>
           </>
         ) : (
-          <span className="shrink-0">No Document Open · Drop .MD Or .EPUB To Begin</span>
+          <span className="shrink-0">No Document Open · Drop .MD, .QMD Or .EPUB To Begin</span>
         )}
       </div>
       <div className="mx-4 flex min-w-0 flex-1 justify-center">

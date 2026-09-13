@@ -224,7 +224,7 @@ export default function App() {
         const name = file.name.toLowerCase()
         const filePath = window.api.utils.getPathForFile(file)
 
-        if (filePath && (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt') || name.endsWith('.epub'))) {
+        if (filePath && (name.endsWith('.qmd') || name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt') || name.endsWith('.epub'))) {
           const result = await window.api.file.read(filePath)
           setDocument(result)
         }

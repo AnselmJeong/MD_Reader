@@ -1,3 +1,12 @@
+import { splitFrontmatter } from '../../../../../shared/document-metadata'
+import { unified } from 'unified'
+import remarkParse from 'remark-parse'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import { remarkKoreanStrong } from './remarkKoreanStrong'
+import { prepareQuartoSource, remarkQuarto } from './remarkQuarto'
+import type { Root, RootContent } from 'mdast'
+
 export interface DocumentHeading {
   level: number
   text: string
@@ -5,8 +14,7 @@ export interface DocumentHeading {
 }
 
 export function stripMarkdownFrontmatter(content: string): string {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n/)
-  return match ? content.slice(match[0].length) : content
+  return splitFrontmatter(content).body
 }
 
 export function createHeadingSlug(text: string): string {
@@ -60,3 +68,17 @@ export function extractMarkdownHeadings(content: string, maxLevel = 4): Document
   return headings
 }
 
+export function extractQuartoHeadings(content: string, maxLevel = 4): DocumentHeading[] {
+  const processor = unified().use(remarkParse).use(remarkKoreanStrong).use(remarkGfm).use(remarkMath).use(remarkQuarto)
+  const tree = processor.runSync(processor.parse(prepareQuartoSource(stripMarkdownFrontmatter(content)))) as Root
+  const headings: DocumentHeading[] = []
+  const nodeText = (node: RootContent): string => 'value' in node ? node.value : 'children' in node ? node.children.map(nodeText).join('') : ''
+  const visit = (nodes: RootContent[]) => {
+    for (const node of nodes) {
+      if (node.type === 'heading' && node.depth <= maxLevel) headings.push({ level: node.depth, text: nodeText(node), id: String(node.data?.hProperties?.id) })
+      if ('children' in node) visit(node.children)
+    }
+  }
+  visit(tree.children)
+  return headings
+}
