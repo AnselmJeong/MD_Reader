@@ -1,0 +1,21 @@
+---
+title: Quarto 수식 렌더링 확인
+---
+
+## 잡음 상관 {#sec-noise-corr-def}
+
+두 뉴런의 발화 변동을 $\delta r_i = r_i - f_i(s)$로 나타낸다.
+
+$$
+r^{\text{noise}}_{ij}(s) = \frac{\operatorname{Cov}\big[\delta r_i,\, \delta r_j \mid s\big]}{\sqrt{\operatorname{Var}[r_i \mid s]\ \operatorname{Var}[r_j \mid s]}}
+$$ {#eq-noise-corr}
+
+정의에서 결정적인 것은 자극을 고정한다는 조건이다. **신호 상관**은 *평균* 발화율 $f_i(s)$와 $f_j(s)$를 비교한다.
+
+## 두 번째 수식 {#sec-second}
+
+$$
+I = \mathbf{f}'^{\top}\Sigma^{-1}\mathbf{f}'
+$$ {#eq-fisher-correlated}
+
+앞의 @eq-noise-corr와 @eq-fisher-correlated를 참조한다.

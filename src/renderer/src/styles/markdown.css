@@ -294,3 +294,18 @@
 }
 .reader-markdown-content [id] { scroll-margin-top: 1.5rem; }
 .reader-markdown-content .quarto-unresolved-ref { text-decoration: underline dotted; }
+
+.reader-markdown-content .quarto-equation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 1em;
+  margin: 1em 0;
+}
+.reader-markdown-content .quarto-equation > .katex-display {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5em 0;
+}
+.reader-markdown-content .quarto-equation-number { white-space: nowrap; }

@@ -46,12 +46,28 @@ function caption(children: Node[], label?: string): Node {
 // nested lists and tables. Fences and indented code remain byte-for-byte intact.
 export function prepareQuartoSource(source: string): string {
   let fence: { char: string; size: number } | null = null
+  let mathFenceSize: number | null = null
   return source.replace(/\r\n/g, '\n').split('\n').map(line => {
+    // remark-math only accepts whitespace after a closing fence. Quarto's
+    // equation label would otherwise keep the block open and swallow prose.
+    // Do this before recognizing code/div fences: those are literal in math.
+    if (mathFenceSize !== null) {
+      const closing = line.match(/^( {0,3}\${2,})[\t ]*(\{#eq-[^{}\s]+\})?[\t ]*$/)
+      if (closing && closing[1].trim().length >= mathFenceSize) {
+        mathFenceSize = null
+        return closing[2] ? `${closing[1]}\n\n${closing[2]}\n` : line
+      }
+      return line
+    }
     const match = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/)
     if (match) {
       if (!fence) fence = { char: match[1][0], size: match[1].length }
       else if (match[1][0] === fence.char && match[1].length >= fence.size && !match[2].trim()) fence = null
       return line
+    }
+    if (!fence) {
+      const opening = line.match(/^ {0,3}(\${2,})[^$]*$/)
+      if (opening) { mathFenceSize = opening[1].length; return line }
     }
     return !fence && /^ {0,3}:{3,}(?:\s*\{[^}]*\}|\s*[\w.-]+)?\s*$/.test(line) ? `\n${line}\n` : line
   }).join('\n')
@@ -189,9 +205,14 @@ export function remarkQuarto() {
           const next = parent.children[i + 1]
           if (next?.type === 'paragraph' && /^\{#eq-[^}]+\}$/.test(text(next))) {
             const attrs = attributes(text(next).slice(1, -1))
-            register(attrs.id)
-            node.data = { hProperties: properties(attrs) }
-            parent.children.splice(i + 1, 1)
+            const ref = register(attrs.id)!
+            // Keep math's hName/hChildren intact. KaTeX replaces its <pre>,
+            // so the anchor and number must live on an enclosing element.
+            const number = element('span', [{ type: 'text', value: `(${ref.number})` }], { className: ['quarto-equation-number'] })
+            parent.children.splice(i, 2, element('div', [node, number], {
+              ...properties(attrs), className: ['quarto-equation']
+            }))
+            continue
           }
         }
         targets(node)

@@ -117,3 +117,44 @@ test('highlights prose while preserving markers inside tilde-fenced cells and in
   assert.match(html, /==unchanged==/)
   assert.equal((html.match(/<mark>/g) ?? []).length, 1)
 })
+
+test('Quarto equation closing labels do not swallow subsequent Korean prose or equations', () => {
+  const formula = String.raw`r^{\text{noise}}_{ij}(s) = \frac{\operatorname{Cov}\big[\delta r_i,\, \delta r_j \mid s\big]}{\sqrt{\operatorname{Var}[r_i \mid s]\ \operatorname{Var}[r_j \mid s]}}`
+  const source = `See @eq-noise-corr and @eq-next.\n\n$$\n${formula}\n$$ {#eq-noise-corr}\n정의에서 결정적인 것은 **신호 상관**과 *평균* 발화율 $f_i(s)$이다.\n\n$$\nx^2\n$$ {#eq-next}\n\n## 다음 절 {#sec-after}`
+  const prepared = prepareQuartoSource(source)
+  const ast = unified().use(remarkParse).use(remarkMath).parse(prepared)
+  assert.deepEqual(ast.children.filter(node => node.type === 'math').map(node => node.value), [formula, 'x^2'])
+  const html = render(source)
+  assert.equal((html.match(/class="katex-display"/g) ?? []).length, 2)
+  assert.match(html, /id="eq-noise-corr" class="quarto-equation"/)
+  assert.match(html, /class="quarto-equation-number">\(1\)<\/span>/)
+  assert.match(html, /class="quarto-equation-number">\(2\)<\/span>/)
+  assert.match(html, /<p>정의에서 결정적인 것은 <strong>신호 상관<\/strong>과 <em>평균<\/em>/)
+  assert.match(html, /href="#eq-noise-corr"[^>]*>Equation 1<\/a>/)
+  assert.match(html, /href="#eq-next"[^>]*>Equation 2<\/a>/)
+  assert.match(html, /<h2 id="sec-after">다음 절<\/h2>/)
+  assert.doesNotMatch(html, /katex-error|\{#eq-|data-cite-key="eq-/)
+})
+
+test('separate-line equation labels preserve KaTeX data and unlabelled math remains unnumbered', () => {
+  const html = render('$$\na^2\n$$\n\n{#eq-separate}\n\n$$\nb^2\n$$\n\nSee @eq-separate.')
+  assert.equal((html.match(/class="katex-display"/g) ?? []).length, 2)
+  assert.equal((html.match(/class="quarto-equation-number"/g) ?? []).length, 1)
+  assert.match(html, /id="eq-separate" class="quarto-equation"/)
+  assert.doesNotMatch(html, /katex-error/)
+})
+
+test('label normalization respects code fences, math fence length, CRLF and literal math content', () => {
+  for (const fence of ['```', '~~~~']) {
+    const source = `${fence}markdown\n$$\nx\n$$ {#eq-literal}\n${fence}`
+    assert.equal(prepareQuartoSource(source), source)
+    assert.doesNotMatch(render(source), /class="quarto-equation"/)
+  }
+  for (const source of ['    $$\n    x\n    $$ {#eq-code}', '`$$ {#eq-inline}`', '$x$ {#eq-inline}', '$$\nx\n::: {.callout-note}\n```\n$$', '$$$\nx\n$$ {#eq-too-short}']) {
+    assert.equal(prepareQuartoSource(source), source)
+  }
+  const html = render('$$$\r\nx\r\n$$$$ {#eq-긴수식}\r\n다음 문단.\r\n\r\n@eq-긴수식')
+  assert.match(html, /class="katex-display"/)
+  assert.match(html, /<p>다음 문단\.<\/p>/)
+  assert.doesNotMatch(html, /katex-error|quarto-unresolved-ref/)
+})

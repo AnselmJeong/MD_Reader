@@ -28,3 +28,11 @@ Validation:
 Try `examples/quarto/reading.qmd` with its sibling `figure.svg`.
 
 Reader limitations: execution-generated output is unavailable unless supplied as a static image/table; unresolved references remain readable and are not converted into bibliography citations. Advanced Pandoc table formats, subfigure numbering/layout, project configuration, and cross-document book references are not implemented. Local section references use their heading text as the link label.
+
+## Labelled equation rendering repair
+
+- Normalize Quarto's `$$ {#eq-label}` closing line before remark-math parses it, preserving code and the stored source.
+- Preserve remark-math's rendering data when attaching equation IDs; render a numbered wrapper that survives KaTeX replacement and supports local references.
+- Verify formula/body boundaries, consecutive equations, separate-line labels, code preservation, and reference navigation with parser regressions and an isolated Electron run, including the reported QMD.
+
+Verified: 26 parser/citation/Korean emphasis/chat math tests, both TypeScript checks, and production build passed. Isolated Electron checks passed for the two-equation fixture and the reported four-equation QMD: no KaTeX errors, sequential numbering, intact Korean prose/inline math, reference navigation, no vertical formula overflow, and unchanged source. Inspected `.tmp/quarto-equations.png`. The follow-up local installation replaced `/Applications/MD Reader.app` after backing up the previous app and user profile. The actual packaged and installed entrypoints both passed the original four-equation QMD checks and native SQLite startup; all 64 runtime output files matched the package. Existing-profile launch and document rendering were also verified. The app retains version 0.8.5 and uses local ad-hoc signing, without notarization. As with the previous release, the local app includes the pre-existing uncommitted worktree changes; the equation fix commit contains only its six related files.
