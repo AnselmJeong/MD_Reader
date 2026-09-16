@@ -12,6 +12,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const [memoryStatus, setMemoryStatus] = useState<AgentMemoryStatus | null>(null)
   const [aiProviderStatus, setAiProviderStatus] = useState<AiProviderStatus | null>(null)
   const [aiProviderDraft, setAiProviderDraft] = useState({
+    tinyfishApiKey: '',
     ollamaApiKey: '',
     webSearchEnabled: true
   })
@@ -129,11 +130,12 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const saveAiProviderSettings = async () => {
     try {
       const status = await window.api.aiProvider.updateSettings({
+        tinyfishApiKey: aiProviderDraft.tinyfishApiKey.trim() || undefined,
         ollamaApiKey: aiProviderDraft.ollamaApiKey.trim() || undefined,
         webSearchEnabled: aiProviderDraft.webSearchEnabled
       })
       setAiProviderStatus(status)
-      setAiProviderDraft((draft) => ({ ...draft, ollamaApiKey: '' }))
+      setAiProviderDraft((draft) => ({ ...draft, ollamaApiKey: '', tinyfishApiKey: '' }))
       const models = await window.api.ollama.listModels()
       const modelNames = filterOllamaModels(models.map((m) => m.name))
       setAvailableModels(modelNames)
@@ -280,11 +282,11 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               <div className="rounded-md border border-[var(--hair-2)] bg-surface px-3.5 py-3">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-on-surface">Ollama Cloud</div>
+                    <div className="text-sm font-medium text-on-surface">Chat &amp; Search</div>
                     <div className="mt-0.5 text-xs text-on-surface-muted">
                       {aiProviderStatus?.hasOllamaApiKey
-                        ? `API key saved${aiProviderStatus.apiKeySource === 'env' ? ' from environment' : ''}`
-                        : 'API key required for cloud chat and web search'}
+                        ? `Ollama chat key saved${aiProviderStatus.apiKeySource === 'env' ? ' from environment' : ''}`
+                        : 'Ollama API key required for cloud chat'}
                     </div>
                   </div>
                   <label className="flex items-center gap-2 text-xs text-on-surface-muted">
@@ -294,9 +296,10 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                       onChange={(e) => setAiProviderDraft((draft) => ({ ...draft, webSearchEnabled: e.target.checked }))}
                       className="accent-accent"
                     />
-                    Web Search
+                    Allow TinyFish Search
                   </label>
                 </div>
+                <p className="mb-3 text-xs text-on-surface-muted">Search is off by default. Enable it for each question in the AI Sidebar.</p>
                 <div>
                   <label className="mb-1.5 block text-sm text-on-surface-muted">
                     Ollama API Key {aiProviderStatus?.hasOllamaApiKey ? '(saved)' : ''}
@@ -308,6 +311,15 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                     placeholder={aiProviderStatus?.hasOllamaApiKey ? 'Leave blank to keep existing key' : 'ollama_...'}
                     className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
                   />
+                </div>
+                <div className="mt-3">
+                  <label htmlFor="tinyfish-api-key" className="mb-1.5 block text-sm text-on-surface-muted">
+                    TinyFish Search API Key {aiProviderStatus?.hasTinyfishApiKey ? '(saved)' : ''}
+                  </label>
+                  <input id="tinyfish-api-key" type="password" value={aiProviderDraft.tinyfishApiKey}
+                    onChange={(e) => setAiProviderDraft((draft) => ({ ...draft, tinyfishApiKey: e.target.value }))}
+                    placeholder={aiProviderStatus?.hasTinyfishApiKey ? 'Leave blank to keep existing key' : 'Required for web search'}
+                    className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-on-surface outline-none focus:border-accent" />
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
                   <span className="truncate text-xs text-on-surface-muted" title={aiProviderStatus?.ollamaBaseUrl}>

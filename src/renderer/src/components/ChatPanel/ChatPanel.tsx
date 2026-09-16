@@ -100,6 +100,7 @@ export function ChatPanel() {
     const unsubToken = window.api.ollama.onToken((token) => {
       updateStreamingContent(token)
     })
+    const unsubSearchEnd = window.api.ollama.onSearchEnd(() => setStreamingSearchQuery(null))
     const unsubSearchStart = window.api.ollama.onSearchStart((payload) => {
       setStreamingSearchQuery(payload.query)
     })
@@ -121,6 +122,7 @@ export function ChatPanel() {
     })
     return () => {
       unsubToken()
+      unsubSearchEnd()
       unsubSearchStart()
       unsubSearchResults()
       unsubMetadata()
@@ -278,7 +280,7 @@ export function ChatPanel() {
               <div className="px-1 py-3 text-sm text-on-surface">
                 {streamingSearchQuery && (
                   <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-on-surface-muted">
-                    Searching web...
+                    Searching TinyFish...
                   </div>
                 )}
                 <div className="flex gap-1">

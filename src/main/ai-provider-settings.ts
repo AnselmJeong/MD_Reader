@@ -1,34 +1,35 @@
 import { SimpleStore } from './simple-store'
 
 interface AiProviderSettings {
+  tinyfishApiKey: string
   ollamaApiKey: string
   ollamaBaseUrl: string
-  ollamaSearchBaseUrl: string
   webSearchEnabled: boolean
   webSearchMaxResults: number
 }
 
 export interface AiProviderStatus {
+  hasTinyfishApiKey: boolean
+  tinyfishApiKeySource: 'env' | 'saved' | 'none'
   hasOllamaApiKey: boolean
   ollamaBaseUrl: string
-  ollamaSearchBaseUrl: string
   webSearchEnabled: boolean
   webSearchMaxResults: number
   apiKeySource: 'env' | 'saved' | 'none'
 }
 
 export interface AiProviderSettingsUpdate {
+  tinyfishApiKey?: string
   ollamaApiKey?: string
   ollamaBaseUrl?: string
-  ollamaSearchBaseUrl?: string
   webSearchEnabled?: boolean
   webSearchMaxResults?: number
 }
 
 const DEFAULTS: AiProviderSettings = {
+  tinyfishApiKey: '',
   ollamaApiKey: '',
   ollamaBaseUrl: 'https://ollama.com/v1',
-  ollamaSearchBaseUrl: 'https://ollama.com/api',
   webSearchEnabled: true,
   webSearchMaxResults: 5
 }
@@ -47,9 +48,9 @@ export function getOllamaApiKey(): string {
 
 export function getAiProviderConfig(): AiProviderSettings {
   return {
+    tinyfishApiKey: process.env.TINYFISH_API_KEY?.trim() || store.get('tinyfishApiKey').trim(),
     ollamaApiKey: getOllamaApiKey(),
     ollamaBaseUrl: normalizeBaseUrl(store.get('ollamaBaseUrl'), DEFAULTS.ollamaBaseUrl),
-    ollamaSearchBaseUrl: normalizeBaseUrl(store.get('ollamaSearchBaseUrl'), DEFAULTS.ollamaSearchBaseUrl),
     webSearchEnabled: store.get('webSearchEnabled'),
     webSearchMaxResults: Math.min(Math.max(Number(store.get('webSearchMaxResults')) || 5, 1), 10)
   }
@@ -61,9 +62,10 @@ export function getAiProviderStatus(): AiProviderStatus {
   const config = getAiProviderConfig()
 
   return {
+    hasTinyfishApiKey: Boolean(config.tinyfishApiKey),
+    tinyfishApiKeySource: process.env.TINYFISH_API_KEY?.trim() ? 'env' : store.get('tinyfishApiKey').trim() ? 'saved' : 'none',
     hasOllamaApiKey: envKey || savedKey,
     ollamaBaseUrl: config.ollamaBaseUrl,
-    ollamaSearchBaseUrl: config.ollamaSearchBaseUrl,
     webSearchEnabled: config.webSearchEnabled,
     webSearchMaxResults: config.webSearchMaxResults,
     apiKeySource: envKey ? 'env' : savedKey ? 'saved' : 'none'
@@ -71,14 +73,14 @@ export function getAiProviderStatus(): AiProviderStatus {
 }
 
 export function updateAiProviderSettings(partial: AiProviderSettingsUpdate): AiProviderStatus {
+  if (typeof partial.tinyfishApiKey === 'string' && partial.tinyfishApiKey.trim()) {
+    store.set('tinyfishApiKey', partial.tinyfishApiKey.trim())
+  }
   if (typeof partial.ollamaApiKey === 'string' && partial.ollamaApiKey.trim()) {
     store.set('ollamaApiKey', partial.ollamaApiKey.trim())
   }
   if (typeof partial.ollamaBaseUrl === 'string') {
     store.set('ollamaBaseUrl', normalizeBaseUrl(partial.ollamaBaseUrl, DEFAULTS.ollamaBaseUrl))
-  }
-  if (typeof partial.ollamaSearchBaseUrl === 'string') {
-    store.set('ollamaSearchBaseUrl', normalizeBaseUrl(partial.ollamaSearchBaseUrl, DEFAULTS.ollamaSearchBaseUrl))
   }
   if (typeof partial.webSearchEnabled === 'boolean') {
     store.set('webSearchEnabled', partial.webSearchEnabled)

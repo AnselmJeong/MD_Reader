@@ -3,7 +3,7 @@ import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent, setDocumentBibliography } from './file-service'
 import { listModels, generateChatTitle } from './ollama-service'
 import { getAiProviderStatus, updateAiProviderSettings, AiProviderSettingsUpdate } from './ai-provider-settings'
-import { streamGroundedChat } from './ai-chat-service'
+import { streamGroundedChat, type StreamGroundedChatParams } from './ai-chat-service'
 import { getSettings, setSettings } from './settings-service'
 import { listKoreanSystemFonts } from './system-font-service'
 import { controlTts, getTtsStatus, onTtsEvent, speakTts, TtsSpeakParams } from './tts-service'
@@ -111,16 +111,7 @@ export function registerIpcHandlers(): void {
     return listModels()
   })
 
-  ipcMain.handle('ollama:chat', async (event, params: {
-    model: string
-    messages: Array<{ role: string; content: string }>
-    systemPrompt?: string
-    memoryContext?: {
-      userText: string
-      contextTitle?: string | null
-      quotedText?: string | null
-    }
-  }) => {
+  ipcMain.handle('ollama:chat', async (event, params: StreamGroundedChatParams) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return { error: 'No window found' }
     const controller = new AbortController()
@@ -141,6 +132,9 @@ export function registerIpcHandlers(): void {
       }
 
       const metadata = await streamGroundedChat({ ...params, systemPrompt }, {
+        onSearchEnd: () => {
+          if (!win.isDestroyed()) win.webContents.send('ollama:search-end')
+        },
         onSearchStart: (payload) => {
           if (!win.isDestroyed()) {
             win.webContents.send('ollama:search-start', payload)

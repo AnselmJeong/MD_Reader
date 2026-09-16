@@ -1,3 +1,4 @@
+import type { ChatRequestOptions } from '../shared/chat-request-options'
 import type { BibliographyResult } from '../shared/bibliography'
 import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron'
 
@@ -43,9 +44,10 @@ export interface ChatCompletionMetadata {
 }
 
 export interface AiProviderStatus {
+  hasTinyfishApiKey: boolean
+  tinyfishApiKeySource: 'env' | 'saved' | 'none'
   hasOllamaApiKey: boolean
   ollamaBaseUrl: string
-  ollamaSearchBaseUrl: string
   webSearchEnabled: boolean
   webSearchMaxResults: number
   apiKeySource: 'env' | 'saved' | 'none'
@@ -141,7 +143,7 @@ export interface ElectronAPI {
   }
   ollama: {
     listModels: () => Promise<Array<{ name: string; size: number }>>
-    chat: (params: {
+    chat: (params: ChatRequestOptions & {
       model: string
       messages: Array<{ role: string; content: string }>
       systemPrompt?: string
@@ -153,6 +155,7 @@ export interface ElectronAPI {
     }) => Promise<{ success?: boolean; error?: string }>
     stop: () => Promise<{ success: boolean }>
     onToken: (callback: (token: string) => void) => () => void
+    onSearchEnd: (callback: () => void) => () => void
     onSearchStart: (callback: (payload: { query: string }) => void) => () => void
     onSearchResults: (callback: (payload: { sources: ChatSource[] }) => void) => () => void
     onMetadata: (callback: (metadata: ChatCompletionMetadata) => void) => () => void
@@ -175,9 +178,9 @@ export interface ElectronAPI {
   aiProvider: {
     status: () => Promise<AiProviderStatus>
     updateSettings: (partial: {
+      tinyfishApiKey?: string
       ollamaApiKey?: string
       ollamaBaseUrl?: string
-      ollamaSearchBaseUrl?: string
       webSearchEnabled?: boolean
       webSearchMaxResults?: number
     }) => Promise<AiProviderStatus>
@@ -315,6 +318,11 @@ const api: ElectronAPI = {
       const handler = (_event: IpcRendererEvent, token: string) => callback(token)
       ipcRenderer.on('ollama:token', handler)
       return () => ipcRenderer.removeListener('ollama:token', handler)
+    },
+    onSearchEnd: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('ollama:search-end', handler)
+      return () => ipcRenderer.removeListener('ollama:search-end', handler)
     },
     onSearchStart: (callback: (payload: { query: string }) => void) => {
       const handler = (_event: IpcRendererEvent, payload: { query: string }) => callback(payload)

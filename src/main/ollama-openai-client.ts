@@ -1,3 +1,4 @@
+import { effectiveThinkingLevel, type ThinkingLevel } from '../shared/chat-request-options'
 import { getAiProviderConfig } from './ai-provider-settings'
 import type { ChatMessageInput } from './ai-chat-types'
 
@@ -12,6 +13,7 @@ export interface OpenAiChatStreamParams {
   model: string
   messages: ChatMessageInput[]
   temperature?: number
+  thinkingLevel?: ThinkingLevel
   responseFormat?: { type: 'json_object' }
 }
 
@@ -90,6 +92,7 @@ export async function chatCompletionsStream(
       model: params.model,
       messages: params.messages,
       stream: true,
+      ...(params.thinkingLevel !== undefined ? { reasoning_effort: effectiveThinkingLevel(params.model, params.thinkingLevel) } : {}),
       ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
       ...(params.responseFormat ? { response_format: params.responseFormat } : {})
     })
@@ -150,6 +153,7 @@ export async function chatCompletionsText(
       model: params.model,
       messages: params.messages,
       stream: false,
+      ...(params.thinkingLevel !== undefined ? { reasoning_effort: effectiveThinkingLevel(params.model, params.thinkingLevel) } : {}),
       ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
       ...(params.responseFormat ? { response_format: params.responseFormat } : {})
     })

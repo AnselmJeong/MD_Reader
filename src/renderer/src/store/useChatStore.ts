@@ -1,3 +1,4 @@
+import { normalizeThinkingLevel, type ThinkingLevel } from '../../../shared/chat-request-options'
 import { create } from 'zustand'
 import type {
   ChatContextMeta,
@@ -24,6 +25,8 @@ interface ChatState {
   streamingSources: ChatSource[]
   streamingSearchQuery: string | null
   inputDraft: string
+  webSearch: boolean
+  thinkingLevel: ThinkingLevel
   pendingQuotedText: string | null
   focusInputRequest: number
   selectedModel: string
@@ -52,6 +55,8 @@ interface ChatState {
   setAvailableModels: (models: string[]) => void
   setSystemPrompt: (prompt: string, persist?: boolean) => void
   setInputDraft: (text: string) => void
+  setWebSearch: (enabled: boolean) => void
+  setThinkingLevel: (level: ThinkingLevel) => void
   setPendingQuotedText: (text: string | null) => void
   requestInputFocus: () => void
   switchContext: (contextMeta: ChatContextMeta | null, proposedContextKey: string | null) => Promise<void>
@@ -111,6 +116,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingSearchQuery: null,
   inputDraft: '',
   pendingQuotedText: null,
+  webSearch: false,
+  thinkingLevel: 'none',
   focusInputRequest: 0,
   selectedModel: '',
   availableModels: [],
@@ -176,6 +183,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     streamingSources: [],
     streamingSearchQuery: null,
     pendingQuotedText: null,
+    webSearch: false,
+    thinkingLevel: 'none',
     currentSessionId: null,
     sessionTitle: null,
     titleStatus: 'pending',
@@ -192,6 +201,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (persist) persistSetting('systemPrompt', prompt)
   },
   setInputDraft: (text) => set({ inputDraft: text }),
+  setWebSearch: (enabled) => set({ webSearch: enabled }),
+  setThinkingLevel: (level) => set({ thinkingLevel: normalizeThinkingLevel(level) }),
   setPendingQuotedText: (text) => set({ pendingQuotedText: text?.trim() ? text.trim() : null }),
   requestInputFocus: () => set((state) => ({ focusInputRequest: state.focusInputRequest + 1 })),
   saveCurrentSession: async (options) => {
@@ -277,6 +288,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamingSources: [],
         streamingSearchQuery: null,
         pendingQuotedText: null,
+        webSearch: false,
+        thinkingLevel: 'none',
         sessionDirty: false,
         sessionView: 'live'
       })
@@ -300,6 +313,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamingSources: [],
         streamingSearchQuery: null,
         pendingQuotedText: null,
+        webSearch: false,
+        thinkingLevel: 'none',
         sessionDirty: false,
         sessionView: 'live',
         isLoadingSession: false
@@ -317,6 +332,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamingSources: [],
         streamingSearchQuery: null,
         pendingQuotedText: null,
+        webSearch: false,
+        thinkingLevel: 'none',
         sessionDirty: false,
         sessionView: 'live',
         isLoadingSession: false
@@ -348,6 +365,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamingSources: [],
         streamingSearchQuery: null,
         pendingQuotedText: null,
+        webSearch: false,
+        thinkingLevel: 'none',
         sessionDirty: false,
         sessionView: 'historical',
         isLoadingSession: false
@@ -382,6 +401,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingSearchQuery: null,
       inputDraft: '',
       pendingQuotedText: null,
+      webSearch: false,
+      thinkingLevel: 'none',
       sessionDirty: false,
       sessionView: 'live'
     })
@@ -422,7 +443,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const message = text.trim()
     if (!message) return { success: false, reason: 'empty' }
 
-    const { selectedModel, isStreaming, messages, systemPrompt, currentContextMeta } = get()
+    const { selectedModel, isStreaming, messages, systemPrompt, currentContextMeta, webSearch, thinkingLevel } = get()
     if (!selectedModel) return { success: false, reason: 'no-model' }
     if (isStreaming) return { success: false, reason: 'streaming' }
 
@@ -443,6 +464,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingSearchQuery: null,
       inputDraft: '',
       pendingQuotedText: null,
+      webSearch: false,
+      thinkingLevel: 'none',
       sessionDirty: true,
       sessionView: 'live'
     }))
@@ -465,6 +488,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       await window.api.ollama.chat({
         model: selectedModel,
         messages: chatMessages,
+        webSearch,
+        thinkingLevel,
         systemPrompt: fullSystemPrompt,
         memoryContext: {
           userText: message,

@@ -1,3 +1,4 @@
+import { THINKING_LEVELS, effectiveThinkingLevel, normalizeThinkingLevel } from '../../../../shared/chat-request-options'
 import { useRef, useEffect } from 'react'
 import { useChatStore } from '../../store/useChatStore'
 
@@ -9,6 +10,11 @@ interface ChatInputProps {
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const input = useChatStore((s) => s.inputDraft)
   const setInputDraft = useChatStore((s) => s.setInputDraft)
+  const webSearch = useChatStore(s => s.webSearch)
+  const setWebSearch = useChatStore(s => s.setWebSearch)
+  const thinkingLevel = useChatStore(s => s.thinkingLevel)
+  const setThinkingLevel = useChatStore(s => s.setThinkingLevel)
+  const selectedModel = useChatStore(s => s.selectedModel)
   const pendingQuotedText = useChatStore((s) => s.pendingQuotedText)
   const setPendingQuotedText = useChatStore((s) => s.setPendingQuotedText)
   const focusInputRequest = useChatStore((s) => s.focusInputRequest)
@@ -97,6 +103,37 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           </button>
         )}
       </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-on-surface-muted">
+        <button
+          type="button"
+          aria-label="웹 검색"
+          aria-pressed={webSearch}
+          disabled={disabled}
+          onClick={() => setWebSearch(!webSearch)}
+          title="이번 질문에 웹 검색 사용 · Settings에서 TinyFish API 키 설정 필요"
+          className={`rounded-md border px-2 py-1.5 transition-colors disabled:opacity-50 ${webSearch ? 'border-accent bg-accent/10 text-accent' : 'border-[var(--hair-2)] hover:text-on-surface'}`}
+        >
+          Search · {webSearch ? 'On' : 'Off'}
+        </button>
+        <label className="flex items-center gap-1.5 rounded-md border border-[var(--hair-2)] px-2 py-1.5">
+          <span>Thinking</span>
+          <select
+            aria-label="Thinking 수준"
+            value={thinkingLevel}
+            onChange={event => setThinkingLevel(normalizeThinkingLevel(event.target.value))}
+            disabled={disabled}
+            title="이번 질문의 사고 수준 · 모델에 따라 지원 범위가 다릅니다"
+            className="min-w-0 bg-surface text-on-surface outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50"
+          >
+            {THINKING_LEVELS.map(level => <option key={level} value={level}>{level[0].toUpperCase() + level.slice(1)}</option>)}
+          </select>
+        </label>
+      </div>
+      <p className="mt-1.5 text-[11px] leading-relaxed text-on-surface-muted">이번 질문에만 적용 · 전송 후 Off / None으로 초기화</p>
+      {effectiveThinkingLevel(selectedModel, thinkingLevel) !== thinkingLevel && (
+        <p className="mt-1.5 text-[11px] leading-relaxed text-on-surface-muted" role="status">이 모델은 Thinking을 끌 수 없어 None 대신 Low로 요청합니다.</p>
+      )}
+      {thinkingLevel !== 'none' && <p className="mt-1.5 text-[11px] leading-relaxed text-on-surface-muted">수준별 지원은 모델에 따라 다르며, 답변 준비가 길어질 수 있습니다.</p>}
     </div>
   )
 }
