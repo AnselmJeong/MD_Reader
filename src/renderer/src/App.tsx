@@ -10,7 +10,6 @@ import { useDocumentStore } from './store/useDocumentStore'
 import { useChatStore } from './store/useChatStore'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useUIStore } from './store/useUIStore'
-import { useTtsStore } from './store/useTtsStore'
 import { filterOllamaModels } from './utils/ollama-model-filter'
 import { getChatContextMeta, getProposedContextKey } from './utils/chat-context'
 import { resolveAiSystemPrompt } from '../../shared/ai-prompts'
@@ -41,9 +40,8 @@ export default function App() {
   const chatSessionDirty = useChatStore(s => s.sessionDirty)
   const chatIsStreaming = useChatStore(s => s.isStreaming)
 
-  const { fontSize, aiSidebarFontSize, lineHeight, contentWidth, readerFontFamily, setTheme, setFontSize, setAiSidebarFontSize, setLineHeight, setContentWidth, setReaderFontFamily, setTtsVoice, cycleTheme } = useSettingsStore()
+  const { fontSize, aiSidebarFontSize, lineHeight, contentWidth, readerFontFamily, setTheme, setFontSize, setAiSidebarFontSize, setLineHeight, setContentWidth, setReaderFontFamily, cycleTheme } = useSettingsStore()
   const { showChat, showSettings, toggleChat, toggleSettings, toggleToC, setShowSearch, chatWidth, setChatWidth } = useUIStore()
-  const initializeTtsListeners = useTtsStore(s => s.initializeListeners)
   const chatContextMeta = useMemo(() => getChatContextMeta(activeTab), [
     activeTab?.kind,
     activeTab?.filePath,
@@ -124,9 +122,6 @@ export default function App() {
         if (typeof settings?.readerFontFamily === 'string') {
           setReaderFontFamily(settings.readerFontFamily)
         }
-        if (settings?.ttsVoice === 'Ava' || settings?.ttsVoice === 'Christopher') {
-          setTtsVoice(settings.ttsVoice)
-        }
         setSystemPrompt(resolveAiSystemPrompt(settings?.systemPrompt), false)
         await loadModels(typeof settings?.ollamaModel === 'string' ? settings.ollamaModel : undefined)
       } catch (e) {
@@ -143,8 +138,7 @@ export default function App() {
 
     }
     init()
-    initializeTtsListeners()
-  }, [initializeTtsListeners, setAiSidebarFontSize, setAvailableModels, setContentWidth, setFontSize, setLineHeight, setReaderFontFamily, setRecentFiles, setSelectedModel, setSystemPrompt, setTheme, setTtsVoice])
+  }, [setAiSidebarFontSize, setAvailableModels, setContentWidth, setFontSize, setLineHeight, setReaderFontFamily, setRecentFiles, setSelectedModel, setSystemPrompt, setTheme])
 
   useEffect(() => {
     void switchChatContext(chatContextMeta, proposedChatContextKey)

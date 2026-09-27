@@ -269,15 +269,6 @@
   color: #ffffff;
 }
 
-/* ─── TTS current utterance ─── */
-.document-body mark.md-tts-current {
-  background: color-mix(in oklch, var(--accent) 14%, transparent);
-  color: inherit;
-  outline: 1px solid color-mix(in oklch, var(--accent) 30%, transparent);
-  padding: 0.05em 0.1em;
-  border-radius: 3px;
-}
-
 /* Static Quarto figures and table captions share the reader's typography. */
 .reader-markdown-content figure.quarto-figure,
 .reader-markdown-content figure.quarto-table {

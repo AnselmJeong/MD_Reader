@@ -10,7 +10,6 @@ interface AppSettings {
   readerFontFamily: string
   ollamaModel: string
   systemPrompt: string
-  ttsVoice: 'Ava' | 'Christopher'
 }
 
 const store = new SimpleStore<AppSettings>('md-reader-settings', {
@@ -21,7 +20,6 @@ const store = new SimpleStore<AppSettings>('md-reader-settings', {
   contentWidth: 64,
   readerFontFamily: '',
   ollamaModel: '',
-  ttsVoice: 'Christopher',
   systemPrompt: DEFAULT_AI_SYSTEM_PROMPT
 })
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { TtsVoice, useSettingsStore } from '../store/useSettingsStore'
+import { useSettingsStore } from '../store/useSettingsStore'
 import { useChatStore } from '../store/useChatStore'
 import { filterOllamaModels } from '../utils/ollama-model-filter'
 import type { AgentMemoryStatus, AiProviderStatus } from '../global'
@@ -31,13 +31,11 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     aiSidebarFontSize,
     lineHeight,
     contentWidth,
-    ttsVoice,
     setTheme,
     setFontSize,
     setAiSidebarFontSize,
     setLineHeight,
-    setContentWidth,
-    setTtsVoice
+    setContentWidth
   } = useSettingsStore()
   const {
     systemPrompt,
@@ -343,35 +341,6 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                   rows={4}
                   className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent resize-none"
                 />
-              </div>
-            </div>
-          </section>
-
-          {/* ─── TTS ─── */}
-          <section>
-            <h3 className="text-sm font-semibold text-on-surface mb-3">Text to Speech</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-on-surface-muted">Voice</label>
-                <div className="flex gap-1">
-                  {([
-                    { id: 'Christopher', label: 'Christopher', detail: 'Male' },
-                    { id: 'Ava', label: 'Ava', detail: 'Female' }
-                  ] as Array<{ id: TtsVoice; label: string; detail: string }>).map((voice) => (
-                    <button
-                      key={voice.id}
-                      onClick={() => setTtsVoice(voice.id)}
-                      className={`px-3 py-1 rounded-md text-xs transition-colors ${
-                        ttsVoice === voice.id
-                          ? 'bg-accent text-white'
-                          : 'bg-surface border border-border text-on-surface-muted hover:text-on-surface'
-                      }`}
-                      title={`${voice.label} (${voice.detail})`}
-                    >
-                      {voice.label}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
           </section>

@@ -6,7 +6,6 @@ import { getAiProviderStatus, updateAiProviderSettings, AiProviderSettingsUpdate
 import { streamGroundedChat, type StreamGroundedChatParams } from './ai-chat-service'
 import { getSettings, setSettings } from './settings-service'
 import { listKoreanSystemFonts } from './system-font-service'
-import { controlTts, getTtsStatus, onTtsEvent, speakTts, TtsSpeakParams } from './tts-service'
 import {
   archiveChatSession,
   ChatContextMeta,
@@ -41,14 +40,6 @@ import {
 const activeOllamaRequests = new Map<number, AbortController>()
 
 export function registerIpcHandlers(): void {
-  onTtsEvent((ttsEvent) => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) {
-        win.webContents.send(`tts:${ttsEvent.type}`, ttsEvent)
-      }
-    }
-  })
-
   // ─── File Operations ───
   ipcMain.handle('file:open-dialog', async () => {
     const result = await dialog.showOpenDialog({
@@ -217,31 +208,6 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('ai-provider:update-settings', async (_event, partial: AiProviderSettingsUpdate) => {
     return updateAiProviderSettings(partial)
-  })
-
-  // ─── TTS ───
-  ipcMain.handle('tts:speak', async (_event, params: TtsSpeakParams) => {
-    return speakTts(params)
-  })
-
-  ipcMain.handle('tts:pause', async () => {
-    return controlTts('pause')
-  })
-
-  ipcMain.handle('tts:resume', async () => {
-    return controlTts('resume')
-  })
-
-  ipcMain.handle('tts:stop', async () => {
-    return controlTts('stop')
-  })
-
-  ipcMain.handle('tts:restart', async () => {
-    return controlTts('restart')
-  })
-
-  ipcMain.handle('tts:status', async () => {
-    return getTtsStatus()
   })
 
   // ─── Chat Export ───

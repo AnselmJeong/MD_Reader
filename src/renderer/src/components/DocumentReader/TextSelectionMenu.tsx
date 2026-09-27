@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useChatStore } from '../../store/useChatStore'
 import { useUIStore } from '../../store/useUIStore'
 import { useDocumentStore } from '../../store/useDocumentStore'
-import { useTtsStore } from '../../store/useTtsStore'
 import type { EpubAnnotationStyle } from '../../global'
 
 const highlightChoices: Array<{
@@ -38,7 +37,6 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: 
   const { showChat } = useUIStore()
   const { toggleChat } = useUIStore()
   const { content } = useDocumentStore()
-  const { speakSelection } = useTtsStore()
 
   const ensureChatOpen = () => {
     if (!showChat) toggleChat()
@@ -89,11 +87,6 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: 
     } catch (error) {
       console.error('Failed to copy selection:', error)
     }
-    closeMenu()
-  }
-
-  const handleSpeakSelection = () => {
-    void speakSelection(selectedText)
     closeMenu()
   }
 
@@ -166,15 +159,6 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: 
           </div>
         )}
       </div>
-      <div className="h-4 w-px bg-white/10" />
-      <button
-        onClick={handleSpeakSelection}
-        className={itemClass}
-        title="Read selected text"
-      >
-        <svg className={iconClass} viewBox="0 0 16 16" aria-hidden="true"><path className="icon-stroke" d="M2.75 8.5a5.25 5.25 0 0 1 10.5 0M2.75 8.5v3.75h2v-4h-2zM13.25 8.5v3.75h-2v-4h2z" /></svg>
-        Read
-      </button>
       <div className="h-4 w-px bg-white/10" />
       <button
         onClick={handleCopy}

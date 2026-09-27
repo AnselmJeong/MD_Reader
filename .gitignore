@@ -6,6 +6,3 @@ dist/
 .electron-cache/
 .DS_Store
 *.log
-tts/.venv/
-tts/.python-version
-tts/.cache/

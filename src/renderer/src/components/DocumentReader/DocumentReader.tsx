@@ -14,8 +14,6 @@ import { useTextSelectionHighlight } from './hooks/useTextSelectionHighlight'
 import { useLinkTooltip } from './hooks/useLinkTooltip'
 import { useDocumentStore, type MarkdownDocumentTab } from '../../store/useDocumentStore'
 import { useUIStore } from '../../store/useUIStore'
-import { useTtsStore } from '../../store/useTtsStore'
-import { clearTtsMarks, markSpokenText } from './utils/ttsDom'
 
 function getPrimaryHeading(content: string): string {
   const match = content.match(/^#\s+(.+)$/m)
@@ -29,7 +27,6 @@ function stripPrimaryHeading(content: string): string {
 function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
   const { updateContent } = useDocumentStore()
   const { focusMode, showToC, showSearch, setShowSearch, toggleFocusMode, toggleToC } = useUIStore()
-  const { activeUtteranceId, state: ttsState, utterances } = useTtsStore()
   const { content, bibContent, fileName, wordCount, readingTime } = tab
   const scrollRef = useRef<HTMLDivElement>(null)
   const documentBodyRef = useRef<HTMLDivElement>(null)
@@ -111,20 +108,6 @@ function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleToggleFocusMode])
-
-  useEffect(() => {
-    const root = documentBodyRef.current
-    if (!root) return
-
-    if (!activeUtteranceId || ttsState === 'stopped' || ttsState === 'ended' || ttsState === 'idle') {
-      clearTtsMarks(root)
-      return
-    }
-
-    const utterance = utterances.find((item) => item.id === activeUtteranceId)
-    if (!utterance) return
-    markSpokenText(root, scrollRef.current, utterance.text)
-  }, [activeUtteranceId, ttsState, utterances])
 
   if (!content) return null
 

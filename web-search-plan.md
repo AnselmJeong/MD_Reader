@@ -48,7 +48,7 @@ Current local-Ollama path:
   - Owns selected model, available models, system prompt, streaming text, saved messages, and session calls.
   - Persists `ollamaModel` via `window.api.settings.set`.
 - `src/main/settings-service.ts`
-  - Owns persisted app settings: theme, reader font, AI sidebar font, `ollamaModel`, `systemPrompt`, TTS voice.
+  - Owns persisted app settings: theme, reader font, AI sidebar font, `ollamaModel`, `systemPrompt`.
 - `src/renderer/src/components/SettingsModal.tsx`
   - Refreshes model list.
   - Allows model and system prompt edits.
@@ -385,7 +385,7 @@ Actions:
 
 Expected unchanged behavior:
 
-- Existing appearance/TTS/model settings still load.
+- Existing appearance/model settings still load.
 - Existing mem0 settings unchanged.
 
 Risk:

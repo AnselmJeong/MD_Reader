@@ -15,13 +15,7 @@ export type {
   EpubReadingProgressRecord,
   FileReadResult,
   SessionTitleStatus,
-  StoredChatMessage,
-  TtsMode,
-  TtsSpeakParams,
-  TtsState,
-  TtsStatus,
-  TtsUtterance,
-  TtsUtteranceEvent
+  StoredChatMessage
 } from '../../preload/index'
 
 declare global {

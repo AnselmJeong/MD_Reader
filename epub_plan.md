@@ -8,7 +8,7 @@ Add EPUB reading support while preserving the current MD_Reader experience:
 - Existing toolbar and popup selection menu
 - Table of contents sidebar
 - Resizable AI chat sidebar
-- Search, TTS, theme/font controls where technically appropriate
+- Search, theme/font controls where technically appropriate
 - Existing Markdown behavior without regression
 
 The safest direction is not to convert EPUB into Markdown and feed it through the existing Markdown renderer. EPUB should be introduced as a second document type that shares the current reader shell but uses an EPUB-specific rendering adapter.
@@ -19,7 +19,7 @@ The safest direction is not to convert EPUB into Markdown and feed it through th
 - `useDocumentStore` currently stores each tab as a Markdown-like text document with `content: string`.
 - `DocumentReader` assumes one Markdown string and renders it through `MarkdownRenderer`.
 - `TableOfContents` extracts headings from Markdown text.
-- Search, text selection menu, link tooltip, TTS marking, and highlighting are DOM-based and currently operate on rendered Markdown DOM.
+- Search, text selection menu, link tooltip and highlighting are DOM-based and currently operate on rendered Markdown DOM.
 - The right AI sidebar is layout-level UI and can remain in place if the active document still exposes document text or selected text.
 
 ## Recommended Library
@@ -76,7 +76,7 @@ interface EpubDocumentTab extends BaseDocumentTab {
 
 Notes:
 
-- Keep `content` as a compatibility field for AI/TTS/status surfaces, but for EPUB it should be extracted plain text, not rendered HTML.
+- Keep `content` as a compatibility field for AI/status surfaces, but for EPUB it should be extracted plain text, not rendered HTML.
 - Use `plainText` for document-level AI context and basic word count.
 - Preserve `id = filePath` so existing tab behavior remains stable.
 
@@ -152,7 +152,6 @@ EPUB:
   - Ask AI
   - Summarize
   - Copy
-  - Read selected text
   - Highlight
 
 For the MVP, EPUB highlight can be visual-only during the session.
@@ -187,7 +186,6 @@ Run these checks before considering MVP complete:
   - Search
   - Selection menu
   - Ask AI sidebar
-  - TTS button
   - Multiple tabs
 - Open an EPUB and verify:
   - File dialog accepts `.epub`
@@ -213,7 +211,6 @@ Uses:
 - More useful AI full-document context
 - Full-book search
 - Better word count and reading time
-- Full-document TTS
 
 Implementation notes:
 
@@ -260,18 +257,7 @@ On reopen:
 - Load annotations for the EPUB.
 - Reapply with `rendition.annotations.highlight()`.
 
-### 5. EPUB TTS
-
-Add EPUB-aware TTS modes:
-
-- Read selected text
-- Read current chapter
-- Read from current location
-- Optional full-book queue
-
-Avoid sending the whole book at once. Build utterances by section and chunk them like the existing Markdown TTS path.
-
-### 6. EPUB Link Handling and Footnotes
+### 5. EPUB Link Handling and Footnotes
 
 Handle links inside EPUB content:
 
@@ -279,7 +265,7 @@ Handle links inside EPUB content:
 - External `http/https` links should use `window.api.shell.openExternal`.
 - Footnote/backlink behavior should be tested with real academic EPUBs.
 
-### 7. Better EPUB Metadata
+### 6. Better EPUB Metadata
 
 Display EPUB-specific metadata:
 
@@ -400,5 +386,5 @@ Mitigation:
 - EPUB reader preserves the current app chrome: toolbar, tabs, TOC sidebar, AI sidebar, status bar.
 - EPUB TOC navigates to chapters.
 - EPUB text selection opens the existing popup menu.
-- Selected EPUB text can be copied, read aloud, and sent to AI.
+- Selected EPUB text can be copied, highlighted, and sent to AI.
 - Build passes.

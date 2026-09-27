@@ -2,7 +2,6 @@ import { app, BrowserWindow, shell } from 'electron'
 import path, { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc-handlers'
-import { shutdownTts } from './tts-service'
 import { closeChatSessionDb } from './chat-session-service'
 import { closeEpubAnnotationDb } from './epub-annotation-service'
 import { closeEpubReadingProgressDb } from './epub-reading-progress-service'
@@ -64,7 +63,6 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
-  shutdownTts()
   closeChatSessionDb()
   closeEpubAnnotationDb()
   closeEpubReadingProgressDb()
