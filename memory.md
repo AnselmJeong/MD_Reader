@@ -1,3 +1,5 @@
+> Historical design note: mem0 and Ollama are retired from MD Reader. See [the current Hindsight integration](docs/hindsight-memory.md) and [subscription integration](docs/subscription-migration.md). The original planning material below is retained for history.
+
 # MD_Reader Agent Memory Plan
 
 ## 1. Goal

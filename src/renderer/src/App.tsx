@@ -10,7 +10,7 @@ import { useDocumentStore } from './store/useDocumentStore'
 import { useChatStore } from './store/useChatStore'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useUIStore } from './store/useUIStore'
-import { filterOllamaModels } from './utils/ollama-model-filter'
+import { filterSubscriptionModels } from './utils/subscription-model-filter'
 import { getChatContextMeta, getProposedContextKey } from './utils/chat-context'
 import { resolveAiSystemPrompt } from '../../shared/ai-prompts'
 
@@ -92,8 +92,8 @@ export default function App() {
       const maxAttempts = 4
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          const models = await window.api.ollama.listModels()
-          const modelNames = filterOllamaModels(models.map((m) => m.name))
+          const models = await window.api.ai.listModels()
+          const modelNames = filterSubscriptionModels(models.map((m) => m.name))
           if (modelNames.length > 0) {
             setAvailableModels(modelNames)
             if (preferredModel && modelNames.includes(preferredModel)) {
@@ -123,7 +123,7 @@ export default function App() {
           setReaderFontFamily(settings.readerFontFamily)
         }
         setSystemPrompt(resolveAiSystemPrompt(settings?.systemPrompt), false)
-        await loadModels(typeof settings?.ollamaModel === 'string' ? settings.ollamaModel : undefined)
+        await loadModels(typeof settings?.aiModel === 'string' ? settings.aiModel : undefined)
       } catch (e) {
         console.error('Settings init error:', e)
         await loadModels()

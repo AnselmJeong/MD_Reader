@@ -158,9 +158,12 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       const tabs = existingIndex >= 0
         ? state.tabs.map((tab, index) => {
           if (index !== existingIndex) return tab
-          if (tab.kind === 'epub' && nextTab.kind === 'epub') {
+          if (tab.kind === 'epub' && nextTab.kind === 'epub' && tab.documentHash === nextTab.documentHash) {
             return {
               ...nextTab,
+              content: tab.content,
+              wordCount: tab.wordCount,
+              readingTime: tab.readingTime,
               currentLocation: tab.currentLocation,
               currentChapterHref: tab.currentChapterHref,
               currentChapterLabel: tab.currentChapterLabel,

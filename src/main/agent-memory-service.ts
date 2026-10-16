@@ -1,3 +1,4 @@
+import { getSettings } from './settings-service'
 import crypto from 'crypto'
 import { shell } from 'electron'
 import {
@@ -7,12 +8,12 @@ import {
 } from './chat-session-service'
 import { getAgentMemorySettings } from './agent-memory-settings'
 import { applyUserProfileItems, getAgentMemoryPaths, queueSoulDirectives, readAgentMemoryFiles } from './agent-memory-files'
-import { addMem0Memory, checkMem0Health, searchMem0 } from './mem0-client'
+import { retainHindsightMemory, checkHindsightHealth, recallHindsight } from './hindsight-client'
 import { extractSessionMemory, ExtractedInsight, MemoryExtractionResult } from './memory-extractor'
 
 type MemoryRunStatus = 'processing' | 'completed' | 'skipped' | 'failed'
 type MemoryItemKind = 'user_profile' | 'soul_directive' | 'insight' | 'rejected'
-type MemoryItemStatus = 'applied' | 'queued' | 'sent_to_mem0' | 'rejected' | 'failed'
+type MemoryItemStatus = 'applied' | 'queued' | 'stored' | 'rejected' | 'failed'
 
 export interface RuntimeMemoryContextParams {
   userText: string
@@ -68,17 +69,17 @@ function recordItem(params: {
   evidenceIds: string[]
   target?: string | null
   status: MemoryItemStatus
-  mem0Id?: string | null
+  remoteDocumentId?: string | null
   metadata: Record<string, unknown>
 }): void {
   getChatDb().prepare(`
     INSERT INTO agent_memory_items (
       id, run_id, session_id, kind, content, confidence, evidence_message_ids,
-      target, status, mem0_id, metadata_json, created_at
+      target, status, remote_document_id, metadata_json, created_at, backend
     )
     VALUES (
       @id, @runId, @sessionId, @kind, @content, @confidence, @evidenceIds,
-      @target, @status, @mem0Id, @metadataJson, @now
+      @target, @status, @remoteDocumentId, @metadataJson, @now, 'hindsight'
     )
   `).run({
     id: createId('memitem'),
@@ -90,7 +91,7 @@ function recordItem(params: {
     evidenceIds: JSON.stringify(params.evidenceIds),
     target: params.target ?? null,
     status: params.status,
-    mem0Id: params.mem0Id ?? null,
+    remoteDocumentId: params.remoteDocumentId ?? null,
     metadataJson: JSON.stringify(params.metadata),
     now: Date.now()
   })
@@ -155,7 +156,7 @@ function finishRun(params: {
   userPatchCount?: number
   soulPatchCount?: number
   insightCount?: number
-  mem0EventIds?: string[]
+  remoteEventIds?: string[]
   error?: string | null
 }): void {
   const now = Date.now()
@@ -165,7 +166,7 @@ function finishRun(params: {
       user_patch_count = @userPatchCount,
       soul_patch_count = @soulPatchCount,
       insight_count = @insightCount,
-      mem0_event_ids = @mem0EventIds,
+      remote_event_ids = @remoteEventIds,
       error = @error,
       completed_at = @now
     WHERE id = @runId
@@ -175,7 +176,7 @@ function finishRun(params: {
     userPatchCount: params.userPatchCount ?? 0,
     soulPatchCount: params.soulPatchCount ?? 0,
     insightCount: params.insightCount ?? 0,
-    mem0EventIds: params.mem0EventIds ? JSON.stringify(params.mem0EventIds) : null,
+    remoteEventIds: params.remoteEventIds ? JSON.stringify(params.remoteEventIds) : null,
     error: params.error ?? null,
     now
   })
@@ -198,7 +199,7 @@ async function storeInsight(runId: string, sessionId: string, insight: Extracted
   documentKind: string
   contextTitle: string
   chapterLabel: string | null
-}): Promise<{ status: MemoryItemStatus; mem0Id?: string; eventId?: string }> {
+}): Promise<{ status: MemoryItemStatus; remoteDocumentId?: string; eventId?: string }> {
   const settings = getAgentMemorySettings()
   const metadata = {
     app: 'MD_Reader',
@@ -218,7 +219,7 @@ async function storeInsight(runId: string, sessionId: string, insight: Extracted
   }
 
   try {
-    const result = await addMem0Memory(settings, { content: insight.content, metadata })
+    const result = await retainHindsightMemory(settings, { content: insight.content, metadata })
     recordItem({
       runId,
       sessionId,
@@ -227,11 +228,11 @@ async function storeInsight(runId: string, sessionId: string, insight: Extracted
       confidence: insight.confidence,
       evidenceIds: insight.evidence_message_ids,
       target: insight.subtype,
-      status: 'sent_to_mem0',
-      mem0Id: result.memoryId,
+      status: 'stored',
+      remoteDocumentId: result.memoryId,
       metadata
     })
-    return { status: 'sent_to_mem0', mem0Id: result.memoryId, eventId: result.eventId }
+    return { status: 'stored', remoteDocumentId: result.memoryId, eventId: result.eventId }
   } catch (error) {
     recordItem({
       runId,
@@ -244,7 +245,7 @@ async function storeInsight(runId: string, sessionId: string, insight: Extracted
       status: 'failed',
       metadata: {
         ...metadata,
-        error: error instanceof Error ? error.message : 'Unknown mem0 error'
+        error: error instanceof Error ? error.message : 'Unknown Hindsight error'
       }
     })
     return { status: 'failed' }
@@ -306,13 +307,13 @@ function parseMetadataJson(raw: string): Record<string, unknown> {
   }
 }
 
-async function retryFailedMem0Insights(limit = 100): Promise<{ attempted: number; succeeded: number; failed: number }> {
+async function retryFailedHindsightInsights(limit = 100): Promise<{ attempted: number; succeeded: number; failed: number }> {
   const settings = getAgentMemorySettings()
   const rows = getChatDb().prepare(`
     SELECT id, session_id, content, metadata_json
     FROM agent_memory_items
     WHERE kind = 'insight'
-      AND status = 'failed'
+      AND status = 'failed' AND backend = 'hindsight'
     ORDER BY created_at ASC
     LIMIT ?
   `).all(limit) as FailedInsightRow[]
@@ -325,16 +326,16 @@ async function retryFailedMem0Insights(limit = 100): Promise<{ attempted: number
     delete metadata.error
 
     try {
-      const result = await addMem0Memory(settings, { content: row.content, metadata })
+      const result = await retainHindsightMemory(settings, { content: row.content, metadata })
       getChatDb().prepare(`
         UPDATE agent_memory_items
-        SET status = 'sent_to_mem0',
-          mem0_id = @mem0Id,
+        SET status = 'stored',
+          remote_document_id = @remoteDocumentId,
           metadata_json = @metadataJson
         WHERE id = @id
       `).run({
         id: row.id,
-        mem0Id: result.memoryId ?? null,
+        remoteDocumentId: result.memoryId ?? null,
         metadataJson: JSON.stringify(metadata)
       })
       succeeded += 1
@@ -348,7 +349,7 @@ async function retryFailedMem0Insights(limit = 100): Promise<{ attempted: number
         id: row.id,
         metadataJson: JSON.stringify({
           ...metadata,
-          error: error instanceof Error ? error.message : 'Unknown mem0 error'
+          error: error instanceof Error ? error.message : 'Unknown Hindsight error'
         })
       })
     }
@@ -366,6 +367,7 @@ export async function processPendingMemoryJobs(limit = 20): Promise<{ attempted:
     FROM chat_sessions
     WHERE archived_at IS NULL
       AND message_count > 0
+      AND updated_at >= COALESCE((SELECT applied_at FROM app_schema_migrations WHERE id = 'hindsight-v1'), 0)
       AND (
         memory_status IS NULL
         OR memory_status = 'pending'
@@ -401,20 +403,20 @@ export async function initializeAgentMemoryStartupRoutine(): Promise<void> {
     console.warn('[AgentMemory] Failed to initialize memory files:', error)
   }
 
-  const health = await checkMem0Health(settings)
+  const health = await checkHindsightHealth(settings)
   if (!health.ok) {
-    console.warn(`[AgentMemory] mem0 startup check failed: ${health.error || 'mem0 is not reachable'}`)
+    console.warn(`[AgentMemory] Hindsight startup check failed: ${health.error || 'Hindsight is not reachable'}`)
     return
   }
 
-  console.info('[AgentMemory] mem0 startup check succeeded.')
+  console.info('[AgentMemory] Hindsight startup check succeeded.')
 
   try {
     const pending = await processPendingMemoryJobs()
-    const retried = await retryFailedMem0Insights()
+    const retried = await retryFailedHindsightInsights()
     console.info(
       `[AgentMemory] Startup routine complete: processed ${pending.attempted} pending session(s), ` +
-      `retried ${retried.attempted} failed mem0 insight(s), ` +
+      `retried ${retried.attempted} failed Hindsight insight(s), ` +
       `${retried.succeeded} succeeded, ${retried.failed} failed.`
     )
   } catch (error) {
@@ -445,7 +447,8 @@ export async function processSessionMemory(sessionId: string): Promise<void> {
   if (!data) return
 
   const hash = transcriptHash(data.messages)
-  const model = settings.extractorModel || data.session.model || ''
+  const candidates = [settings.extractorModel, data.session.model, getSettings('aiModel')]
+  const model = candidates.find((value): value is string => typeof value === 'string' && /^(codex|claude):.+$/.test(value)) || 'codex:default'
   const runId = startRun({
     sessionId,
     contextKey: data.session.contextKey,
@@ -497,7 +500,7 @@ export async function processSessionMemory(sessionId: string): Promise<void> {
       insights: []
     })
 
-    const mem0EventIds: string[] = []
+    const remoteEventIds: string[] = []
     for (const insight of eligibleInsights) {
       const stored = await storeInsight(runId, sessionId, insight, {
         contextKey: data.session.contextKey,
@@ -505,7 +508,7 @@ export async function processSessionMemory(sessionId: string): Promise<void> {
         contextTitle: data.context.context_title,
         chapterLabel: data.context.chapter_label
       })
-      if (stored.eventId) mem0EventIds.push(stored.eventId)
+      if (stored.eventId) remoteEventIds.push(stored.eventId)
     }
 
     finishRun({
@@ -515,7 +518,7 @@ export async function processSessionMemory(sessionId: string): Promise<void> {
       userPatchCount,
       soulPatchCount,
       insightCount: eligibleInsights.length,
-      mem0EventIds
+      remoteEventIds
     })
   } catch (error) {
     finishRun({
@@ -535,7 +538,7 @@ function compactLines(markdown: string, maxLines: number): string[] {
     .slice(0, maxLines)
 }
 
-export async function buildMemoryContextForPrompt(params: RuntimeMemoryContextParams): Promise<RuntimeMemoryContext> {
+export async function buildMemoryContextForPrompt(params: RuntimeMemoryContextParams, signal?: AbortSignal): Promise<RuntimeMemoryContext> {
   const settings = getAgentMemorySettings()
   if (!settings.enabled || !settings.runtimeInjectionEnabled) {
     return { enabled: false, block: '', insightCount: 0 }
@@ -544,7 +547,7 @@ export async function buildMemoryContextForPrompt(params: RuntimeMemoryContextPa
   try {
     const [files, health] = await Promise.all([
       readAgentMemoryFiles(),
-      checkMem0Health(settings)
+      checkHindsightHealth(settings, signal)
     ])
     const userLines = compactLines(files.user, 18)
     const soulLines = compactLines(files.soul, 14)
@@ -559,13 +562,13 @@ export async function buildMemoryContextForPrompt(params: RuntimeMemoryContextPa
     let error: string | undefined
     if (health.ok) {
       try {
-        const results = await searchMem0(settings, query, 5)
-        insights = results.map((item) => `- ${item.memory}`).slice(0, 5)
+        const results = await recallHindsight(settings, query, 5, signal)
+        insights = results.map((item) => `- ${item.memory.slice(0, 1500)}`).slice(0, 5)
       } catch (searchError) {
-        error = searchError instanceof Error ? searchError.message : 'Unknown mem0 search error'
+        error = searchError instanceof Error ? searchError.message : 'Unknown Hindsight search error'
       }
     } else {
-      error = health.error || 'mem0 is not reachable'
+      error = health.error || 'Hindsight is not reachable'
     }
 
     const sections = [
@@ -597,17 +600,16 @@ export async function getAgentMemoryStatus(): Promise<{
     enabled: boolean
     extractionEnabled: boolean
     runtimeInjectionEnabled: boolean
-    mem0BaseUrl: string
-    mem0AuthMode: string
-    userId: string
+    hindsightBaseUrl: string
+    hindsightBankId: string
     extractorModel: string
     soulAutoApply: boolean
     minConfidenceToApplyUser: number
     minConfidenceToStoreInsight: number
-    hasMem0ApiKey: boolean
+    hasHindsightApiKey: boolean
   }
   paths: ReturnType<typeof getAgentMemoryPaths>
-  mem0: { ok: boolean; error?: string }
+  hindsight: { ok: boolean; error?: string }
 }> {
   const settings = getAgentMemorySettings()
   return {
@@ -615,17 +617,16 @@ export async function getAgentMemoryStatus(): Promise<{
       enabled: settings.enabled,
       extractionEnabled: settings.extractionEnabled,
       runtimeInjectionEnabled: settings.runtimeInjectionEnabled,
-      mem0BaseUrl: settings.mem0BaseUrl,
-      mem0AuthMode: settings.mem0AuthMode,
-      userId: settings.userId,
+      hindsightBaseUrl: settings.hindsightBaseUrl,
+      hindsightBankId: settings.hindsightBankId,
       extractorModel: settings.extractorModel,
       soulAutoApply: settings.soulAutoApply,
       minConfidenceToApplyUser: settings.minConfidenceToApplyUser,
       minConfidenceToStoreInsight: settings.minConfidenceToStoreInsight,
-      hasMem0ApiKey: Boolean(settings.mem0ApiKey)
+      hasHindsightApiKey: Boolean(settings.hindsightApiKey)
     },
     paths: getAgentMemoryPaths(),
-    mem0: await checkMem0Health(settings)
+    hindsight: await checkHindsightHealth(settings)
   }
 }
 

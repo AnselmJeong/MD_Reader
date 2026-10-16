@@ -8,7 +8,7 @@ interface AppSettings {
   lineHeight: number
   contentWidth: number
   readerFontFamily: string
-  ollamaModel: string
+  aiModel: string
   systemPrompt: string
 }
 
@@ -19,9 +19,11 @@ const store = new SimpleStore<AppSettings>('md-reader-settings', {
   lineHeight: 1.75,
   contentWidth: 64,
   readerFontFamily: '',
-  ollamaModel: '',
+  aiModel: 'codex:default',
   systemPrompt: DEFAULT_AI_SYSTEM_PROMPT
 })
+
+store.deleteLegacyKeys(['ollamaModel'])
 
 const resolvedSystemPrompt = resolveAiSystemPrompt(store.get('systemPrompt'))
 if (resolvedSystemPrompt !== store.get('systemPrompt')) {

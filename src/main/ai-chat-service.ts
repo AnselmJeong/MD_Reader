@@ -1,5 +1,5 @@
 import { getAiProviderConfig } from './ai-provider-settings'
-import { chatCompletionsStream, chatCompletionsText } from './ollama-openai-client'
+import { chatCompletionsStream, chatCompletionsText } from './subscription-client'
 import { searchTinyFishWeb, fetchTinyFishPages } from './tinyfish-web-search-service'
 import type { ChatCompletionMetadata, ChatMessageInput, ChatSource } from './ai-chat-types'
 import { ENGLISH_SEARCH_INSTRUCTIONS, prepareEnglishSearchQuery, selectRelevantExcerpt } from './web-research'
@@ -47,11 +47,10 @@ function buildRawSearchQuery(params: StreamGroundedChatParams): string {
 }
 
 export async function buildSearchQuery(params: StreamGroundedChatParams, signal?: AbortSignal): Promise<string> {
-  const preparationSignal = AbortSignal.any([AbortSignal.timeout(15000), ...(signal ? [signal] : [])])
+  const preparationSignal = AbortSignal.any([AbortSignal.timeout(60000), ...(signal ? [signal] : [])])
   return prepareEnglishSearchQuery(buildRawSearchQuery(params), (input, querySignal) => chatCompletionsText({
     model: params.model,
     thinkingLevel: 'none',
-    temperature: 0,
     responseFormat: { type: 'json_object' },
     messages: [
       { role: 'system', content: ENGLISH_SEARCH_INSTRUCTIONS },

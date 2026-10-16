@@ -9,7 +9,9 @@
     "preview": "electron-vite preview",
     "rebuild:native": "electron-builder install-app-deps",
     "postinstall": "electron-builder install-app-deps",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "test:subscriptions": "node scripts/test-subscriptions.mjs",
+    "test:memory": "node scripts/test-memory.mjs"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^3.0.0",

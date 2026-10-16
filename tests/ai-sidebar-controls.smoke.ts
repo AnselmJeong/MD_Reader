@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'md-reader-ai-'))
 fs.mkdirSync(path.join(fixture,'profile'))
 app.setPath('userData',path.join(fixture,'profile'))
-process.env.OLLAMA_API_KEY = 'test-chat-key'
+
 delete process.env.TINYFISH_API_KEY
 fs.writeFileSync(path.join(fixture,'profile','agent-memory-settings.json'),JSON.stringify({enabled:false}))
 const doc = path.join(fixture,'paper.md')
@@ -28,7 +28,7 @@ $$
 표준 수식 $x^2$도 지원합니다. [S1]`
 globalThis.fetch=async(input,init)=>{
  const url=String(input)
- if(url.endsWith('/models'))return Response.json({data:[{id:'test-model'},{id:'gpt-oss:20b'}]})
+ if(url.endsWith('/models'))return Response.json({data:[{id:'test-model'},{id:'claude:sonnet'}]})
  if(url.startsWith('https://api.search.tinyfish.ai?')){
   calls.push('TinyFish search')
   assert.equal(new URL(url).searchParams.get('language'),'en')
@@ -63,6 +63,7 @@ globalThis.fetch=async(input,init)=>{
  throw new Error('Unexpected endpoint: '+url)
 }
 app.whenReady().then(async()=>{
+ require('./helpers/subscription-mock').installSubscriptionMock()
  const {registerIpcHandlers}=require('../src/main/ipc-handlers')
  const {getAiProviderConfig,updateAiProviderSettings}=require('../src/main/ai-provider-settings')
  const {shouldRunWebSearch,streamGroundedChat}=require('../src/main/ai-chat-service')
@@ -78,8 +79,8 @@ app.whenReady().then(async()=>{
   await assert.rejects(streamGroundedChat({...params,webSearch:true},{onToken:()=>assert.fail('must not answer without requested search configuration')}),/TinyFish/)
   assert.deepEqual(calls,[])
   assert.equal(effectiveThinkingLevel('test-model','invalid'),'none')
-  assert.equal(effectiveThinkingLevel('gpt-oss:20b','none'),'low')
-  assert.equal(effectiveThinkingLevel('gpt-oss:120b-cloud','high'),'high')
+  assert.equal(effectiveThinkingLevel('claude:sonnet','none'),'low')
+  assert.equal(effectiveThinkingLevel('claude:opus','high'),'high')
   await win.loadFile(path.resolve('out/renderer/index.html'))
   await wait(`!!document.querySelector('button[title="Open File (⌘O)"]')`)
   await click('button[title="Open File (⌘O)"]')
@@ -138,7 +139,7 @@ app.whenReady().then(async()=>{
    assert.deepEqual(calls,['Answer'])
   }
   assert.equal(await run(`document.querySelectorAll('.chat-message-content .katex-error').length`),0)
-  await run(`(()=>{const select=Array.from(document.querySelectorAll('select')).find(s=>Array.from(s.options).some(o=>o.value==='gpt-oss:20b'));select.value='gpt-oss:20b';select.dispatchEvent(new Event('change',{bubbles:true}))})()`)
+  await run(`(()=>{const select=Array.from(document.querySelectorAll('select')).find(s=>Array.from(s.options).some(o=>o.value==='claude:sonnet'));select.value='claude:sonnet';select.dispatchEvent(new Event('change',{bubbles:true}))})()`)
   await wait(`document.body.textContent.includes('None 대신 Low')`)
   expectedThinking='low'
   await send()
@@ -149,7 +150,7 @@ app.whenReady().then(async()=>{
   await wait(`document.querySelectorAll('.chat-message-content .katex-display').length===0`)
   await assertDefaults()
   fs.writeFileSync(path.resolve('.tmp/ai-sidebar-math.png'),(await win.webContents.capturePage()).toPNG())
-  console.log('PASS: default no-search/none, explicit search opt-in, all thinking levels through renderer/preload/IPC/provider, next-question and new-session resets, GPT-OSS minimum Low notice, missing/disabled search configuration, TinyFish key UI, English search/fetch routing, snippet fallback and streamed KaTeX rendering (mocked providers).')
+  console.log('PASS: default no-search/none, explicit search opt-in, all thinking levels through renderer/preload/IPC/provider, next-question and new-session resets, Claude minimum Low notice, missing/disabled search configuration, TinyFish key UI, English search/fetch routing, snippet fallback and streamed KaTeX rendering (mocked providers).')
   win.destroy();fs.rmSync(fixture,{recursive:true,force:true});app.exit(0)
  }catch(error){console.error(error);fs.writeFileSync(path.resolve('.tmp/ai-sidebar-failure.png'),(await win.webContents.capturePage()).toPNG());win.destroy();fs.rmSync(fixture,{recursive:true,force:true});app.exit(1)}
 })

@@ -11,7 +11,7 @@ const actions = [
 
 export function QuickActions({ onAction, disabled }: QuickActionsProps) {
   return (
-    <div className="grid grid-cols-3 gap-2 border-t border-border px-4 py-3">
+    <div className="grid shrink-0 grid-cols-3 gap-2 border-t border-border px-4 py-3">
       {actions.map((action) => (
         <button
           key={action.label}

@@ -133,7 +133,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
       {effectiveThinkingLevel(selectedModel, thinkingLevel) !== thinkingLevel && (
         <p className="mt-1.5 text-[11px] leading-relaxed text-on-surface-muted" role="status">이 모델은 Thinking을 끌 수 없어 None 대신 Low로 요청합니다.</p>
       )}
-      {thinkingLevel !== 'none' && <p className="mt-1.5 text-[11px] leading-relaxed text-on-surface-muted">수준별 지원은 모델에 따라 다르며, 답변 준비가 길어질 수 있습니다.</p>}
+      {thinkingLevel !== 'none' && <p className="mt-1.5 text-[11px] leading-relaxed text-on-surface-muted">GPT에서 지원하지 않는 Thinking 수준은 해당 모델의 기본값으로 적용됩니다. 답변 준비가 길어질 수 있습니다.</p>}
     </div>
   )
 }

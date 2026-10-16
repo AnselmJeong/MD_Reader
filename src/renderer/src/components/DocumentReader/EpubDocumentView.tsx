@@ -127,7 +127,7 @@ function normalizeText(text: string): string {
 function extractVisibleText(rendition: Rendition): string {
   return normalizeText(
     getRenditionContents(rendition)
-      .map((contents) => contents.document?.body?.innerText ?? '')
+      .map((contents) => contents.document?.body?.innerText || contents.document?.body?.textContent || '')
       .join('\n\n')
   )
 }
@@ -451,7 +451,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
   const updateVisibleText = useCallback((rendition: Rendition) => {
     const text = extractVisibleText(rendition)
-    if (text && text !== latestTextRef.current) {
+    if (text && (text !== latestTextRef.current || useDocumentStore.getState().tabs.find(item => item.id === tab.id)?.content !== text)) {
       latestTextRef.current = text
       updateEpubContent(tab.id, text)
     }

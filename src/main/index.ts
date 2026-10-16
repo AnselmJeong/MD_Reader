@@ -1,3 +1,4 @@
+import { closeSubscriptions } from './subscription-client'
 import { app, BrowserWindow, shell } from 'electron'
 import path, { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -63,6 +64,7 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
+  closeSubscriptions()
   closeChatSessionDb()
   closeEpubAnnotationDb()
   closeEpubReadingProgressDb()

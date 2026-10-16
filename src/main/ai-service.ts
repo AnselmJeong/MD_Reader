@@ -1,30 +1,11 @@
-import { chatCompletionsStream, chatCompletionsText, listOpenAiModels } from './ollama-openai-client'
-
-interface OllamaModel {
-  name: string
-  size: number
-  modified_at: string
-}
+import { chatCompletionsStream, chatCompletionsText } from './subscription-client'
 
 interface ChatParams {
   model: string
   messages: Array<{ role: string; content: string }>
   systemPrompt?: string
 }
-
-export async function listModels(): Promise<OllamaModel[]> {
-  try {
-    const models = await listOpenAiModels()
-    return models.map((model) => ({
-      name: model.id,
-      size: 0,
-      modified_at: model.created ? new Date(model.created * 1000).toISOString() : ''
-    }))
-  } catch (error) {
-    console.error('[Ollama] Failed to list models:', error)
-    return []
-  }
-}
+export { listSubscriptionModels as listModels } from './subscription-client'
 
 export async function chatStream(
   params: ChatParams,
@@ -53,7 +34,6 @@ export async function generateChatTitle(params: {
 
   const raw = await chatCompletionsText({
     model: params.model,
-    temperature: 0.2,
     messages: [
       {
         role: 'system',
@@ -79,7 +59,6 @@ export async function generateJsonResponse(params: {
 }): Promise<string> {
   return chatCompletionsText({
     model: params.model,
-    temperature: 0,
     responseFormat: { type: 'json_object' },
     messages: [
       { role: 'system', content: params.systemPrompt },

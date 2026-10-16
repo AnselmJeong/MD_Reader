@@ -1,7 +1,9 @@
+import { SubscriptionAccounts } from './SubscriptionAccounts'
+import { modelLabel } from '../../../shared/subscription'
 import { useState, useEffect } from 'react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { useChatStore } from '../store/useChatStore'
-import { filterOllamaModels } from '../utils/ollama-model-filter'
+import { filterSubscriptionModels } from '../utils/subscription-model-filter'
 import type { AgentMemoryStatus, AiProviderStatus } from '../global'
 
 interface SettingsModalProps {
@@ -9,20 +11,22 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
+  const [memorySaving, setMemorySaving] = useState(false)
+  const [memoryError, setMemoryError] = useState('')
+  const [clearMemoryKey, setClearMemoryKey] = useState(false)
   const [memoryStatus, setMemoryStatus] = useState<AgentMemoryStatus | null>(null)
   const [aiProviderStatus, setAiProviderStatus] = useState<AiProviderStatus | null>(null)
   const [aiProviderDraft, setAiProviderDraft] = useState({
     tinyfishApiKey: '',
-    ollamaApiKey: '',
     webSearchEnabled: true
   })
   const [memoryDraft, setMemoryDraft] = useState({
     enabled: true,
     extractionEnabled: true,
     runtimeInjectionEnabled: true,
-    mem0BaseUrl: 'http://anselmjeong.synology.me:8888',
-    mem0ApiKey: '',
-    userId: 'md-reader-user',
+    hindsightBaseUrl: 'https://hindsight.ecoplay.cloud',
+    hindsightApiKey: '',
+    hindsightBankId: 'MD-reader',
     extractorModel: ''
   })
   const {
@@ -59,15 +63,15 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   useEffect(() => {
     const refreshModels = async () => {
       try {
-        const models = await window.api.ollama.listModels()
-        const modelNames = filterOllamaModels(models.map((m) => m.name))
+        const models = await window.api.ai.listModels()
+        const modelNames = filterSubscriptionModels(models.map((m) => m.name))
         setAvailableModels(modelNames)
       } catch (e) {
         console.error('Failed to refresh models in settings:', e)
       }
     }
     refreshModels()
-  }, [selectedModel, setAvailableModels, setSelectedModel])
+  }, [setAvailableModels])
 
   useEffect(() => {
     const loadMemoryStatus = async () => {
@@ -79,8 +83,8 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           enabled: status.settings.enabled ?? draft.enabled,
           extractionEnabled: status.settings.extractionEnabled ?? draft.extractionEnabled,
           runtimeInjectionEnabled: status.settings.runtimeInjectionEnabled ?? draft.runtimeInjectionEnabled,
-          mem0BaseUrl: status.settings.mem0BaseUrl ?? draft.mem0BaseUrl,
-          userId: status.settings.userId ?? draft.userId,
+          hindsightBaseUrl: status.settings.hindsightBaseUrl ?? draft.hindsightBaseUrl,
+          hindsightBankId: status.settings.hindsightBankId ?? draft.hindsightBankId,
           extractorModel: status.settings.extractorModel ?? draft.extractorModel
         }))
       } catch (error) {
@@ -107,21 +111,25 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   }, [])
 
   const saveMemorySettings = async () => {
+    setMemorySaving(true)
+    setMemoryError('')
     try {
       const status = await window.api.agentMemory.updateSettings({
         enabled: memoryDraft.enabled,
         extractionEnabled: memoryDraft.extractionEnabled,
         runtimeInjectionEnabled: memoryDraft.runtimeInjectionEnabled,
-        mem0BaseUrl: memoryDraft.mem0BaseUrl.trim(),
-        mem0ApiKey: memoryDraft.mem0ApiKey.trim() || undefined,
-        mem0AuthMode: 'x-api-key',
-        userId: memoryDraft.userId.trim(),
+        hindsightBaseUrl: memoryDraft.hindsightBaseUrl.trim(),
+        hindsightApiKey: clearMemoryKey ? '' : memoryDraft.hindsightApiKey.trim() || undefined,
+        hindsightBankId: memoryDraft.hindsightBankId.trim(),
         extractorModel: memoryDraft.extractorModel.trim()
       })
       setMemoryStatus(status)
-      setMemoryDraft((draft) => ({ ...draft, mem0ApiKey: '' }))
+      setMemoryDraft((draft) => ({ ...draft, hindsightApiKey: '' }))
+      setClearMemoryKey(false)
     } catch (error) {
-      console.error('Failed to save agent memory settings:', error)
+      setMemoryError(error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '') : 'Failed to connect to Hindsight')
+    } finally {
+      setMemorySaving(false)
     }
   }
 
@@ -129,13 +137,12 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     try {
       const status = await window.api.aiProvider.updateSettings({
         tinyfishApiKey: aiProviderDraft.tinyfishApiKey.trim() || undefined,
-        ollamaApiKey: aiProviderDraft.ollamaApiKey.trim() || undefined,
         webSearchEnabled: aiProviderDraft.webSearchEnabled
       })
       setAiProviderStatus(status)
-      setAiProviderDraft((draft) => ({ ...draft, ollamaApiKey: '', tinyfishApiKey: '' }))
-      const models = await window.api.ollama.listModels()
-      const modelNames = filterOllamaModels(models.map((m) => m.name))
+      setAiProviderDraft((draft) => ({ ...draft, tinyfishApiKey: '' }))
+      const models = await window.api.ai.listModels()
+      const modelNames = filterSubscriptionModels(models.map((m) => m.name))
       setAvailableModels(modelNames)
       if (!selectedModel && modelNames.length > 0) {
         setSelectedModel(modelNames[0])
@@ -261,18 +268,23 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                 </div>
               </div>
 
+              <SubscriptionAccounts onModelsChanged={async () => {
+                const models = await window.api.ai.listModels()
+                setAvailableModels(models.map(model => model.name))
+              }} />
+
               {/* Model */}
               <div className="flex items-center justify-between">
-                <label className="text-sm text-on-surface-muted">Ollama Model</label>
+                <label className="text-sm text-on-surface-muted">AI Model</label>
                 <select
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
-                  className="text-sm bg-surface border border-border rounded-md px-3 py-1 text-on-surface outline-none focus:border-accent w-44"
+                  className="text-sm bg-surface border border-border rounded-md px-3 py-1 text-on-surface outline-none focus:border-accent w-64"
                 >
                   {!selectedModel && <option value="">Select model</option>}
                   {availableModels.length === 0 && <option value="">No models found</option>}
                   {availableModels.map((m) => (
-                    <option key={m} value={m}>{m}</option>
+                    <option key={m} value={m}>{modelLabel(m)}</option>
                   ))}
                 </select>
               </div>
@@ -281,11 +293,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium text-on-surface">Chat &amp; Search</div>
-                    <div className="mt-0.5 text-xs text-on-surface-muted">
-                      {aiProviderStatus?.hasOllamaApiKey
-                        ? `Ollama chat key saved${aiProviderStatus.apiKeySource === 'env' ? ' from environment' : ''}`
-                        : 'Ollama API key required for cloud chat'}
-                    </div>
+
                   </div>
                   <label className="flex items-center gap-2 text-xs text-on-surface-muted">
                     <input
@@ -298,18 +306,6 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                   </label>
                 </div>
                 <p className="mb-3 text-xs text-on-surface-muted">Search is off by default. Enable it for each question in the AI Sidebar.</p>
-                <div>
-                  <label className="mb-1.5 block text-sm text-on-surface-muted">
-                    Ollama API Key {aiProviderStatus?.hasOllamaApiKey ? '(saved)' : ''}
-                  </label>
-                  <input
-                    type="password"
-                    value={aiProviderDraft.ollamaApiKey}
-                    onChange={(e) => setAiProviderDraft((draft) => ({ ...draft, ollamaApiKey: e.target.value }))}
-                    placeholder={aiProviderStatus?.hasOllamaApiKey ? 'Leave blank to keep existing key' : 'ollama_...'}
-                    className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
-                  />
-                </div>
                 <div className="mt-3">
                   <label htmlFor="tinyfish-api-key" className="mb-1.5 block text-sm text-on-surface-muted">
                     TinyFish Search API Key {aiProviderStatus?.hasTinyfishApiKey ? '(saved)' : ''}
@@ -320,9 +316,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                     className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-on-surface outline-none focus:border-accent" />
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
-                  <span className="truncate text-xs text-on-surface-muted" title={aiProviderStatus?.ollamaBaseUrl}>
-                    {aiProviderStatus?.ollamaBaseUrl || 'https://ollama.com/v1'}
-                  </span>
+
                   <button
                     onClick={saveAiProviderSettings}
                     className="rounded-md bg-accent px-3 py-1 text-xs text-white hover:bg-accent-hover"
@@ -347,7 +341,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
 
           {/* ─── Agent Memory ─── */}
           <section>
-            <h3 className="text-sm font-semibold text-on-surface mb-3">Agent Memory</h3>
+            <h3 className="text-sm font-semibold text-on-surface mb-3">Hindsight Memory</h3>
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-4">
                 <label className="text-sm text-on-surface-muted">Enable Memory</label>
@@ -377,45 +371,56 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                 />
               </div>
               <div>
-                <label className="text-sm text-on-surface-muted block mb-1.5">mem0 Base URL</label>
+                <label className="text-sm text-on-surface-muted block mb-1.5">Hindsight Server URL</label>
                 <input
-                  value={memoryDraft.mem0BaseUrl}
-                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, mem0BaseUrl: e.target.value }))}
+                  aria-label="Hindsight Server URL"
+                  placeholder="https://hindsight.ecoplay.cloud"
+                  value={memoryDraft.hindsightBaseUrl}
+                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, hindsightBaseUrl: e.target.value }))}
                   className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
                 />
               </div>
+              <p className="text-xs text-on-surface-muted">외부 접속 주소를 /dashboard 없이 입력하세요. API 서버와 Hindsight 관리 서버의 연결 경로를 자동으로 확인합니다.</p>
               <div>
                 <label className="text-sm text-on-surface-muted block mb-1.5">
-                  mem0 API Key {memoryStatus?.settings.hasMem0ApiKey ? '(saved)' : ''}
+                  Hindsight API Key {memoryStatus?.settings.hasHindsightApiKey ? '(saved)' : ''}
                 </label>
                 <input
                   type="password"
-                  value={memoryDraft.mem0ApiKey}
-                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, mem0ApiKey: e.target.value }))}
-                  placeholder={memoryStatus?.settings.hasMem0ApiKey ? 'Leave blank to keep existing key' : 'm0sk_...'}
+                  value={memoryDraft.hindsightApiKey}
+                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, hindsightApiKey: e.target.value }))}
+                  placeholder={memoryStatus?.settings.hasHindsightApiKey ? 'Leave blank to keep existing key' : 'Optional for authenticated servers'}
                   className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
                 />
               </div>
+              <label className="flex items-center gap-2 text-xs text-on-surface-muted">
+                <input type="checkbox" checked={clearMemoryKey} onChange={e => setClearMemoryKey(e.target.checked)} />
+                Clear saved API key
+              </label>
               <div>
-                <label className="text-sm text-on-surface-muted block mb-1.5">Memory User ID</label>
+                <label className="text-sm text-on-surface-muted block mb-1.5">Memory Bank ID</label>
                 <input
-                  value={memoryDraft.userId}
-                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, userId: e.target.value }))}
+                  value={memoryDraft.hindsightBankId}
+                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, hindsightBankId: e.target.value }))}
                   className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
                 />
               </div>
               <div>
                 <label className="text-sm text-on-surface-muted block mb-1.5">Extractor Model</label>
-                <input
+                <select
                   value={memoryDraft.extractorModel}
                   onChange={(e) => setMemoryDraft((draft) => ({ ...draft, extractorModel: e.target.value }))}
-                  placeholder={selectedModel || 'Uses saved chat model if blank'}
                   className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
-                />
+                >
+                  <option value="">Use conversation model</option>
+                  {availableModels.map(model => <option key={model} value={model}>{modelLabel(model)}</option>)}
+                </select>
               </div>
+              <p className="text-xs text-on-surface-muted">Save &amp; Connect creates the bank if needed. Only curated insights are retained; USER.md and SOUL.md stay local.</p>
+              {memoryError && <p role="alert" className="text-xs text-red-600">{memoryError}</p>}
               <div className="flex items-center justify-between gap-3">
-                <span className={`text-xs ${memoryStatus?.mem0.ok ? 'text-green-600' : 'text-on-surface-muted'}`}>
-                  {memoryStatus?.mem0.ok ? 'mem0 reachable' : memoryStatus?.mem0.error || 'mem0 not checked'}
+                <span className={`text-xs ${memoryStatus?.hindsight.ok ? 'text-green-600' : 'text-on-surface-muted'}`}>
+                  {memoryStatus?.hindsight.ok ? 'Hindsight connected' : memoryStatus?.hindsight.error || 'Hindsight not checked'}
                 </span>
                 <div className="flex gap-2">
                   <button
@@ -426,9 +431,10 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                   </button>
                   <button
                     onClick={saveMemorySettings}
+                    disabled={memorySaving}
                     className="px-3 py-1 rounded-md text-xs bg-accent text-white hover:bg-accent-hover"
                   >
-                    Save
+                    {memorySaving ? 'Connecting…' : 'Save & Connect'}
                   </button>
                 </div>
               </div>

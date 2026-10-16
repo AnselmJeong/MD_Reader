@@ -1,3 +1,4 @@
+import { modelLabel } from '../../../../shared/subscription'
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
@@ -97,26 +98,26 @@ export function ChatPanel() {
 
   // Set up streaming listeners
   useEffect(() => {
-    const unsubToken = window.api.ollama.onToken((token) => {
+    const unsubToken = window.api.ai.onToken((token) => {
       updateStreamingContent(token)
     })
-    const unsubSearchEnd = window.api.ollama.onSearchEnd(() => setStreamingSearchQuery(null))
-    const unsubSearchStart = window.api.ollama.onSearchStart((payload) => {
+    const unsubSearchEnd = window.api.ai.onSearchEnd(() => setStreamingSearchQuery(null))
+    const unsubSearchStart = window.api.ai.onSearchStart((payload) => {
       setStreamingSearchQuery(payload.query)
     })
-    const unsubSearchResults = window.api.ollama.onSearchResults((payload) => {
+    const unsubSearchResults = window.api.ai.onSearchResults((payload) => {
       setStreamingSources(payload.sources)
     })
-    const unsubMetadata = window.api.ollama.onMetadata((metadata) => {
+    const unsubMetadata = window.api.ai.onMetadata((metadata) => {
       setStreamingSources(metadata.sources ?? [])
     })
-    const unsubDone = window.api.ollama.onDone(() => {
+    const unsubDone = window.api.ai.onDone(() => {
       finalizeStreaming()
     })
-    const unsubStopped = window.api.ollama.onStopped(() => {
+    const unsubStopped = window.api.ai.onStopped(() => {
       cancelStreaming()
     })
-    const unsubError = window.api.ollama.onError((error) => {
+    const unsubError = window.api.ai.onError((error) => {
       finalizeStreaming()
       addMessage({ role: 'assistant', content: `Error: ${error}` })
     })
@@ -193,7 +194,7 @@ export function ChatPanel() {
                 >
                   {!selectedModel && <option value="">Select model</option>}
                   {availableModels.map((m) => (
-                    <option key={m} value={m}>{m}</option>
+                    <option key={m} value={m}>{modelLabel(m)}</option>
                   ))}
                 </select>
               )}

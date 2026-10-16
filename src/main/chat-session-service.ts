@@ -197,7 +197,7 @@ function addColumnIfMissing(database: Database.Database, table: string, column: 
   database.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run()
 }
 
-function migrateAgentMemorySchema(database: Database.Database): void {
+export function migrateAgentMemorySchema(database: Database.Database): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS app_schema_migrations (
       id TEXT PRIMARY KEY,
@@ -247,6 +247,34 @@ function migrateAgentMemorySchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_agent_memory_items_session
       ON agent_memory_items(session_id, created_at DESC);
   `)
+  const migrated = database.prepare("SELECT id FROM app_schema_migrations WHERE id = 'hindsight-v1'").get()
+  if (!migrated) database.transaction(() => {
+    database.exec(`
+      ALTER TABLE agent_memory_runs RENAME COLUMN mem0_event_ids TO remote_event_ids;
+      ALTER TABLE agent_memory_items RENAME TO agent_memory_items_legacy;
+      DROP INDEX idx_agent_memory_items_session;
+      CREATE TABLE agent_memory_items (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES agent_memory_runs(id) ON DELETE CASCADE,
+        session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('user_profile', 'soul_directive', 'insight', 'rejected')),
+        content TEXT NOT NULL, confidence REAL NOT NULL, evidence_message_ids TEXT NOT NULL,
+        target TEXT,
+        status TEXT NOT NULL CHECK (status IN ('applied', 'queued', 'stored', 'rejected', 'failed')),
+        remote_document_id TEXT, metadata_json TEXT NOT NULL, created_at INTEGER NOT NULL,
+        backend TEXT NOT NULL
+      );
+      INSERT INTO agent_memory_items
+        SELECT id, run_id, session_id, kind, content, confidence, evidence_message_ids, target,
+          CASE status WHEN 'sent_to_mem0' THEN 'stored' ELSE status END,
+          mem0_id, metadata_json, created_at, 'legacy_mem0'
+        FROM agent_memory_items_legacy;
+      DROP TABLE agent_memory_items_legacy;
+      CREATE INDEX idx_agent_memory_items_session ON agent_memory_items(session_id, created_at DESC);
+    `)
+    database.prepare('INSERT INTO app_schema_migrations (id, applied_at) VALUES (?, ?)').run('hindsight-v1', Date.now())
+  })()
+
 }
 
 function migrateChatSourcesSchema(database: Database.Database): void {

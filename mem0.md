@@ -1,3 +1,5 @@
+> Historical design note: mem0 and Ollama are retired from MD Reader. See [the current Hindsight integration](docs/hindsight-memory.md) and [subscription integration](docs/subscription-migration.md). The original planning material below is retained for history.
+
 네, 그게 정확히 맞는 형태입니다. SQLite에 쌓인 대화가 곧 transcript 버퍼 역할을 하고, 세션이 끝날 때 거기서 선별 추출해 Mem0로 올리는 것 — 이게 앞서 얘기한 "세션 중엔 안 쓰고, 종료 시 한 번에 선별 capture" 패턴 그대로입니다. 이미 SQLite에 저장하고 계시니 인프라의 절반은 done입니다. 다만 이 단순한 그림이 잘 굴러가려면 짚어야 할 설계 결정이 몇 개 있는데, 그중 하나는 선생님 app 성격(텍스트를 읽으며 대화) 때문에 특히 중요합니다.
 
 **가장 중요한 함정부터 — Mem0를 "열등한 문서검색"으로 만들지 마십시오.** 선생님 app은 텍스트를 읽고 그에 대해 대화하므로, 추출을 욕심내면 *그 텍스트에 대한 사실*이 끝없이 쏟아집니다. 그런데 원문 텍스트 자체가 이미 선생님의 knowledge base입니다. 거기서 뽑은 내용 사실을 Mem0에 넣으면, 이미 가진 원문을 더 나쁜 형태로 중복 저장하는 꼴이 됩니다. 그러니 추출 대상을 명확히 둘로 갈라야 합니다.

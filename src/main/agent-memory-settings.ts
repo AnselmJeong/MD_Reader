@@ -1,89 +1,91 @@
 import { SimpleStore } from './simple-store'
-
-export type Mem0AuthMode = 'x-api-key' | 'bearer' | 'none'
+import { ensureHindsightBank } from './hindsight-client'
 
 export interface AgentMemorySettings {
   enabled: boolean
   extractionEnabled: boolean
   runtimeInjectionEnabled: boolean
-  mem0BaseUrl: string
-  mem0ApiKey: string
-  mem0AuthMode: Mem0AuthMode
-  userId: string
+  hindsightBaseUrl: string
+  hindsightApiKey: string
+  hindsightBankId: string
   extractorModel: string
   soulAutoApply: boolean
   minConfidenceToApplyUser: number
   minConfidenceToStoreInsight: number
 }
 
-const DEFAULT_MEM0_BASE_URL = 'http://anselmjeong.synology.me:8888'
-const LEGACY_LOCAL_MEM0_BASE_URLS = new Set([
-  'http://127.0.0.1:8888',
-  'http://localhost:8888'
-])
-
 const store = new SimpleStore<AgentMemorySettings>('agent-memory-settings', {
   enabled: true,
   extractionEnabled: true,
   runtimeInjectionEnabled: true,
-  mem0BaseUrl: DEFAULT_MEM0_BASE_URL,
-  mem0ApiKey: '',
-  mem0AuthMode: 'x-api-key',
-  userId: 'md-reader-user',
+  hindsightBaseUrl: 'https://hindsight.ecoplay.cloud',
+  hindsightApiKey: '',
+  hindsightBankId: 'MD-reader',
   extractorModel: '',
   soulAutoApply: false,
   minConfidenceToApplyUser: 0.72,
   minConfidenceToStoreInsight: 0.68
 })
-
-function migrateLegacyMem0BaseUrl(): void {
-  const current = store.get('mem0BaseUrl').replace(/\/+$/, '')
-  if (LEGACY_LOCAL_MEM0_BASE_URLS.has(current)) {
-    store.set('mem0BaseUrl', DEFAULT_MEM0_BASE_URL)
-  }
+// Never forward credentials or server addresses from the retired provider.
+store.deleteLegacyKeys(['mem0BaseUrl', 'mem0ApiKey', 'mem0AuthMode', 'userId'])
+if (store.get('extractorModel') && !/^(codex|claude):.+$/.test(store.get('extractorModel'))) {
+  store.set('extractorModel', '')
 }
 
-migrateLegacyMem0BaseUrl()
+export function normalizeHindsightUrl(value: string): string {
+  const url = new URL(value.trim())
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new Error('Hindsight server must be an HTTP(S) URL without credentials, query, or fragment.')
+  }
+  if (/\/dashboard(?:\/|$)/.test(url.pathname)) throw new Error('서버 주소는 /dashboard 없이 입력하세요. 예: https://hindsight.ecoplay.cloud')
+  return url.toString().replace(/\/+$/, '')
+}
 
 export function getAgentMemorySettings(): AgentMemorySettings {
-  const settings = store.getAll()
+  return effectiveSettings(store.getAll())
+}
+
+function effectiveSettings(settings: AgentMemorySettings): AgentMemorySettings {
   return {
     ...settings,
-    mem0BaseUrl: process.env.MEM0_BASE_URL || settings.mem0BaseUrl,
-    mem0ApiKey: process.env.MEM0_API_KEY || settings.mem0ApiKey,
-    mem0AuthMode: (process.env.MEM0_AUTH_MODE as Mem0AuthMode | undefined) || settings.mem0AuthMode,
-    userId: process.env.MEM0_USER_ID || settings.userId,
+    hindsightBaseUrl: process.env.MD_READER_HINDSIGHT_BASE_URL || settings.hindsightBaseUrl,
+    hindsightApiKey: process.env.MD_READER_HINDSIGHT_API_KEY || settings.hindsightApiKey,
+    hindsightBankId: process.env.MD_READER_HINDSIGHT_BANK_ID || settings.hindsightBankId,
     extractorModel: process.env.MD_READER_MEMORY_EXTRACTOR_MODEL || settings.extractorModel
   }
 }
 
-export function setAgentMemorySetting<K extends keyof AgentMemorySettings>(key: K, value: AgentMemorySettings[K]): void {
-  store.set(key, value)
+function prepareAgentMemorySettings(partial: Partial<AgentMemorySettings>): AgentMemorySettings {
+  const next = store.getAll()
+  for (const key of ['enabled', 'extractionEnabled', 'runtimeInjectionEnabled'] as const) {
+    if (typeof partial[key] === 'boolean') next[key] = partial[key]
+  }
+  if (typeof partial.hindsightBaseUrl === 'string') next.hindsightBaseUrl = normalizeHindsightUrl(partial.hindsightBaseUrl)
+  if (typeof partial.hindsightBankId === 'string') {
+    const id = partial.hindsightBankId.trim()
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(id)) throw new Error('Memory bank ID must contain letters, numbers, dots, underscores, or hyphens (1–128 characters).')
+    next.hindsightBankId = id
+  }
+  // Omitted means keep; an explicit empty string clears the saved key.
+  if (typeof partial.hindsightApiKey === 'string') next.hindsightApiKey = partial.hindsightApiKey.trim()
+  if (typeof partial.extractorModel === 'string') next.extractorModel = partial.extractorModel.trim()
+  next.soulAutoApply = false
+  return next
+}
+
+function saveAgentMemorySettings(next: AgentMemorySettings): AgentMemorySettings {
+  for (const [key, value] of Object.entries(next)) store.set(key as keyof AgentMemorySettings, value)
+  return getAgentMemorySettings()
 }
 
 export function updateAgentMemorySettings(partial: Partial<AgentMemorySettings>): AgentMemorySettings {
-  const current = store.getAll()
-  const nextMem0ApiKey = typeof partial.mem0ApiKey === 'string' && partial.mem0ApiKey.trim()
-    ? partial.mem0ApiKey.trim()
-    : current.mem0ApiKey
-  const next: AgentMemorySettings = {
-    ...current,
-    ...partial,
-    mem0ApiKey: nextMem0ApiKey,
-    enabled: typeof partial.enabled === 'boolean' ? partial.enabled : current.enabled,
-    extractionEnabled: typeof partial.extractionEnabled === 'boolean' ? partial.extractionEnabled : current.extractionEnabled,
-    runtimeInjectionEnabled: typeof partial.runtimeInjectionEnabled === 'boolean' ? partial.runtimeInjectionEnabled : current.runtimeInjectionEnabled,
-    soulAutoApply: false,
-    minConfidenceToApplyUser: typeof partial.minConfidenceToApplyUser === 'number'
-      ? partial.minConfidenceToApplyUser
-      : current.minConfidenceToApplyUser,
-    minConfidenceToStoreInsight: typeof partial.minConfidenceToStoreInsight === 'number'
-      ? partial.minConfidenceToStoreInsight
-      : current.minConfidenceToStoreInsight
-  }
+  return saveAgentMemorySettings(prepareAgentMemorySettings(partial))
+}
 
-  for (const [key, value] of Object.entries(next) as Array<[keyof AgentMemorySettings, AgentMemorySettings[keyof AgentMemorySettings]]>) {
-    store.set(key, value as never)
-  }
-  return getAgentMemorySettings()
+export async function connectAgentMemorySettings(partial: Partial<AgentMemorySettings>): Promise<AgentMemorySettings> {
+  const next = prepareAgentMemorySettings(partial)
+  // Keep the working destination and credentials if connection validation fails.
+  // Disabling memory must remain possible while the server is offline.
+  if (next.enabled) await ensureHindsightBank(effectiveSettings(next))
+  return saveAgentMemorySettings(next)
 }

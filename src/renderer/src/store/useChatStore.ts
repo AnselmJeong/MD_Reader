@@ -193,7 +193,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   }),
   setSelectedModel: (model) => {
     set({ selectedModel: model })
-    persistSetting('ollamaModel', model)
+    persistSetting('aiModel', model)
   },
   setAvailableModels: (models) => set({ availableModels: models }),
   setSystemPrompt: (prompt, persist = true) => {
@@ -224,7 +224,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     if (options?.finalizeTitle && selectedModel && nextTitleStatus !== 'generated') {
       try {
-        const result = await window.api.ollama.generateTitle({
+        const result = await window.api.ai.generateTitle({
           model: selectedModel,
           contextTitle: currentContextMeta.contextTitle,
           messages: messages.map((message) => ({ role: message.role, content: message.content }))
@@ -433,9 +433,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
   stopStreaming: async () => {
     try {
-      await window.api.ollama.stop()
+      await window.api.ai.stop()
     } catch (error) {
-      console.error('Failed to stop Ollama response:', error)
+      console.error('Failed to stop AI response:', error)
     }
     set({ isStreaming: false, streamingContent: '', streamingSources: [], streamingSearchQuery: null })
   },
@@ -485,7 +485,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     try {
-      await window.api.ollama.chat({
+      await window.api.ai.chat({
         model: selectedModel,
         messages: chatMessages,
         webSearch,

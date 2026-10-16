@@ -26,6 +26,17 @@ class SimpleStore<T extends object> {
     }
   }
 
+  deleteLegacyKeys(keys: string[]): void {
+    let changed = false
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(this.data, key)) {
+        delete (this.data as Record<string, unknown>)[key]
+        changed = true
+      }
+    }
+    if (changed) this.save()
+  }
+
   get<K extends keyof T>(key: K): T[K] {
     return this.data[key]
   }

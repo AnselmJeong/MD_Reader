@@ -1,3 +1,4 @@
+import type { AiProviderStatus, SubscriptionStatus, SubscriptionProvider } from '../shared/subscription'
 import type { ChatRequestOptions } from '../shared/chat-request-options'
 import type { BibliographyResult } from '../shared/bibliography'
 import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron'
@@ -43,15 +44,7 @@ export interface ChatCompletionMetadata {
   sources?: ChatSource[]
 }
 
-export interface AiProviderStatus {
-  hasTinyfishApiKey: boolean
-  tinyfishApiKeySource: 'env' | 'saved' | 'none'
-  hasOllamaApiKey: boolean
-  ollamaBaseUrl: string
-  webSearchEnabled: boolean
-  webSearchMaxResults: number
-  apiKeySource: 'env' | 'saved' | 'none'
-}
+export type { AiProviderStatus } from '../shared/subscription'
 
 export interface ChatContextMeta {
   documentKind: ChatDocumentKind
@@ -94,14 +87,13 @@ export interface AgentMemoryStatus {
     enabled?: boolean
     extractionEnabled?: boolean
     runtimeInjectionEnabled?: boolean
-    mem0BaseUrl?: string
-    mem0AuthMode?: string
-    userId?: string
+    hindsightBaseUrl?: string
+    hindsightBankId?: string
     extractorModel?: string
-    hasMem0ApiKey?: boolean
+    hasHindsightApiKey?: boolean
   }
   paths: { dir: string; user: string; soul: string; reviewQueue: string }
-  mem0: { ok: boolean; error?: string }
+  hindsight: { ok: boolean; error?: string }
 }
 
 export interface EpubAnnotationRecord {
@@ -141,7 +133,7 @@ export interface ElectronAPI {
     getRecent: () => Promise<string[]>
     save: (path: string, content: string) => Promise<{ success: boolean; error?: string }>
   }
-  ollama: {
+  ai: {
     listModels: () => Promise<Array<{ name: string; size: number }>>
     chat: (params: ChatRequestOptions & {
       model: string
@@ -175,12 +167,14 @@ export interface ElectronAPI {
   fonts: {
     listKorean: () => Promise<string[]>
   }
+  subscriptions: {
+    status: () => Promise<SubscriptionStatus>
+    action: (provider: SubscriptionProvider, action: 'login' | 'cancelLogin' | 'logout') => Promise<void>
+  }
   aiProvider: {
     status: () => Promise<AiProviderStatus>
     updateSettings: (partial: {
       tinyfishApiKey?: string
-      ollamaApiKey?: string
-      ollamaBaseUrl?: string
       webSearchEnabled?: boolean
       webSearchMaxResults?: number
     }) => Promise<AiProviderStatus>
@@ -207,10 +201,9 @@ export interface ElectronAPI {
       enabled?: boolean
       extractionEnabled?: boolean
       runtimeInjectionEnabled?: boolean
-      mem0BaseUrl?: string
-      mem0ApiKey?: string
-      mem0AuthMode?: 'x-api-key' | 'bearer' | 'none'
-      userId?: string
+      hindsightBaseUrl?: string
+      hindsightApiKey?: string
+      hindsightBankId?: string
       extractorModel?: string
     }) => Promise<AgentMemoryStatus>
     processSession: (sessionId: string) => Promise<{ success: boolean }>
@@ -269,51 +262,51 @@ const api: ElectronAPI = {
     getRecent: () => ipcRenderer.invoke('file:recent-list'),
     save: (path: string, content: string) => ipcRenderer.invoke('file:save', path, content)
   },
-  ollama: {
-    listModels: () => ipcRenderer.invoke('ollama:list-models'),
-    chat: (params) => ipcRenderer.invoke('ollama:chat', params),
-    stop: () => ipcRenderer.invoke('ollama:stop'),
+  ai: {
+    listModels: () => ipcRenderer.invoke('ai:list-models'),
+    chat: (params) => ipcRenderer.invoke('ai:chat', params),
+    stop: () => ipcRenderer.invoke('ai:stop'),
     onToken: (callback: (token: string) => void) => {
       const handler = (_event: IpcRendererEvent, token: string) => callback(token)
-      ipcRenderer.on('ollama:token', handler)
-      return () => ipcRenderer.removeListener('ollama:token', handler)
+      ipcRenderer.on('ai:token', handler)
+      return () => ipcRenderer.removeListener('ai:token', handler)
     },
     onSearchEnd: (callback: () => void) => {
       const handler = () => callback()
-      ipcRenderer.on('ollama:search-end', handler)
-      return () => ipcRenderer.removeListener('ollama:search-end', handler)
+      ipcRenderer.on('ai:search-end', handler)
+      return () => ipcRenderer.removeListener('ai:search-end', handler)
     },
     onSearchStart: (callback: (payload: { query: string }) => void) => {
       const handler = (_event: IpcRendererEvent, payload: { query: string }) => callback(payload)
-      ipcRenderer.on('ollama:search-start', handler)
-      return () => ipcRenderer.removeListener('ollama:search-start', handler)
+      ipcRenderer.on('ai:search-start', handler)
+      return () => ipcRenderer.removeListener('ai:search-start', handler)
     },
     onSearchResults: (callback: (payload: { sources: ChatSource[] }) => void) => {
       const handler = (_event: IpcRendererEvent, payload: { sources: ChatSource[] }) => callback(payload)
-      ipcRenderer.on('ollama:search-results', handler)
-      return () => ipcRenderer.removeListener('ollama:search-results', handler)
+      ipcRenderer.on('ai:search-results', handler)
+      return () => ipcRenderer.removeListener('ai:search-results', handler)
     },
     onMetadata: (callback: (metadata: ChatCompletionMetadata) => void) => {
       const handler = (_event: IpcRendererEvent, metadata: ChatCompletionMetadata) => callback(metadata)
-      ipcRenderer.on('ollama:metadata', handler)
-      return () => ipcRenderer.removeListener('ollama:metadata', handler)
+      ipcRenderer.on('ai:metadata', handler)
+      return () => ipcRenderer.removeListener('ai:metadata', handler)
     },
     onDone: (callback: (metadata?: ChatCompletionMetadata) => void) => {
       const handler = (_event: IpcRendererEvent, metadata?: ChatCompletionMetadata) => callback(metadata)
-      ipcRenderer.on('ollama:done', handler)
-      return () => ipcRenderer.removeListener('ollama:done', handler)
+      ipcRenderer.on('ai:done', handler)
+      return () => ipcRenderer.removeListener('ai:done', handler)
     },
     onStopped: (callback: () => void) => {
       const handler = () => callback()
-      ipcRenderer.on('ollama:stopped', handler)
-      return () => ipcRenderer.removeListener('ollama:stopped', handler)
+      ipcRenderer.on('ai:stopped', handler)
+      return () => ipcRenderer.removeListener('ai:stopped', handler)
     },
     onError: (callback: (error: string) => void) => {
       const handler = (_event: IpcRendererEvent, error: string) => callback(error)
-      ipcRenderer.on('ollama:error', handler)
-      return () => ipcRenderer.removeListener('ollama:error', handler)
+      ipcRenderer.on('ai:error', handler)
+      return () => ipcRenderer.removeListener('ai:error', handler)
     },
-    generateTitle: (params) => ipcRenderer.invoke('ollama:generate-title', params)
+    generateTitle: (params) => ipcRenderer.invoke('ai:generate-title', params)
   },
   settings: {
     get: (key?: string) => ipcRenderer.invoke('settings:get', key),
@@ -321,6 +314,10 @@ const api: ElectronAPI = {
   },
   fonts: {
     listKorean: () => ipcRenderer.invoke('fonts:list-korean')
+  },
+  subscriptions: {
+    status: () => ipcRenderer.invoke('subscriptions:status'),
+    action: (provider, action) => ipcRenderer.invoke('subscriptions:action', provider, action)
   },
   aiProvider: {
     status: () => ipcRenderer.invoke('ai-provider:status'),

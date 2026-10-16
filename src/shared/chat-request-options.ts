@@ -12,6 +12,5 @@ export function normalizeThinkingLevel(value: unknown): ThinkingLevel {
 
 export function effectiveThinkingLevel(model: string, value: unknown): ThinkingLevel {
   const level = normalizeThinkingLevel(value)
-  // Ollama documents GPT-OSS as requiring low/medium/high; false is ignored.
-  return level === 'none' && /(?:^|\/)gpt-oss(?=[:\-]|$)/i.test(model) ? 'low' : level
+  return level === 'none' && model.startsWith('claude:') ? 'low' : level
 }

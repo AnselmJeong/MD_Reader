@@ -1,5 +1,5 @@
 import type { ContextRow, StoredChatMessage } from './chat-session-service'
-import { generateJsonResponse } from './ollama-service'
+import { generateJsonResponse } from './ai-service'
 
 export type UserProfileSection =
   | 'Intellectual Profile'

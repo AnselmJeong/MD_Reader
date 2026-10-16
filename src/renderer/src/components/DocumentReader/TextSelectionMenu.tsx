@@ -22,9 +22,10 @@ interface TextSelectionMenuProps {
   selectedText: string
   onHighlight: (style: EpubAnnotationStyle) => void
   onClose: () => void
+  onAnnotate?: () => void
 }
 
-export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: TextSelectionMenuProps) {
+export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose, onAnnotate }: TextSelectionMenuProps) {
   const [showHighlightChoices, setShowHighlightChoices] = useState(false)
   const {
     sendMessage,
@@ -117,6 +118,7 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose }: 
         Ask AI
       </button>
       <div className="mx-1 h-4 w-px bg-white/10" />
+      {onAnnotate && <button onClick={onAnnotate} className={itemClass}>＋ 주석</button>}
       <button
         onClick={handleSummarize}
         className={itemClass}

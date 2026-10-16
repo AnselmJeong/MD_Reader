@@ -1,7 +1,9 @@
+import { getSubscriptionStatus, subscriptionAction } from './subscription-client'
+import type { SubscriptionProvider } from '../shared/subscription'
 import { readDocumentImage } from './document-image-service'
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent, setDocumentBibliography } from './file-service'
-import { listModels, generateChatTitle } from './ollama-service'
+import { listModels, generateChatTitle } from './ai-service'
 import { getAiProviderStatus, updateAiProviderSettings, AiProviderSettingsUpdate } from './ai-provider-settings'
 import { streamGroundedChat, type StreamGroundedChatParams } from './ai-chat-service'
 import { getSettings, setSettings } from './settings-service'
@@ -21,7 +23,7 @@ import {
   processSessionMemory,
   queueMemoryExtraction
 } from './agent-memory-service'
-import { AgentMemorySettings, updateAgentMemorySettings } from './agent-memory-settings'
+import { AgentMemorySettings, connectAgentMemorySettings } from './agent-memory-settings'
 import {
   deleteEpubAnnotation,
   DeleteEpubAnnotationParams,
@@ -37,7 +39,7 @@ import {
   SaveEpubReadingProgressParams
 } from './epub-reading-progress-service'
 
-const activeOllamaRequests = new Map<number, AbortController>()
+const activeAiRequests = new Map<number, AbortController>()
 
 export function registerIpcHandlers(): void {
   // ─── File Operations ───
@@ -97,23 +99,24 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ─── Ollama ───
-  ipcMain.handle('ollama:list-models', async () => {
+  // ─── AI ───
+  ipcMain.handle('ai:list-models', async () => {
     return listModels()
   })
 
-  ipcMain.handle('ollama:chat', async (event, params: StreamGroundedChatParams) => {
+  ipcMain.handle('ai:chat', async (event, params: StreamGroundedChatParams) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return { error: 'No window found' }
     const controller = new AbortController()
-    activeOllamaRequests.get(event.sender.id)?.abort()
-    activeOllamaRequests.set(event.sender.id, controller)
+    activeAiRequests.get(event.sender.id)?.abort()
+    activeAiRequests.set(event.sender.id, controller)
 
     try {
       let systemPrompt = params.systemPrompt
       if (params.memoryContext) {
         try {
-          const memory = await buildMemoryContextForPrompt(params.memoryContext)
+          const memory = await buildMemoryContextForPrompt(params.memoryContext,
+            AbortSignal.any([controller.signal, AbortSignal.timeout(22000)]))
           if (memory.block) {
             systemPrompt = systemPrompt ? `${systemPrompt}\n\n${memory.block}` : memory.block
           }
@@ -124,57 +127,57 @@ export function registerIpcHandlers(): void {
 
       const metadata = await streamGroundedChat({ ...params, systemPrompt }, {
         onSearchEnd: () => {
-          if (!win.isDestroyed()) win.webContents.send('ollama:search-end')
+          if (!win.isDestroyed()) win.webContents.send('ai:search-end')
         },
         onSearchStart: (payload) => {
           if (!win.isDestroyed()) {
-            win.webContents.send('ollama:search-start', payload)
+            win.webContents.send('ai:search-start', payload)
           }
         },
         onSources: (sources) => {
           if (!win.isDestroyed()) {
-            win.webContents.send('ollama:search-results', { sources })
+            win.webContents.send('ai:search-results', { sources })
           }
         },
         onToken: (token: string) => {
           if (!win.isDestroyed()) {
-            win.webContents.send('ollama:token', token)
+            win.webContents.send('ai:token', token)
           }
         }
       }, controller.signal)
       if (!win.isDestroyed()) {
-        win.webContents.send('ollama:metadata', metadata)
-        win.webContents.send('ollama:done', metadata)
+        win.webContents.send('ai:metadata', metadata)
+        win.webContents.send('ai:done', metadata)
       }
       return { success: true }
     } catch (error) {
       if (controller.signal.aborted) {
         if (!win.isDestroyed()) {
-          win.webContents.send('ollama:stopped')
+          win.webContents.send('ai:stopped')
         }
         return { stopped: true }
       }
       const message = error instanceof Error ? error.message : 'Unknown error'
       if (!win.isDestroyed()) {
-        win.webContents.send('ollama:error', message)
+        win.webContents.send('ai:error', message)
       }
       return { error: message }
     } finally {
-      if (activeOllamaRequests.get(event.sender.id) === controller) {
-        activeOllamaRequests.delete(event.sender.id)
+      if (activeAiRequests.get(event.sender.id) === controller) {
+        activeAiRequests.delete(event.sender.id)
       }
     }
   })
 
-  ipcMain.handle('ollama:stop', async (event) => {
-    const controller = activeOllamaRequests.get(event.sender.id)
+  ipcMain.handle('ai:stop', async (event) => {
+    const controller = activeAiRequests.get(event.sender.id)
     if (!controller) return { success: false }
     controller.abort()
-    activeOllamaRequests.delete(event.sender.id)
+    activeAiRequests.delete(event.sender.id)
     return { success: true }
   })
 
-  ipcMain.handle('ollama:generate-title', async (_event, params: {
+  ipcMain.handle('ai:generate-title', async (_event, params: {
     model: string
     contextTitle: string
     messages: Array<{ role: string; content: string }>
@@ -187,6 +190,9 @@ export function registerIpcHandlers(): void {
       return { success: false, error: message }
     }
   })
+
+  ipcMain.handle('subscriptions:status', () => getSubscriptionStatus())
+  ipcMain.handle('subscriptions:action', (_event, provider: SubscriptionProvider, action: 'login' | 'cancelLogin' | 'logout') => subscriptionAction(provider, action))
 
   // ─── Settings ───
   ipcMain.handle('settings:get', async (_event, key?: string) => {
@@ -245,7 +251,7 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('agent-memory:update-settings', async (_event, partial: Partial<AgentMemorySettings>) => {
-    updateAgentMemorySettings(partial)
+    await connectAgentMemorySettings(partial)
     return getAgentMemoryStatus()
   })
 
