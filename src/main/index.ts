@@ -7,15 +7,17 @@ import { closeChatSessionDb } from './chat-session-service'
 import { closeEpubAnnotationDb } from './epub-annotation-service'
 import { closeEpubReadingProgressDb } from './epub-reading-progress-service'
 import { initializeAgentMemoryStartupRoutine } from './agent-memory-service'
+import { closeCommentaryDb } from './commentary-service'
+import { readWindowState, rememberWindowState } from './window-state-service'
 
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
+  const windowState = readWindowState()
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 800,
-    minHeight: 600,
+    ...windowState.bounds,
+    minWidth: Math.min(800, windowState.bounds.width),
+    minHeight: Math.min(600, windowState.bounds.height),
     show: false,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 15, y: 15 },
@@ -28,9 +30,7 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow?.show()
-  })
+  rememberWindowState(mainWindow, windowState)
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
@@ -68,6 +68,7 @@ app.on('before-quit', () => {
   closeChatSessionDb()
   closeEpubAnnotationDb()
   closeEpubReadingProgressDb()
+  closeCommentaryDb()
 })
 
 app.on('window-all-closed', () => {

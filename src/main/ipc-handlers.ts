@@ -2,8 +2,15 @@ import { getSubscriptionStatus, subscriptionAction } from './subscription-client
 import type { SubscriptionProvider } from '../shared/subscription'
 import { readDocumentImage } from './document-image-service'
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
+import path from 'node:path'
+import { listCommentary, saveCommentary, setCommentaryDeleted, importCommentaryImage, importCommentaryHtml, commentaryDeletionPlan, permanentlyDeleteCommentary } from './commentary-service'
+import { exportCommentaryEpub, commentaryExportPath } from './commentary-epub'
+import type { SaveCommentary } from '../shared/commentary'
 import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent, setDocumentBibliography } from './file-service'
 import { listModels, generateChatTitle } from './ai-service'
+import { getModelVisionInfo } from './model-vision-service'
+import { validateChatImageMessages, writeChatExport } from './chat-image-service'
+import { imageModelWarning, type ChatImage } from '../shared/chat-images'
 import { getAiProviderStatus, updateAiProviderSettings, AiProviderSettingsUpdate } from './ai-provider-settings'
 import { streamGroundedChat, type StreamGroundedChatParams } from './ai-chat-service'
 import { getSettings, setSettings } from './settings-service'
@@ -42,6 +49,54 @@ import {
 const activeAiRequests = new Map<number, AbortController>()
 
 export function registerIpcHandlers(): void {
+  const escapeHandlers = new WeakMap<Electron.WebContents, (event: Electron.Event, input: Electron.Input) => void>()
+  ipcMain.on('commentary:escape-listening', (event, enabled: boolean) => {
+    const contents = event.sender
+    const previous = escapeHandlers.get(contents)
+    if (previous) contents.removeListener('before-input-event', previous)
+    escapeHandlers.delete(contents)
+    if (enabled !== true) return
+    const handler = (keyEvent: Electron.Event, input: Electron.Input) => {
+      if (input.type === 'keyDown' && input.key === 'Escape') {
+        keyEvent.preventDefault()
+        contents.send('commentary:escape')
+      }
+    }
+    escapeHandlers.set(contents, handler)
+    contents.on('before-input-event', handler)
+  })
+  ipcMain.handle('commentary:list', (_event, documentId: string) => listCommentary(documentId))
+  ipcMain.handle('commentary:save', (_event, params: SaveCommentary) => saveCommentary(params))
+  ipcMain.handle('commentary:deleted', (_event, documentId: string, id: string, deleted: boolean) => setCommentaryDeleted(documentId, id, deleted))
+  ipcMain.handle('commentary:html', async () => {
+    const result = await dialog.showOpenDialog({ title: '주석에 HTML 추가', properties: ['openFile'], filters: [{ name: 'HTML', extensions: ['html', 'htm'] }] })
+    return result.canceled || !result.filePaths[0] ? null : importCommentaryHtml(result.filePaths[0])
+  })
+  ipcMain.handle('commentary:permanently-delete', async (event, documentId: string, id: string, expectedUpdatedAt: number) => {
+    const plan = commentaryDeletionPlan(documentId, id, expectedUpdatedAt)
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) throw new Error('주석 창을 찾을 수 없습니다.')
+    const result = await dialog.showMessageBox(win, {
+      type: 'warning', title: '주석 완전 삭제',
+      message: plan.removed.length > 1 ? `이 주석과 답글 ${plan.removed.length - 1}개를 완전히 삭제할까요?` : '이 주석을 완전히 삭제할까요?',
+      detail: '이 기기에서 복원할 수 없습니다. 이전에 내보낸 EPUB 사본은 변경되지 않습니다.',
+      buttons: ['취소', '완전 삭제'], defaultId: 0, cancelId: 0, noLink: true
+    })
+    if (result.response !== 1) return false
+    permanentlyDeleteCommentary(documentId, id, expectedUpdatedAt, plan.revision)
+    return true
+  })
+  ipcMain.handle('commentary:image', async (_event, documentId: string) => {
+    const result = await dialog.showOpenDialog({ title: '주석에 그림 추가', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }] })
+    return result.canceled || !result.filePaths[0] ? null : importCommentaryImage(documentId, result.filePaths[0])
+  })
+  ipcMain.handle('commentary:export', async (_event, filePath: string, documentId: string) => {
+    const result = await dialog.showSaveDialog({ title: '주석을 포함한 EPUB 저장', defaultPath: commentaryExportPath(filePath), filters: [{ name: 'Quarto', extensions: ['qmd'] },
+        { name: 'EPUB', extensions: ['epub'] }] })
+    if (result.canceled || !result.filePath) return null
+    await exportCommentaryEpub(filePath, result.filePath, documentId)
+    return { filePath: result.filePath }
+  })
   // ─── File Operations ───
   ipcMain.handle('file:open-dialog', async () => {
     const result = await dialog.showOpenDialog({
@@ -103,6 +158,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('ai:list-models', async () => {
     return listModels()
   })
+  ipcMain.handle('ai:model-vision', (_event, model: string) => getModelVisionInfo(model))
 
   ipcMain.handle('ai:chat', async (event, params: StreamGroundedChatParams) => {
     const win = BrowserWindow.fromWebContents(event.sender)
@@ -112,6 +168,12 @@ export function registerIpcHandlers(): void {
     activeAiRequests.set(event.sender.id, controller)
 
     try {
+      validateChatImageMessages(params.messages)
+      if (params.messages.some(message => message.images?.length)) {
+        const capability = await getModelVisionInfo(params.model)
+        if (capability.vision === 'unsupported') throw new Error(imageModelWarning(params.model, 'unsupported', true))
+        controller.signal.throwIfAborted()
+      }
       let systemPrompt = params.systemPrompt
       if (params.memoryContext) {
         try {
@@ -217,14 +279,13 @@ export function registerIpcHandlers(): void {
   })
 
   // ─── Chat Export ───
-  ipcMain.handle('chat:export', async (_event, markdown: string) => {
+  ipcMain.handle('chat:export', async (_event, markdown: string, images?: ChatImage[]) => {
     const result = await dialog.showSaveDialog({
       defaultPath: `chat-export-${Date.now()}.md`,
       filters: [{ name: 'Markdown', extensions: ['md'] }]
     })
     if (result.canceled || !result.filePath) return { success: false }
-    const fs = await import('fs/promises')
-    await fs.writeFile(result.filePath, markdown, 'utf-8')
+    await writeChatExport(result.filePath, markdown, images)
     return { success: true, filePath: result.filePath }
   })
 

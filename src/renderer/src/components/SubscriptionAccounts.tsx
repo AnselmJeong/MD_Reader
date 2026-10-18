@@ -1,3 +1,4 @@
+import { Button } from './ui/button'
 import { useEffect, useRef, useState } from 'react'
 import type { SubscriptionProvider, SubscriptionStatus } from '../../../shared/subscription'
 
@@ -49,14 +50,14 @@ export function SubscriptionAccounts({ onModelsChanged }: { onModelsChanged: () 
         </div>}
         {provider === 'claude' && account?.state === 'connected' && <p className="text-xs text-on-surface-muted">{status?.claude.quota?.status === 'rejected' ? '구독 사용 한도에 도달했습니다.' : '사용 한도는 Claude가 응답할 때 확인합니다. 추가 사용 과금 설정은 Claude 계정에서 관리됩니다.'}</p>}
         <div className="flex gap-2">
-          {account?.state === 'signingIn' ? <button disabled={busy} onClick={() => void act(provider, 'cancelLogin')} className="text-xs border border-border rounded px-3 py-1">로그인 취소</button>
-            : <button disabled={busy || !account} onClick={() => void act(provider, account?.state === 'connected' ? 'logout' : 'login')} className="text-xs bg-accent text-white rounded px-3 py-1 disabled:opacity-50">{account?.state === 'connected' ? '로그아웃' : '구독 계정 로그인'}</button>}
-          <button disabled={busy} onClick={async () => {
+          {account?.state === 'signingIn' ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(provider, 'cancelLogin')}>로그인 취소</Button>
+            : <Button size="sm" disabled={busy || !account} onClick={() => void act(provider, account?.state === 'connected' ? 'logout' : 'login')}>{account?.state === 'connected' ? '로그아웃' : '구독 계정 로그인'}</Button>}
+          <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
             setBusy(true); setError('')
             try { setStatus(await window.api.subscriptions.status()); await onChanged.current() }
             catch (error) { setError(String(error)) }
             finally { setBusy(false) }
-          }} className="text-xs border border-border rounded px-3 py-1">새로고침</button>
+          }}>새로고침</Button>
         </div>
       </div>
     })}

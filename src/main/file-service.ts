@@ -5,6 +5,7 @@ import { SimpleStore } from './simple-store'
 import { getEpubReadingProgress } from './epub-reading-progress-service'
 import { readBibliography } from './bibliography-service'
 import type { BibliographyResult } from '../shared/bibliography'
+import { readCommentaryEpub } from './commentary-epub'
 
 interface FileStoreData {
   recentFiles: string[]
@@ -62,7 +63,7 @@ export async function readDocumentFile(filePath: string): Promise<DocumentFileRe
   const extension = path.extname(filePath).toLowerCase()
 
   if (extension === '.epub') {
-    const buffer = await fs.readFile(filePath)
+    const buffer = await readCommentaryEpub(await fs.readFile(filePath))
     const documentHash = createHash('sha256').update(buffer).digest('hex')
     const progress = getEpubReadingProgress({
       documentId: documentHash,
@@ -94,6 +95,7 @@ export async function readDocumentFile(filePath: string): Promise<DocumentFileRe
 }
 
 export async function writeFileContent(filePath: string, content: string): Promise<void> {
+  if (path.extname(filePath).toLowerCase() === '.epub') throw new Error('EPUB은 주석 포함 저장 기능을 사용해 주세요.')
   await fs.writeFile(filePath, content, 'utf-8')
 }
 

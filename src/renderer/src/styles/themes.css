@@ -132,3 +132,38 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
 }
+
+/* Shared ReUI / reader palette. Existing document tokens remain the source of truth. */
+[data-theme='light'] {
+  --paper: #fbfaf7; --paper-2: #f2f1eb; --ink: #242a25; --ink-2: #465045;
+  --ink-3: #e8eae2; --mute: #6d746c; --accent: #4d6545;
+  --color-accent-hover: #3c5136; --color-chat-user: #e8eee2;
+  --shadow-sm: 0 1px 3px #26332308; --shadow-md: 0 6px 24px #2633230a;
+}
+[data-theme='sepia'] {
+  --accent: #6f623e; --color-accent-hover: #5e5134;
+  --color-chat-bg: var(--paper); --color-chat-ai: transparent;
+  --color-reading-progress: var(--accent);
+}
+[data-theme='dark'] {
+  --paper: #1a201c; --paper-2: #202821; --ink: #e7ece3; --ink-2: #bdc7b8;
+  --ink-3: #303b30; --mute: #a3afa0; --accent: #abc79a;
+  --color-accent-hover: #c4d9b6; --color-chat-bg: var(--paper);
+  --color-chat-user: #303e2e; --color-chat-ai: transparent;
+  --color-reading-progress: var(--accent); --color-code-bg: #252e26;
+  --color-blockquote-border: var(--accent);
+}
+:root, [data-theme] {
+  --radius: .75rem;
+  --background: var(--paper); --foreground: var(--ink);
+  --card: var(--paper); --card-foreground: var(--ink);
+  --popover: var(--paper); --popover-foreground: var(--ink);
+  --primary: var(--accent); --primary-foreground: #fff;
+  --secondary: var(--paper-2); --secondary-foreground: var(--ink-2);
+  --muted: var(--paper-2); --muted-foreground: var(--mute);
+  --accent-foreground: var(--ink); --input: var(--hair-2); --ring: var(--accent);
+  --destructive: #bf4337; --rail: #252e24; --rail-fg: #dde5d7;
+  --rail-active: #4f6446; --featured: #e7ebdd;
+}
+[data-theme='sepia'] { --featured: #e9dfc9; --rail: #353225; --rail-active: #6b6348; }
+[data-theme='dark'] { --primary-foreground: #172014; --featured: #2b3829; --rail: #131914; --rail-active: #3c5136; }

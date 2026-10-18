@@ -54,8 +54,9 @@
   letter-spacing: 0.005em;
 }
 
-.document-body strong {
-  font-weight: 500;
+.document-body strong,
+.document-body b {
+  font-weight: 800;
 }
 
 .document-body em {

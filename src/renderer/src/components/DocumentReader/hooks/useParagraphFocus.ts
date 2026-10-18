@@ -1,3 +1,4 @@
+import { isReaderInteractionBlocked } from '../../../lib/readerInteraction'
 import { RefObject, useCallback, useEffect, useRef } from 'react'
 
 const READING_BLOCK_SELECTOR = [
@@ -82,6 +83,7 @@ export function useParagraphFocus({
     if (!enabled) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isReaderInteractionBlocked(scrollRef.current)) return
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || isEditableTarget(event.target)) return
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
 
@@ -90,7 +92,7 @@ export function useParagraphFocus({
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activate, enabled])
+  }, [activate, enabled, scrollRef])
 
   useEffect(() => {
     if (!enabled) return

@@ -1,6 +1,8 @@
 import type { AiProviderStatus, SubscriptionStatus, SubscriptionProvider } from '../shared/subscription'
-import type { ChatRequestOptions } from '../shared/chat-request-options'
 import type { BibliographyResult } from '../shared/bibliography'
+import type { CommentaryAPI } from '../shared/commentary'
+import type { ChatImage, ModelVisionInfo } from '../shared/chat-images'
+import type { ChatRequestOptions } from '../shared/chat-request-options'
 import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron'
 
 export type DocumentKind = 'markdown' | 'epub'
@@ -65,6 +67,7 @@ export interface StoredChatMessage {
   timestamp: number
   quotedText?: string | null
   sources?: ChatSource[]
+  images?: ChatImage[]
 }
 
 export interface ChatSessionSummary {
@@ -124,6 +127,7 @@ export interface EpubReadingProgressRecord {
 }
 
 export interface ElectronAPI {
+  commentary: CommentaryAPI
   file: {
     selectBibliography: (path: string) => Promise<BibliographyResult | null>
     resetBibliography: (path: string) => Promise<BibliographyResult>
@@ -135,9 +139,10 @@ export interface ElectronAPI {
   }
   ai: {
     listModels: () => Promise<Array<{ name: string; size: number }>>
+    modelVision: (model: string) => Promise<ModelVisionInfo>
     chat: (params: ChatRequestOptions & {
       model: string
-      messages: Array<{ role: string; content: string }>
+      messages: Array<{ role: string; content: string; images?: ChatImage[] }>
       systemPrompt?: string
       memoryContext?: {
         userText: string
@@ -180,7 +185,7 @@ export interface ElectronAPI {
     }) => Promise<AiProviderStatus>
   }
   chat: {
-    exportMarkdown: (markdown: string) => Promise<{ success: boolean; filePath?: string }>
+    exportMarkdown: (markdown: string, images?: ChatImage[]) => Promise<{ success: boolean; filePath?: string }>
     listSessions: (contextMeta: ChatContextMeta) => Promise<{ contextKey: string; sessions: ChatSessionSummary[] }>
     saveSession: (params: {
       sessionId?: string | null
@@ -253,6 +258,26 @@ export interface ElectronAPI {
 }
 
 const api: ElectronAPI = {
+  commentary: {
+    onEscape: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('commentary:escape', handler)
+      ipcRenderer.send('commentary:escape-listening', true)
+      return () => { ipcRenderer.removeListener('commentary:escape', handler); ipcRenderer.send('commentary:escape-listening', false) }
+    },
+    onChange: (callback) => {
+      const handler = (_event: IpcRendererEvent, documentId: string) => callback(documentId)
+      ipcRenderer.on('commentary:changed', handler)
+      return () => ipcRenderer.removeListener('commentary:changed', handler)
+    },
+    list: (documentId) => ipcRenderer.invoke('commentary:list', documentId),
+    save: (params) => ipcRenderer.invoke('commentary:save', params),
+    setDeleted: (documentId, id, deleted) => ipcRenderer.invoke('commentary:deleted', documentId, id, deleted),
+    importImage: (documentId) => ipcRenderer.invoke('commentary:image', documentId),
+    importHtml: () => ipcRenderer.invoke('commentary:html'),
+    permanentlyDelete: (documentId, id, expectedUpdatedAt) => ipcRenderer.invoke('commentary:permanently-delete', documentId, id, expectedUpdatedAt),
+    exportEpub: (filePath, documentId) => ipcRenderer.invoke('commentary:export', filePath, documentId)
+  },
   file: {
     selectBibliography: (path: string) => ipcRenderer.invoke('file:select-bibliography', path),
     resetBibliography: (path: string) => ipcRenderer.invoke('file:reset-bibliography', path),
@@ -264,6 +289,7 @@ const api: ElectronAPI = {
   },
   ai: {
     listModels: () => ipcRenderer.invoke('ai:list-models'),
+    modelVision: (model) => ipcRenderer.invoke('ai:model-vision', model),
     chat: (params) => ipcRenderer.invoke('ai:chat', params),
     stop: () => ipcRenderer.invoke('ai:stop'),
     onToken: (callback: (token: string) => void) => {
@@ -324,7 +350,7 @@ const api: ElectronAPI = {
     updateSettings: (partial) => ipcRenderer.invoke('ai-provider:update-settings', partial)
   },
   chat: {
-    exportMarkdown: (markdown: string) => ipcRenderer.invoke('chat:export', markdown),
+    exportMarkdown: (markdown: string, images?: ChatImage[]) => ipcRenderer.invoke('chat:export', markdown, images),
     listSessions: (contextMeta) => ipcRenderer.invoke('chat:sessions:list', contextMeta),
     saveSession: (params) => ipcRenderer.invoke('chat:sessions:save', params),
     loadSession: (sessionId) => ipcRenderer.invoke('chat:sessions:load', sessionId),

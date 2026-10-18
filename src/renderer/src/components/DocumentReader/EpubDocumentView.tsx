@@ -1,3 +1,4 @@
+import { isReaderInteractionBlocked } from '../../lib/readerInteraction'
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import epubModule, { type Book, type Contents, type Location, type NavItem, type Rendition } from 'epubjs'
 import { TextSelectionMenu } from './TextSelectionMenu'
@@ -7,6 +8,15 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { useUIStore } from '../../store/useUIStore'
 import type { EpubAnnotationKind, EpubAnnotationRecord, EpubAnnotationStyle } from '../../global'
 import { shouldApplyRedUnderlineShortcut } from './utils/annotationShortcut'
+import { LinkTooltip } from './LinkTooltip'
+import { createEpubLinkTooltips, type EpubLinkPreview } from './utils/epubLinkTooltips'
+import { EpubCommentary, type CommentarySection } from './EpubCommentary'
+import { useCommentaryStore } from '../../store/useCommentaryStore'
+import { COMMENTARY_BLOCKS, COMMENTARY_HOST, sourceAnchor, resolveSourceAnchor } from './utils/epubCommentaryAnchors'
+import { epubTableStyles } from './utils/epubTableStyles'
+import { EpubTableViewer } from './EpubTableViewer'
+import { EpubImageViewer } from './EpubImageViewer'
+import type { CommentaryAnchor } from '../../../../shared/commentary'
 
 interface EpubDocumentViewProps {
   tab: EpubDocumentTab
@@ -30,7 +40,6 @@ interface TocItem {
   level: number
 }
 
-type SpreadMode = 'none' | 'always'
 type ReaderTheme = 'light' | 'sepia' | 'dark'
 type EpubAnnotationSnapshot = Pick<EpubAnnotationRecord, 'cfiRange' | 'text' | 'style'>
 type EpubAnnotationStyleDefinition = {
@@ -287,6 +296,8 @@ function EpubTableOfContents({
 
 export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   const viewerRef = useRef<HTMLDivElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const [hoveredLink, setHoveredLink] = useState<EpubLinkPreview | null>(null)
   const bookRef = useRef<Book | null>(null)
   const renditionRef = useRef<Rendition | null>(null)
   const currentCfiRef = useRef<string | null>(tab.currentLocation)
@@ -313,7 +324,9 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     showSearch,
     setShowSearch,
     toggleFocusMode,
-    toggleToC
+    toggleToC,
+    epubSpreadMode: spreadMode,
+    setEpubSpreadMode: setSpreadMode
   } = useUIStore()
   const { theme, fontSize, lineHeight, contentWidth, readerFontFamily } = useSettingsStore()
   const { setDocument, updateEpubContent, updateEpubLocation } = useDocumentStore()
@@ -325,7 +338,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   const [selection, setSelection] = useState<EpubSelection | null>(null)
   const [activeAnnotationMenu, setActiveAnnotationMenu] = useState<ActiveAnnotationMenu | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [spreadMode, setSpreadMode] = useState<SpreadMode>('always')
+  const [commentarySections, setCommentarySections] = useState<CommentarySection[]>([])
   const [returnCfi, setReturnCfi] = useState<string | null>(null)
   const [isEpubDragging, setIsEpubDragging] = useState(false)
 
@@ -495,6 +508,19 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     const viewer = viewerRef.current
     const rendition = renditionRef.current
     if (!viewer || !rendition) return
+    // renderTo initializes its manager asynchronously; early ResizeObserver ticks
+    // must wait until the stage exists (especially while switching reading modes).
+    if (!(rendition as unknown as { manager?: { stage?: unknown } }).manager?.stage) return
+    // resize() destroys the current views. Before the first relocation EPUB.js
+    // has no location from which to recreate them, leaving a blank book.
+    if (!rendition.location?.start) return
+    // A chapter transition still owns the current view until display resolves.
+    // Resizing mid-transition would redisplay the previous chapter's CFI.
+    if ((rendition as unknown as { displaying?: unknown }).displaying) {
+      if (resizeTimerRef.current != null) window.clearTimeout(resizeTimerRef.current)
+      resizeTimerRef.current = window.setTimeout(resizeRenditionToSurface, 40)
+      return
+    }
 
     const rect = viewer.getBoundingClientRect()
     const width = Math.floor(rect.width)
@@ -541,6 +567,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       : 'Newsreader, "Noto Serif KR", Georgia, serif'
     const bodyPadding = spreadMode === 'always' ? '1.25rem 1.75rem' : '1.25rem 3rem'
     rendition.themes.default({
+      ...epubTableStyles,
       html: {
         background,
         margin: '0',
@@ -562,6 +589,21 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       },
       '*': {
         'box-sizing': 'border-box',
+      },
+      'body strong, body b': {
+        'font-weight': '800 !important',
+      },
+      // epub.js caps images to a cached pixel column width, which ignores a
+      // figure's margins and becomes stale after resizing. Use the containing
+      // block and the live iframe viewport instead; do not change source nodes
+      // (their order is used by EPUB CFIs).
+      'body img, body svg:not(.katex svg):not(math svg):not(svg svg)': {
+        'max-width': '100% !important',
+        'max-height': spreadMode === 'comments' ? 'none !important' : 'calc(100vh - 40px) !important',
+        height: 'auto !important',
+        'object-fit': 'contain',
+        'break-inside': 'avoid !important',
+        'page-break-inside': 'avoid !important',
       },
       p: {
         'line-height': String(lineHeight),
@@ -587,6 +629,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     const viewer = viewerRef.current
     if (!viewer) return
 
+    let disposed = false
     viewer.replaceChildren()
     currentCfiRef.current = tab.currentLocation
     latestChapterHrefRef.current = tab.currentChapterHref
@@ -602,11 +645,12 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     annotationsRef.current = []
 
     const book = createEpubBook(bookBuffer)
+    setCommentarySections([])
     const rendition = book.renderTo(viewer, {
       width: '100%',
       height: '100%',
-      flow: 'paginated',
-      spread: spreadMode,
+      flow: spreadMode === 'comments' ? 'scrolled-doc' : 'paginated',
+      spread: spreadMode === 'always' ? 'always' : 'none',
       minSpreadWidth: 0,
       gap: spreadMode === 'always' ? EPUB_SPREAD_GAP : 0,
       ignoreClass: EPUB_ANNOTATION_CLASS,
@@ -617,7 +661,30 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     renditionRef.current = rendition
     applyTheme(rendition)
 
+    const linkTooltips = createEpubLinkTooltips({
+      book, viewer, onChange: setHoveredLink,
+      tooltipContains: (target) => tooltipRef.current?.contains(target) ?? false
+    })
+
     rendition.hooks.content.register((contents: Contents) => {
+      if (disposed) return
+      // Font faces belong to a document: the reader's loaded fonts are not
+      // inherited by EPUB iframes. Load the same real regular/bold faces here.
+      const readerFonts = document.querySelector<HTMLLinkElement>('link[href^="https://fonts.googleapis.com/css2?"]')
+      if (readerFonts && !contents.document.head.querySelector('[data-md-reader-fonts]')) {
+        const link = contents.document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = readerFonts.href
+        link.setAttribute('data-md-reader-fonts', '')
+        contents.document.head.appendChild(link)
+      }
+      linkTooltips.attach(contents)
+      contents.document.querySelectorAll('table').forEach(table => {
+        table.setAttribute('tabindex', '0')
+        table.setAttribute('title', '넓은 표는 좌우로 스크롤할 수 있습니다.')
+      })
+      const section = book.spine.get(contents.sectionIndex)
+      if (section) setCommentarySections(current => disposed ? current : [...current.filter(item => item.contents.window.frameElement?.isConnected && item.contents !== contents), { contents, chapterHref: section.href.split('#')[0] }])
       let focusStyle = contents.document.getElementById(EPUB_FOCUS_STYLE_ID) as HTMLStyleElement | null
       if (!focusStyle) {
         focusStyle = contents.document.createElement('style')
@@ -679,6 +746,13 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       }
 
       const handleContentKeyDown = (event: KeyboardEvent) => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+          event.preventDefault()
+          window.dispatchEvent(new Event('md-reader:save-commentary'))
+          return
+        }
+        if (event.composedPath().some(node => (node as Element).localName === COMMENTARY_HOST)) return
+        if ((event.target as Element)?.closest?.('table')) return
         if (annotationShortcutHandlerRef.current(event)) return
 
         const target = event.target as HTMLElement | null
@@ -753,6 +827,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     })
 
     book.loaded.metadata.then((metadata) => {
+      if (disposed) return
       const metadataTitle = typeof metadata.title === 'string' ? metadata.title.trim() : ''
       if (metadataTitle) setTitle(metadataTitle)
     }).catch((error) => {
@@ -760,6 +835,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     })
 
     book.loaded.navigation.then((navigation) => {
+      if (disposed) return
       const nextItems = flattenToc(navigation.toc ?? [])
       tocItemsRef.current = nextItems
       setTocItems(nextItems)
@@ -768,6 +844,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     })
 
     rendition.on('rendered', () => {
+      if (disposed) return
       updateVisibleText(rendition)
       if (focusModeRef.current) {
         requestAnimationFrame(() => {
@@ -777,7 +854,14 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       }
     })
 
+    let initialLayoutSettled = false
     rendition.on('relocated', (location: Location) => {
+      if (disposed) return
+      if (!initialLayoutSettled) {
+        initialLayoutSettled = true
+        scheduleRenditionResize(40)
+      }
+      linkTooltips.hide()
       const percentage = location.start?.percentage
       const cfi = location.start?.cfi ?? null
       // `location.start.percentage` is only populated after the book-wide
@@ -819,7 +903,6 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     // percentage, which leaves the reader at 0% and persists null progress.
     // Keep initial rendering responsive, then reconcile the current CFI as
     // soon as the index is ready.
-    let disposed = false
     void book.ready
       .then(() => book.locations.generate(1600))
       .then(() => {
@@ -853,6 +936,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       })
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isReaderInteractionBlocked(viewerRef.current) || (event.target as Element)?.closest?.('[data-commentary-ui]')) return
       const target = event.target as HTMLElement | null
       if (target?.closest(
         'input, textarea, select, [contenteditable="true"], button, a, [role="button"], [role="slider"], [role="menuitem"]'
@@ -895,6 +979,14 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       }
 
       if (selectedText) {
+        const node = contents.window.getSelection()?.anchorNode
+        const element = node?.nodeType === 1 ? node as Element : node?.parentElement
+        const block = element?.closest(COMMENTARY_BLOCKS)
+        const section = book.spine.get(contents.sectionIndex)
+        if (block && section) {
+          const anchor = sourceAnchor(block, section.href)
+          if (anchor) useCommentaryStore.getState().choose(tab.documentHash, anchor)
+        }
         setSelection({ cfiRange, contents, rect, text: selectedText })
       }
     })
@@ -904,6 +996,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       documentId: tab.documentHash,
       fileName: tab.fileName
     }).then((annotations) => {
+      if (disposed) return
       annotationsRef.current = annotations
       const currentTheme = useSettingsStore.getState().theme
       annotations.forEach((annotation) => applyEpubAnnotation(
@@ -917,6 +1010,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     })
 
     void rendition.display(initialLocation ?? undefined).then(() => {
+      if (disposed) return
       updateVisibleText(rendition)
     }).catch((error) => {
       console.error('Failed to display EPUB:', error)
@@ -924,6 +1018,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
     return () => {
       disposed = true
+      linkTooltips.dispose()
       window.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('mousedown', handleOuterMouseDown)
       epubDropCleanupRef.current.forEach((cleanup) => cleanup())
@@ -950,7 +1045,8 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
     updateVisibleText,
     showAnnotationMenu,
     activateEpubParagraph,
-    focusEpubReadingSurface
+    focusEpubReadingSurface,
+    scheduleRenditionResize
   ])
 
   useEffect(() => {
@@ -980,6 +1076,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
   useEffect(() => {
     focusKeyHandlerRef.current = (event: KeyboardEvent) => {
+      if (isReaderInteractionBlocked(viewerRef.current)) return false
       const target = event.target as HTMLElement | null
       if (
         event.metaKey
@@ -1092,6 +1189,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
   useEffect(() => {
     annotationShortcutHandlerRef.current = (event: KeyboardEvent) => {
+      if (isReaderInteractionBlocked(viewerRef.current)) return false
       if (!selection || !shouldApplyRedUnderlineShortcut(event)) return false
 
       event.preventDefault()
@@ -1151,6 +1249,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
 
   useEffect(() => {
     searchKeyHandlerRef.current = (event: KeyboardEvent) => {
+      if (isReaderInteractionBlocked(viewerRef.current)) return
       const mod = event.metaKey || event.ctrlKey
       const key = event.key.toLowerCase()
 
@@ -1191,6 +1290,14 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   }, [])
 
   const normalizedSectionLabel = sectionLabel === 'EPUB' ? title : sectionLabel
+  const navigateCommentary = async (anchor: CommentaryAnchor) => {
+    await renditionRef.current?.display(anchor.chapterHref)
+    const target = getRenditionContents(renditionRef.current!).map(contents => resolveSourceAnchor(contents.document, anchor)).find(Boolean)
+    if (target) {
+      const contents = getRenditionContents(renditionRef.current!).find(contents => contents.document === target.ownerDocument)
+      if (contents) await renditionRef.current?.display(contents.cfiFromNode(target))
+    }
+  }
   const normalizedPageWidth = Math.max(0, Math.min(1, (contentWidth - 52) / 30))
   const pageWidthPercentage = spreadMode === 'always'
     ? 75 + normalizedPageWidth * 23
@@ -1205,6 +1312,11 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
         onToggleFocusMode={handleToggleFocusMode}
         onToggleToC={toggleToC}
       />
+      <EpubCommentary key={tab.documentHash} documentId={tab.documentHash} filePath={tab.filePath}
+        sections={commentarySections} paginated={spreadMode !== 'comments'}
+        onNavigate={navigateCommentary} />
+      <EpubTableViewer sections={commentarySections} />
+      <EpubImageViewer key={tab.documentHash} sections={commentarySections} />
 
       {showToC && (
         <div className="reading-toc-panel">
@@ -1309,6 +1421,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       <div className="epub-view-controls ui-text">
         <button
           onClick={() => setSpreadMode('none')}
+          aria-pressed={spreadMode === 'none'}
           className={spreadMode === 'none' ? 'active' : ''}
           title="Single page view"
         >
@@ -1316,11 +1429,13 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
         </button>
         <button
           onClick={() => setSpreadMode('always')}
+          aria-pressed={spreadMode === 'always'}
           className={spreadMode === 'always' ? 'active' : ''}
           title="Two page view"
         >
           2p
         </button>
+        <button onClick={() => setSpreadMode('comments')} aria-pressed={spreadMode === 'comments'} className={spreadMode === 'comments' ? 'active' : ''} title="Scroll through text and commentary">주석 읽기</button>
       </div>
       <ReadingPaneFooter progress={progress} detail="EPUB" />
       <ReadingSensesPanel />
@@ -1358,7 +1473,12 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
           selectedText={selection.text}
           onHighlight={handleHighlightSelection}
           onClose={clearSelection}
+          onAnnotate={() => { useCommentaryStore.getState().open(tab.documentHash); clearSelection() }}
         />
+      )}
+      {hoveredLink && (
+        <LinkTooltip key={`${hoveredLink.url}:${hoveredLink.title}`} tooltipRef={tooltipRef}
+          url={hoveredLink.url} title={hoveredLink.title} rect={hoveredLink.rect} />
       )}
     </div>
   )

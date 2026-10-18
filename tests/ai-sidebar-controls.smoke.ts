@@ -105,7 +105,7 @@ app.whenReady().then(async()=>{
   assert.equal(await run(`window.api.aiProvider.status().then(status => JSON.stringify(status).includes('test-search-key'))`),false)
   fs.writeFileSync(path.resolve('.tmp/tinyfish-settings.png'),(await win.webContents.capturePage()).toPNG())
   await run(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='Done').click()`)
-  await wait(`!!document.querySelector('textarea[placeholder="Ask about the document..."]')`)
+  await wait(`!!document.querySelector('textarea[aria-label="메시지 입력"]')`)
   const assertDefaults=async()=>{
    assert.equal(await run(`document.querySelector('button[aria-label="웹 검색"]').getAttribute('aria-pressed')`),'false')
    assert.equal(await run(`document.querySelector('select[aria-label="Thinking 수준"]').value`),'none')
@@ -114,8 +114,8 @@ app.whenReady().then(async()=>{
   let sent=0
   const send=async()=>{
    calls.length=0
-   await run(`(()=>{const input=document.querySelector('textarea[placeholder="Ask about the document..."]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,'홉필드 네트워크의 에너지 함수와 대칭 가중치에 관한 논문을 검색해줘');input.dispatchEvent(new Event('input',{bubbles:true}))})()`)
-   await run(`document.querySelector('textarea[placeholder="Ask about the document..."]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))`)
+   await run(`(()=>{const input=document.querySelector('textarea[aria-label="메시지 입력"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,'홉필드 네트워크의 에너지 함수와 대칭 가중치에 관한 논문을 검색해줘');input.dispatchEvent(new Event('input',{bubbles:true}))})()`)
+   await run(`document.querySelector('textarea[aria-label="메시지 입력"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))`)
    sent++
    await wait(`document.querySelectorAll('.chat-message-content .katex-display').length===${sent}`)
    await wait(`!document.querySelector('button[title="Stop response (Esc)"]')`)
@@ -146,7 +146,7 @@ app.whenReady().then(async()=>{
   assert.deepEqual(calls,['Answer'])
   await click('button[aria-label="웹 검색"]')
   await chooseThinking('high')
-  await run(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='New').click()`)
+  await run(`document.querySelector('button[aria-label="새 대화"]').click()`)
   await wait(`document.querySelectorAll('.chat-message-content .katex-display').length===0`)
   await assertDefaults()
   fs.writeFileSync(path.resolve('.tmp/ai-sidebar-math.png'),(await win.webContents.capturePage()).toPNG())

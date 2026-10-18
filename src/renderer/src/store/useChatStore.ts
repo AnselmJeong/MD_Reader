@@ -1,5 +1,5 @@
-import { normalizeThinkingLevel, type ThinkingLevel } from '../../../shared/chat-request-options'
 import { create } from 'zustand'
+import { normalizeThinkingLevel, type ThinkingLevel } from '../../../shared/chat-request-options'
 import type {
   ChatContextMeta,
   ChatSource,
@@ -8,6 +8,7 @@ import type {
   StoredChatMessage
 } from '../global'
 import { DEFAULT_AI_SYSTEM_PROMPT, resolveAiSystemPrompt } from '../../../shared/ai-prompts'
+import { validateChatImages, chatImageBytes, imageModelWarning, MAX_CHAT_REQUEST_IMAGE_BYTES, type ChatImage, type ModelVisionInfo } from '../../../shared/chat-images'
 
 export interface ChatMessage {
   id: string
@@ -16,6 +17,7 @@ export interface ChatMessage {
   timestamp: number
   quotedText?: string
   sources?: ChatSource[]
+  images?: ChatImage[]
 }
 
 interface ChatState {
@@ -28,6 +30,11 @@ interface ChatState {
   webSearch: boolean
   thinkingLevel: ThinkingLevel
   pendingQuotedText: string | null
+  pendingImages: ChatImage[]
+  modelVision: ModelVisionInfo | null
+  isCheckingVision: boolean
+  isPreparingMessage: boolean
+  sendWarning: string | null
   focusInputRequest: number
   selectedModel: string
   availableModels: string[]
@@ -58,6 +65,8 @@ interface ChatState {
   setWebSearch: (enabled: boolean) => void
   setThinkingLevel: (level: ThinkingLevel) => void
   setPendingQuotedText: (text: string | null) => void
+  setPendingImages: (images: ChatImage[]) => void
+  refreshModelVision: () => Promise<ModelVisionInfo>
   requestInputFocus: () => void
   switchContext: (contextMeta: ChatContextMeta | null, proposedContextKey: string | null) => Promise<void>
   loadSession: (sessionId: string) => Promise<void>
@@ -93,7 +102,8 @@ function toStoredMessages(messages: ChatMessage[]): StoredChatMessage[] {
     content: message.content,
     timestamp: message.timestamp,
     quotedText: message.quotedText ?? null,
-    sources: message.sources ?? []
+    sources: message.sources ?? [],
+    images: message.images ?? []
   }))
 }
 
@@ -104,7 +114,8 @@ function fromStoredMessages(messages: StoredChatMessage[]): ChatMessage[] {
     content: message.content,
     timestamp: message.timestamp,
     quotedText: message.quotedText ?? undefined,
-    sources: message.sources ?? []
+    sources: message.sources ?? [],
+    images: message.images ?? []
   }))
 }
 
@@ -116,8 +127,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingSearchQuery: null,
   inputDraft: '',
   pendingQuotedText: null,
+  pendingImages: [],
   webSearch: false,
   thinkingLevel: 'none',
+  modelVision: null,
+  isCheckingVision: false,
+  isPreparingMessage: false,
+  sendWarning: null,
   focusInputRequest: 0,
   selectedModel: '',
   availableModels: [],
@@ -183,8 +199,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     streamingSources: [],
     streamingSearchQuery: null,
     pendingQuotedText: null,
+    pendingImages: [],
     webSearch: false,
     thinkingLevel: 'none',
+    sendWarning: null,
     currentSessionId: null,
     sessionTitle: null,
     titleStatus: 'pending',
@@ -192,7 +210,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     sessionView: 'live'
   }),
   setSelectedModel: (model) => {
-    set({ selectedModel: model })
+    set({ selectedModel: model, modelVision: null, isCheckingVision: false, sendWarning: null })
     persistSetting('aiModel', model)
   },
   setAvailableModels: (models) => set({ availableModels: models }),
@@ -204,6 +222,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setWebSearch: (enabled) => set({ webSearch: enabled }),
   setThinkingLevel: (level) => set({ thinkingLevel: normalizeThinkingLevel(level) }),
   setPendingQuotedText: (text) => set({ pendingQuotedText: text?.trim() ? text.trim() : null }),
+  setPendingImages: (images) => set({ pendingImages: validateChatImages(images), sendWarning: null }),
+  refreshModelVision: async () => {
+    const model = get().selectedModel
+    set({ isCheckingVision: true })
+    let info: ModelVisionInfo
+    try { info = await window.api.ai.modelVision(model) }
+    catch { info = { model, vision: 'unknown' } }
+    if (get().selectedModel === model) set({ modelVision: info, isCheckingVision: false })
+    return info
+  },
   requestInputFocus: () => set((state) => ({ focusInputRequest: state.focusInputRequest + 1 })),
   saveCurrentSession: async (options) => {
     const {
@@ -288,8 +316,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamingSources: [],
         streamingSearchQuery: null,
         pendingQuotedText: null,
+        pendingImages: [],
         webSearch: false,
         thinkingLevel: 'none',
+        sendWarning: null,
         sessionDirty: false,
         sessionView: 'live'
       })
@@ -313,8 +343,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamingSources: [],
         streamingSearchQuery: null,
         pendingQuotedText: null,
+        pendingImages: [],
         webSearch: false,
         thinkingLevel: 'none',
+        sendWarning: null,
         sessionDirty: false,
         sessionView: 'live',
         isLoadingSession: false
@@ -332,8 +364,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamingSources: [],
         streamingSearchQuery: null,
         pendingQuotedText: null,
+        pendingImages: [],
         webSearch: false,
         thinkingLevel: 'none',
+        sendWarning: null,
         sessionDirty: false,
         sessionView: 'live',
         isLoadingSession: false
@@ -365,8 +399,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         streamingSources: [],
         streamingSearchQuery: null,
         pendingQuotedText: null,
+        pendingImages: [],
         webSearch: false,
         thinkingLevel: 'none',
+        sendWarning: null,
         sessionDirty: false,
         sessionView: 'historical',
         isLoadingSession: false
@@ -401,8 +437,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingSearchQuery: null,
       inputDraft: '',
       pendingQuotedText: null,
+      pendingImages: [],
       webSearch: false,
       thinkingLevel: 'none',
+      sendWarning: null,
       sessionDirty: false,
       sessionView: 'live'
     })
@@ -440,12 +478,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ isStreaming: false, streamingContent: '', streamingSources: [], streamingSearchQuery: null })
   },
   sendMessage: async ({ text, documentContent, quotedText }) => {
-    const message = text.trim()
+    const images = get().pendingImages
+    const message = text.trim() || (images.length ? '첨부한 이미지를 설명해 주세요.' : '')
     if (!message) return { success: false, reason: 'empty' }
 
-    const { selectedModel, isStreaming, messages, systemPrompt, currentContextMeta, webSearch, thinkingLevel } = get()
+    const { selectedModel, isStreaming, isPreparingMessage, messages, systemPrompt, currentContextMeta, webSearch, thinkingLevel } = get()
     if (!selectedModel) return { success: false, reason: 'no-model' }
-    if (isStreaming) return { success: false, reason: 'streaming' }
+    if (isStreaming || isPreparingMessage) return { success: false, reason: 'streaming' }
+
+    const historicalImages = messages.flatMap(item => item.images ?? [])
+    if (images.length || historicalImages.length) {
+      set({ isPreparingMessage: true, sendWarning: null })
+      try {
+        validateChatImages(images)
+        if ([...historicalImages, ...images].reduce((total, image) => total + chatImageBytes(image.dataUrl), 0) > MAX_CHAT_REQUEST_IMAGE_BYTES) {
+          throw new Error('이 대화의 이미지가 30MB를 초과합니다. 새 대화에서 질문해 주세요.')
+        }
+        const info = await get().refreshModelVision()
+        if (get().selectedModel !== selectedModel || get().messages !== messages || get().currentContextMeta !== currentContextMeta) {
+          return { success: false, reason: 'context-changed' }
+        }
+        if (info.vision === 'unsupported') {
+          set({ sendWarning: imageModelWarning(selectedModel, info.vision, historicalImages.length > 0) })
+          return { success: false, reason: 'non-vision-model' }
+        }
+      } catch (error) {
+        set({ sendWarning: error instanceof Error ? error.message : '첨부 이미지를 확인해 주세요.' })
+        return { success: false, reason: 'invalid-images' }
+      } finally { set({ isPreparingMessage: false }) }
+    }
 
     const id = `msg-${++messageCounter}-${Date.now()}`
     const userMessage: ChatMessage = {
@@ -453,6 +514,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       role: 'user',
       content: message,
       quotedText,
+      images,
       timestamp: Date.now()
     }
 
@@ -464,8 +526,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingSearchQuery: null,
       inputDraft: '',
       pendingQuotedText: null,
+      pendingImages: [],
       webSearch: false,
       thinkingLevel: 'none',
+      sendWarning: null,
       sessionDirty: true,
       sessionView: 'live'
     }))
@@ -475,8 +539,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       : message
 
     const chatMessages = [
-      ...messages.map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user' as const, content: outgoingUserContent }
+      ...messages.map((m) => ({ role: m.role, content: m.content, images: m.images })),
+      { role: 'user' as const, content: outgoingUserContent, images }
     ]
 
     let fullSystemPrompt = systemPrompt

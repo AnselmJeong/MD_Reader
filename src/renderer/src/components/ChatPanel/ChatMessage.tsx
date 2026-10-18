@@ -1,89 +1,14 @@
 import { MouseEvent, useDeferredValue, useMemo } from 'react'
-import { unified } from 'unified'
-import remarkParse from 'remark-parse'
-import remarkMath from 'remark-math'
-import remarkGfm from 'remark-gfm'
-import remarkRehype from 'remark-rehype'
-import rehypeKatex from 'rehype-katex'
-import rehypeHighlight from 'rehype-highlight'
-import rehypeStringify from 'rehype-stringify'
+import { ChatImages } from './ChatImages'
+import { renderChatMarkdown } from './utils/chatMarkdown'
 import type { ChatMessage as ChatMessageType } from '../../store/useChatStore'
+import { useChatStore } from '../../store/useChatStore'
+import { useDocumentStore } from '../../store/useDocumentStore'
+import { useCommentaryStore } from '../../store/useCommentaryStore'
 
 interface ChatMessageProps {
   message: ChatMessageType
   isStreaming?: boolean
-}
-
-function escapeHtml(content: string): string {
-  return content
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-function normalizeCjkAdjacentEmphasis(content: string): string {
-  return content
-    .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
-    .map((segment) => {
-      if (segment.startsWith('```') || segment.startsWith('`')) return segment
-      return segment.replace(/(?<=[^*\s])(\*{1,3})(?=\p{Script=Hangul})/gu, '$1&#8203;')
-    })
-    .join('')
-}
-
-type HastNode = {
-  type: string
-  tagName?: string
-  properties?: Record<string, unknown>
-  children?: HastNode[]
-}
-
-function wrapTableNodes(node: HastNode) {
-  if (!node.children) return
-
-  for (let index = 0; index < node.children.length; index += 1) {
-    const child = node.children[index]
-
-    if (child.type === 'element' && child.tagName === 'table') {
-      node.children[index] = {
-        type: 'element',
-        tagName: 'div',
-        properties: { className: ['chat-table-scroll'] },
-        children: [child]
-      }
-      continue
-    }
-
-    wrapTableNodes(child)
-  }
-}
-
-function rehypeWrapChatTables() {
-  return function transformer(tree: HastNode) {
-    wrapTableNodes(tree)
-  }
-}
-
-function renderChatMarkdown(content: string, streaming: boolean): string {
-  try {
-    const normalizedContent = normalizeCjkAdjacentEmphasis(content)
-    const result = unified()
-      .use(remarkParse)
-      .use(remarkMath)
-      .use(remarkGfm)
-      .use(remarkRehype, { allowDangerousHtml: true })
-      .use(rehypeKatex)
-      .use(rehypeHighlight, { detect: !streaming })
-      .use(rehypeWrapChatTables)
-      .use(rehypeStringify, { allowDangerousHtml: true })
-      .processSync(normalizedContent)
-    return String(result)
-  } catch {
-    // During incomplete streaming markdown/math, keep content readable and safe.
-    return escapeHtml(content).replace(/\n/g, '<br/>')
-  }
 }
 
 function getSourceLabel(url: string): string {
@@ -95,6 +20,7 @@ function getSourceLabel(url: string): string {
 }
 
 export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
+  const tab = useDocumentStore(state => state.activeTab)
   const deferredContent = useDeferredValue(message.content)
   const contentForRender = isStreaming ? deferredContent : message.content
   const html = useMemo(
@@ -124,7 +50,7 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
       <div
         className={`min-w-0 text-[length:var(--ai-sidebar-font-size)] leading-relaxed ${
           isUser
-            ? 'max-w-[92%] rounded-[8px_8px_2px_8px] border border-[var(--hair-2)] bg-chat-user px-3.5 py-3 font-sans font-medium text-chat-user-fg'
+            ? 'max-w-[92%] rounded-[14px_14px_4px_14px] border border-[var(--hair-2)] bg-chat-user px-3.5 py-3 font-sans font-medium text-chat-user-fg'
             : 'w-full max-w-full text-on-surface'
         }`}
       >
@@ -145,11 +71,13 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
           </div>
         )}
 
+        {Boolean(message.images?.length) && <ChatImages images={message.images!} />}
+
         {/* Content */}
         <div
           onClick={handleLinkClick}
           className={`chat-message-content prose prose-sm max-w-none text-[length:var(--ai-sidebar-font-size)] [&_p]:mb-2 [&_p:last-child]:mb-0 [&_pre]:text-xs [&_code]:text-xs [&_.katex-display]:overflow-x-auto [&_.katex-display]:py-2 ${
-            isUser ? 'font-sans' : 'font-serif prose-p:font-serif prose-li:font-serif'
+            isUser ? 'font-sans' : 'font-sans'
           }`}
           dangerouslySetInnerHTML={{ __html: html }}
         />
@@ -175,6 +103,15 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
             ))}
           </div>
         )}
+        {!isUser && !isStreaming && tab?.kind === 'epub' && <button
+          className="mt-3 rounded border border-border px-2.5 py-1.5 text-xs text-on-surface-muted hover:text-on-surface"
+          onClick={() => {
+            const chat = useChatStore.getState()
+            const sources = message.sources?.map(source => `- [${source.title}](${source.url})`).join('\n')
+            useCommentaryStore.getState().open(tab.documentHash, message.content + (sources ? `\n\n참고 자료\n\n${sources}` : ''), {
+              messageId: message.id, sessionId: chat.currentSessionId, model: chat.selectedModel, content: message.content
+            })
+          }}>본문에 주석으로 추가</button>}
 
         {/* Actions */}
         {!isStreaming && !isUser && (

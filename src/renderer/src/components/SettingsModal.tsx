@@ -1,3 +1,13 @@
+import { BookOpen, Sparkles, Brain, Globe, Check, FolderOpen } from 'lucide-react'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { Textarea } from './ui/textarea'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog'
+import { Field, FieldGroup, FieldLabel, FieldDescription } from './ui/field'
+import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
+import { Frame, FrameHeader, FrameTitle, FramePanel } from './reui/frame'
+import { Badge } from './reui/badge'
+
 import { SubscriptionAccounts } from './SubscriptionAccounts'
 import { modelLabel } from '../../../shared/subscription'
 import { useState, useEffect } from 'react'
@@ -11,6 +21,13 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
+  const [section, setSection] = useState('appearance')
+  const [providerError, setProviderError] = useState('')
+  const [providerSaved, setProviderSaved] = useState(false)
+  const [providerSaving, setProviderSaving] = useState(false)
+  const [fonts, setFonts] = useState<string[]>([])
+  const [fontError, setFontError] = useState('')
+  useEffect(() => { void window.api.fonts.listKorean().then(setFonts).catch(() => setFontError('설치된 글꼴을 불러올 수 없습니다.')) }, [])
   const [memorySaving, setMemorySaving] = useState(false)
   const [memoryError, setMemoryError] = useState('')
   const [clearMemoryKey, setClearMemoryKey] = useState(false)
@@ -34,7 +51,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     fontSize,
     aiSidebarFontSize,
     lineHeight,
-    contentWidth,
+    contentWidth, readerFontFamily, setReaderFontFamily,
     setTheme,
     setFontSize,
     setAiSidebarFontSize,
@@ -49,15 +66,6 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     setSelectedModel,
     setAvailableModels
   } = useChatStore()
-
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
 
   // Refresh models when opening settings.
   useEffect(() => {
@@ -134,12 +142,14 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   }
 
   const saveAiProviderSettings = async () => {
+    setProviderError(''); setProviderSaving(true); setProviderSaved(false)
     try {
       const status = await window.api.aiProvider.updateSettings({
         tinyfishApiKey: aiProviderDraft.tinyfishApiKey.trim() || undefined,
         webSearchEnabled: aiProviderDraft.webSearchEnabled
       })
       setAiProviderStatus(status)
+      setProviderSaved(true)
       setAiProviderDraft((draft) => ({ ...draft, tinyfishApiKey: '' }))
       const models = await window.api.ai.listModels()
       const modelNames = filterSubscriptionModels(models.map((m) => m.name))
@@ -148,310 +158,84 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
         setSelectedModel(modelNames[0])
       }
     } catch (error) {
-      console.error('Failed to save AI provider settings:', error)
-    }
+      setProviderError(error instanceof Error ? error.message : '검색 설정을 저장하지 못했습니다.')
+    } finally { setProviderSaving(false) }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="bg-surface-alt rounded-xl shadow-2xl border border-border w-[520px] max-h-[80vh] overflow-y-auto ui-text"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="font-bold text-lg text-on-surface">Settings</h2>
-          <button
-            onClick={onClose}
-            className="text-on-surface-muted hover:text-on-surface transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-6">
-          {/* ─── Appearance ─── */}
-          <section>
-            <h3 className="text-sm font-semibold text-on-surface mb-3">Appearance</h3>
-            <div className="space-y-4">
-              {/* Theme */}
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-on-surface-muted">Theme</label>
-                <div className="flex gap-1">
-                  {(['light', 'sepia', 'dark'] as const).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setTheme(t)}
-                      className={`px-3 py-1 rounded-md text-xs capitalize transition-colors ${
-                        theme === t
-                          ? 'bg-accent text-white'
-                          : 'bg-surface border border-border text-on-surface-muted hover:text-on-surface'
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Font size */}
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-on-surface-muted">Font Size</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min={14}
-                    max={22}
-                    value={fontSize}
-                    onChange={(e) => setFontSize(Number(e.target.value))}
-                    className="w-28 accent-accent"
-                  />
-                  <span className="text-xs text-on-surface-muted w-8 text-right">{fontSize}px</span>
-                </div>
-              </div>
-
-              {/* Line height */}
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-on-surface-muted">Line Height</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min={1.4}
-                    max={2.2}
-                    step={0.05}
-                    value={lineHeight}
-                    onChange={(e) => setLineHeight(Number(e.target.value))}
-                    className="w-28 accent-accent"
-                  />
-                  <span className="text-xs text-on-surface-muted w-8 text-right">{lineHeight.toFixed(2)}</span>
-                </div>
-              </div>
-
-              {/* Page width */}
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-on-surface-muted">Page Width</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min={52}
-                    max={82}
-                    step={2}
-                    value={contentWidth}
-                    onChange={(e) => setContentWidth(Number(e.target.value))}
-                    className="w-28 accent-accent"
-                  />
-                  <span className="text-xs text-on-surface-muted w-8 text-right">{contentWidth}</span>
-                </div>
-              </div>
-            </div>
+  const navigate = (id: string) => {
+    setSection(id)
+    document.getElementById(`settings-${id}`)?.scrollIntoView({ block: 'start', behavior: 'instant' })
+  }
+  return <Dialog open onOpenChange={open => { if (!open) onClose() }}>
+    <DialogContent className="settings-dialog" onCloseAutoFocus={event => { event.preventDefault(); document.querySelector<HTMLButtonElement>('button[title="Settings"]')?.focus() }}>
+      <DialogHeader className="settings-heading"><DialogTitle>설정</DialogTitle><DialogDescription>읽기 환경과 AI 연결을 한곳에서 관리하세요.</DialogDescription></DialogHeader>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="설정 항목">
+          {[{ id: 'appearance', label: '읽기 환경', Icon: BookOpen }, { id: 'ai', label: 'AI 계정', Icon: Sparkles }, { id: 'search', label: '웹 검색', Icon: Globe }, { id: 'memory', label: '메모리', Icon: Brain }].map(({id, label, Icon}) => <button key={id} onClick={() => navigate(id)} aria-current={section === id}><Icon />{label}</button>)}
+        </nav>
+        <div className="settings-content">
+          <section id="settings-appearance" className="settings-section">
+            <Frame className="settings-frame"><FrameHeader><FrameTitle>읽기 환경</FrameTitle></FrameHeader><FramePanel>
+              <FieldGroup>
+                <Field><FieldLabel>테마</FieldLabel><ToggleGroup type="single" value={theme} onValueChange={value => { if (value) setTheme(value as typeof theme) }} aria-label="테마">
+                  <ToggleGroupItem value="light">라이트</ToggleGroupItem><ToggleGroupItem value="sepia">세피아</ToggleGroupItem><ToggleGroupItem value="dark">다크</ToggleGroupItem>
+                </ToggleGroup></Field>
+                <Field><FieldLabel htmlFor="reader-font">본문 글꼴</FieldLabel><select id="reader-font" value={readerFontFamily} onChange={e => setReaderFontFamily(e.target.value)}><option value="">기본 글꼴</option>{readerFontFamily && !fonts.includes(readerFontFamily) && <option value={readerFontFamily}>{readerFontFamily}</option>}{fonts.map(font => <option key={font}>{font}</option>)}</select>{fontError && <FieldDescription>{fontError}</FieldDescription>}</Field>
+                <SettingRange id="font-size" label="본문 크기" value={fontSize} min={14} max={22} onChange={setFontSize} unit="px" />
+                <SettingRange id="line-height" label="줄 간격" value={lineHeight} min={1.4} max={2.2} step={.05} onChange={setLineHeight} />
+                <SettingRange id="content-width" label="본문 너비" value={contentWidth} min={52} max={82} step={2} onChange={setContentWidth} />
+              </FieldGroup>
+              <div className="settings-preview" style={{fontFamily: readerFontFamily || undefined, fontSize, lineHeight}}><Badge variant="secondary">미리보기</Badge><p className="mt-3">지식은 서로 연결될 때 더 깊은 의미를 가집니다. 편안한 글꼴과 여백으로 문장에 집중해 보세요.</p></div>
+            </FramePanel></Frame>
           </section>
-
-          {/* ─── AI ─── */}
-          <section>
-            <h3 className="text-sm font-semibold text-on-surface mb-3">AI Settings</h3>
-            <div className="space-y-4">
-              {/* Sidebar font size */}
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-on-surface-muted">Sidebar Font Size</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min={12}
-                    max={20}
-                    value={aiSidebarFontSize}
-                    onChange={(e) => setAiSidebarFontSize(Number(e.target.value))}
-                    className="w-28 accent-accent"
-                  />
-                  <span className="text-xs text-on-surface-muted w-8 text-right">{aiSidebarFontSize}px</span>
-                </div>
-              </div>
-
-              <SubscriptionAccounts onModelsChanged={async () => {
-                const models = await window.api.ai.listModels()
-                setAvailableModels(models.map(model => model.name))
-              }} />
-
-              {/* Model */}
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-on-surface-muted">AI Model</label>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className="text-sm bg-surface border border-border rounded-md px-3 py-1 text-on-surface outline-none focus:border-accent w-64"
-                >
-                  {!selectedModel && <option value="">Select model</option>}
-                  {availableModels.length === 0 && <option value="">No models found</option>}
-                  {availableModels.map((m) => (
-                    <option key={m} value={m}>{modelLabel(m)}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="rounded-md border border-[var(--hair-2)] bg-surface px-3.5 py-3">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-medium text-on-surface">Chat &amp; Search</div>
-
-                  </div>
-                  <label className="flex items-center gap-2 text-xs text-on-surface-muted">
-                    <input
-                      type="checkbox"
-                      checked={aiProviderDraft.webSearchEnabled}
-                      onChange={(e) => setAiProviderDraft((draft) => ({ ...draft, webSearchEnabled: e.target.checked }))}
-                      className="accent-accent"
-                    />
-                    Allow TinyFish Search
-                  </label>
-                </div>
-                <p className="mb-3 text-xs text-on-surface-muted">Search is off by default. Enable it for each question in the AI Sidebar.</p>
-                <div className="mt-3">
-                  <label htmlFor="tinyfish-api-key" className="mb-1.5 block text-sm text-on-surface-muted">
-                    TinyFish Search API Key {aiProviderStatus?.hasTinyfishApiKey ? '(saved)' : ''}
-                  </label>
-                  <input id="tinyfish-api-key" type="password" value={aiProviderDraft.tinyfishApiKey}
-                    onChange={(e) => setAiProviderDraft((draft) => ({ ...draft, tinyfishApiKey: e.target.value }))}
-                    placeholder={aiProviderStatus?.hasTinyfishApiKey ? 'Leave blank to keep existing key' : 'Required for web search'}
-                    className="w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-on-surface outline-none focus:border-accent" />
-                </div>
-                <div className="mt-3 flex items-center justify-between gap-3">
-
-                  <button
-                    onClick={saveAiProviderSettings}
-                    className="rounded-md bg-accent px-3 py-1 text-xs text-white hover:bg-accent-hover"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-
-              {/* System prompt */}
-              <div>
-                <label className="text-sm text-on-surface-muted block mb-1.5">System Prompt</label>
-                <textarea
-                  value={systemPrompt}
-                  onChange={(e) => setSystemPrompt(e.target.value)}
-                  rows={4}
-                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent resize-none"
-                />
-              </div>
-            </div>
+          <section id="settings-ai" className="settings-section">
+            <Frame className="settings-frame"><FrameHeader><FrameTitle>AI 계정과 대화</FrameTitle></FrameHeader><FramePanel>
+              <FieldGroup>
+                <SubscriptionAccounts onModelsChanged={async () => { const models = await window.api.ai.listModels(); setAvailableModels(filterSubscriptionModels(models.map(model => model.name))) }} />
+                <Field><FieldLabel htmlFor="default-model">기본 모델</FieldLabel><select id="default-model" value={selectedModel} onChange={e => setSelectedModel(e.target.value)}>{!selectedModel && <option value="">모델 선택</option>}{availableModels.length === 0 && <option value="">연결된 모델이 없습니다</option>}{availableModels.map(m => <option key={m} value={m}>{modelLabel(m)}</option>)}</select></Field>
+                <SettingRange id="ai-font-size" label="AI 패널 글자 크기" value={aiSidebarFontSize} min={12} max={20} onChange={setAiSidebarFontSize} unit="px" />
+                <Field><FieldLabel htmlFor="system-prompt">시스템 프롬프트</FieldLabel><Textarea id="system-prompt" value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)} rows={5} /></Field>
+              </FieldGroup>
+            </FramePanel></Frame>
           </section>
-
-          {/* ─── Agent Memory ─── */}
-          <section>
-            <h3 className="text-sm font-semibold text-on-surface mb-3">Hindsight Memory</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <label className="text-sm text-on-surface-muted">Enable Memory</label>
-                <input
-                  type="checkbox"
-                  checked={memoryDraft.enabled}
-                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, enabled: e.target.checked }))}
-                  className="accent-accent"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <label className="text-sm text-on-surface-muted">Extract on Session End</label>
-                <input
-                  type="checkbox"
-                  checked={memoryDraft.extractionEnabled}
-                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, extractionEnabled: e.target.checked }))}
-                  className="accent-accent"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <label className="text-sm text-on-surface-muted">Use in Chat</label>
-                <input
-                  type="checkbox"
-                  checked={memoryDraft.runtimeInjectionEnabled}
-                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, runtimeInjectionEnabled: e.target.checked }))}
-                  className="accent-accent"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-on-surface-muted block mb-1.5">Hindsight Server URL</label>
-                <input
-                  aria-label="Hindsight Server URL"
-                  placeholder="https://hindsight.ecoplay.cloud"
-                  value={memoryDraft.hindsightBaseUrl}
-                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, hindsightBaseUrl: e.target.value }))}
-                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
-                />
-              </div>
-              <p className="text-xs text-on-surface-muted">외부 접속 주소를 /dashboard 없이 입력하세요. API 서버와 Hindsight 관리 서버의 연결 경로를 자동으로 확인합니다.</p>
-              <div>
-                <label className="text-sm text-on-surface-muted block mb-1.5">
-                  Hindsight API Key {memoryStatus?.settings.hasHindsightApiKey ? '(saved)' : ''}
-                </label>
-                <input
-                  type="password"
-                  value={memoryDraft.hindsightApiKey}
-                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, hindsightApiKey: e.target.value }))}
-                  placeholder={memoryStatus?.settings.hasHindsightApiKey ? 'Leave blank to keep existing key' : 'Optional for authenticated servers'}
-                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
-                />
-              </div>
-              <label className="flex items-center gap-2 text-xs text-on-surface-muted">
-                <input type="checkbox" checked={clearMemoryKey} onChange={e => setClearMemoryKey(e.target.checked)} />
-                Clear saved API key
-              </label>
-              <div>
-                <label className="text-sm text-on-surface-muted block mb-1.5">Memory Bank ID</label>
-                <input
-                  value={memoryDraft.hindsightBankId}
-                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, hindsightBankId: e.target.value }))}
-                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-on-surface-muted block mb-1.5">Extractor Model</label>
-                <select
-                  value={memoryDraft.extractorModel}
-                  onChange={(e) => setMemoryDraft((draft) => ({ ...draft, extractorModel: e.target.value }))}
-                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent"
-                >
-                  <option value="">Use conversation model</option>
-                  {availableModels.map(model => <option key={model} value={model}>{modelLabel(model)}</option>)}
-                </select>
-              </div>
-              <p className="text-xs text-on-surface-muted">Save &amp; Connect creates the bank if needed. Only curated insights are retained; USER.md and SOUL.md stay local.</p>
-              {memoryError && <p role="alert" className="text-xs text-red-600">{memoryError}</p>}
-              <div className="flex items-center justify-between gap-3">
-                <span className={`text-xs ${memoryStatus?.hindsight.ok ? 'text-green-600' : 'text-on-surface-muted'}`}>
-                  {memoryStatus?.hindsight.ok ? 'Hindsight connected' : memoryStatus?.hindsight.error || 'Hindsight not checked'}
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => void window.api.agentMemory.openFolder()}
-                    className="px-3 py-1 rounded-md text-xs bg-surface border border-border text-on-surface-muted hover:text-on-surface"
-                  >
-                    Folder
-                  </button>
-                  <button
-                    onClick={saveMemorySettings}
-                    disabled={memorySaving}
-                    className="px-3 py-1 rounded-md text-xs bg-accent text-white hover:bg-accent-hover"
-                  >
-                    {memorySaving ? 'Connecting…' : 'Save & Connect'}
-                  </button>
+          <section id="settings-search" className="settings-section">
+            <Frame className="settings-frame"><FrameHeader><FrameTitle>웹 검색</FrameTitle></FrameHeader><FramePanel>
+              <FieldGroup>
+                <Field orientation="horizontal"><FieldLabel htmlFor="allow-search">TinyFish 검색 허용</FieldLabel><input id="allow-search" type="checkbox" checked={aiProviderDraft.webSearchEnabled} onChange={e => setAiProviderDraft(d => ({...d, webSearchEnabled: e.target.checked}))} /></Field>
+                <FieldDescription>검색은 기본적으로 꺼져 있습니다. AI 입력창에서 질문별로 켤 수 있습니다.</FieldDescription>
+                <div>
+                  <label htmlFor="tinyfish-api-key" className="mb-2 block text-sm">TinyFish Search API Key {aiProviderStatus?.hasTinyfishApiKey ? '(saved)' : ''}</label>
+                  <Input id="tinyfish-api-key" type="password" autoComplete="off" value={aiProviderDraft.tinyfishApiKey} onChange={e => { setAiProviderDraft(d => ({...d, tinyfishApiKey: e.target.value})); setProviderSaved(false) }} placeholder={aiProviderStatus?.hasTinyfishApiKey ? '비워 두면 저장된 키를 유지합니다' : '웹 검색용 API 키'} />
                 </div>
-              </div>
-            </div>
+                <div className="flex items-center gap-3"><Button onClick={saveAiProviderSettings} disabled={providerSaving}>{providerSaving ? '저장 중…' : '검색 설정 저장'}</Button>{providerSaved && <Badge variant="primary-light"><Check />저장됨</Badge>}</div>
+                {providerError && <p role="alert" className="text-sm text-destructive">{providerError}</p>}
+              </FieldGroup>
+            </FramePanel></Frame>
           </section>
-        </div>
-
-        {/* Footer */}
-        <div className="flex justify-end px-6 py-4 border-t border-border">
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
-          >
-            Done
-          </button>
+          <section id="settings-memory" className="settings-section">
+            <Frame className="settings-frame"><FrameHeader><FrameTitle>Hindsight 메모리</FrameTitle></FrameHeader><FramePanel>
+              <FieldGroup>
+                <Field orientation="horizontal"><FieldLabel htmlFor="memory-enable">메모리 사용</FieldLabel><input id="memory-enable" type="checkbox" checked={memoryDraft.enabled} onChange={e => setMemoryDraft(d => ({...d, enabled: e.target.checked}))} /></Field>
+                <Field orientation="horizontal"><FieldLabel htmlFor="memory-extract">대화 종료 시 인사이트 추출</FieldLabel><input id="memory-extract" type="checkbox" checked={memoryDraft.extractionEnabled} onChange={e => setMemoryDraft(d => ({...d, extractionEnabled: e.target.checked}))} /></Field>
+                <Field orientation="horizontal"><FieldLabel htmlFor="memory-chat">대화에 메모리 활용</FieldLabel><input id="memory-chat" type="checkbox" checked={memoryDraft.runtimeInjectionEnabled} onChange={e => setMemoryDraft(d => ({...d, runtimeInjectionEnabled: e.target.checked}))} /></Field>
+                <Field><FieldLabel htmlFor="memory-server">Hindsight 서버 주소</FieldLabel><Input id="memory-server" aria-label="Hindsight Server URL" value={memoryDraft.hindsightBaseUrl} onChange={e => setMemoryDraft(d => ({...d, hindsightBaseUrl: e.target.value}))} placeholder="https://hindsight.ecoplay.cloud" /><FieldDescription>/dashboard 없이 서버 주소를 입력하세요.</FieldDescription></Field>
+                <Field><FieldLabel htmlFor="memory-key">Hindsight API Key {memoryStatus?.settings.hasHindsightApiKey ? '(saved)' : ''}</FieldLabel><Input id="memory-key" type="password" autoComplete="off" value={memoryDraft.hindsightApiKey} onChange={e => setMemoryDraft(d => ({...d, hindsightApiKey: e.target.value}))} placeholder={memoryStatus?.settings.hasHindsightApiKey ? '비워 두면 저장된 키를 유지합니다' : '인증 서버에서만 필요합니다'} /></Field>
+                <Field orientation="horizontal"><input id="clear-memory-key" type="checkbox" checked={clearMemoryKey} onChange={e => setClearMemoryKey(e.target.checked)} /><FieldLabel htmlFor="clear-memory-key">저장된 API 키 지우기</FieldLabel></Field>
+                <Field><FieldLabel htmlFor="memory-bank">메모리 뱅크</FieldLabel><Input id="memory-bank" value={memoryDraft.hindsightBankId} onChange={e => setMemoryDraft(d => ({...d, hindsightBankId: e.target.value}))} /></Field>
+                <Field><FieldLabel htmlFor="extract-model">추출 모델</FieldLabel><select id="extract-model" value={memoryDraft.extractorModel} onChange={e => setMemoryDraft(d => ({...d, extractorModel: e.target.value}))}><option value="">대화 모델 사용</option>{availableModels.map(m => <option key={m} value={m}>{modelLabel(m)}</option>)}</select><FieldDescription>연결 시 뱅크가 없으면 생성합니다. 선별된 인사이트를 저장하며 USER.md와 SOUL.md는 로컬에 유지됩니다.</FieldDescription></Field>
+                {memoryError && <p role="alert" className="text-sm text-destructive">{memoryError}</p>}
+                <p role="status" className="text-xs text-muted-foreground">{memoryStatus?.hindsight.ok ? 'Hindsight connected' : memoryStatus?.hindsight.error || 'Hindsight 연결 상태 확인 전'}</p>
+                <div className="flex gap-2"><Button variant="outline" onClick={() => void window.api.agentMemory.openFolder()}><FolderOpen data-icon="inline-start" />폴더</Button><Button onClick={saveMemorySettings} disabled={memorySaving}>{memorySaving ? 'Connecting…' : 'Save & Connect'}</Button></div>
+              </FieldGroup>
+            </FramePanel></Frame>
+          </section>
         </div>
       </div>
-    </div>
-  )
+      <footer className="settings-footer"><p>읽기·대화 환경은 변경 즉시 저장됩니다.</p><Button onClick={onClose}>Done</Button></footer>
+    </DialogContent>
+  </Dialog>
+}
+
+function SettingRange({ id, label, value, min, max, step = 1, unit = '', onChange }: { id: string; label: string; value: number; min: number; max: number; step?: number; unit?: string; onChange: (value: number) => void }) {
+  return <Field orientation="horizontal" className="settings-row"><FieldLabel htmlFor={id}>{label}</FieldLabel><input id={id} type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(Number(e.target.value))} /><output htmlFor={id}>{step < 1 ? value.toFixed(2) : value}{unit}</output></Field>
 }

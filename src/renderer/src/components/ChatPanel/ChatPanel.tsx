@@ -1,5 +1,10 @@
+import { Sparkles, Plus, Download, BookOpen, Settings2, ArrowDown } from 'lucide-react'
+import { Button } from '../ui/button'
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '../ui/empty'
+import { useUIStore } from '../../store/useUIStore'
 import { modelLabel } from '../../../../shared/subscription'
-import { useMemo, useState, useRef, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { useChatScroll } from './utils/useChatScroll'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
 import { QuickActions } from './QuickActions'
@@ -80,34 +85,32 @@ function HistoricalTranscript({ messages }: { messages: ChatMessageType[] }) {
 
 export function ChatPanel() {
   const {
-    messages, isStreaming, streamingContent, streamingSources, streamingSearchQuery,
+    messages, isStreaming, isPreparingMessage, streamingContent, streamingSources, streamingSearchQuery,
     selectedModel, availableModels,
     availableSessions, currentSessionId, sessionView, isLoadingSession, pendingQuotedText,
     addMessage, sendMessage, updateStreamingContent,
     finalizeStreaming, cancelStreaming, setSelectedModel, loadSession, startNewSession,
     setStreamingSearchQuery, setStreamingSources
   } = useChatStore()
-  const { activeTab, content } = useDocumentStore()
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const { content, fileName } = useDocumentStore()
+  const lastQuestionId = [...messages].reverse().find((message) => message.role === 'user')?.id ?? ''
+  const { viewportRef, contentRef, showLatest, scrollToLatest } = useChatScroll(
+    lastQuestionId, sessionView === 'historical'
+  )
   const selectedContext = [...messages].reverse().find((message) => message.quotedText)?.quotedText
-
-  // Auto-scroll to bottom
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingContent])
 
   // Set up streaming listeners
   useEffect(() => {
     const unsubToken = window.api.ai.onToken((token) => {
       updateStreamingContent(token)
     })
-    const unsubSearchEnd = window.api.ai.onSearchEnd(() => setStreamingSearchQuery(null))
     const unsubSearchStart = window.api.ai.onSearchStart((payload) => {
       setStreamingSearchQuery(payload.query)
     })
     const unsubSearchResults = window.api.ai.onSearchResults((payload) => {
       setStreamingSources(payload.sources)
     })
+    const unsubSearchEnd = window.api.ai.onSearchEnd(() => setStreamingSearchQuery(null))
     const unsubMetadata = window.api.ai.onMetadata((metadata) => {
       setStreamingSources(metadata.sources ?? [])
     })
@@ -123,9 +126,9 @@ export function ChatPanel() {
     })
     return () => {
       unsubToken()
-      unsubSearchEnd()
       unsubSearchStart()
       unsubSearchResults()
+      unsubSearchEnd()
       unsubMetadata()
       unsubDone()
       unsubStopped()
@@ -158,10 +161,10 @@ export function ChatPanel() {
         const sources = m.sources?.length
           ? `\n\nSources:\n${m.sources.map((source) => `- [${source.id}] [${source.title}](${source.url})`).join('\n')}`
           : ''
-        return `### ${m.role === 'user' ? 'User' : 'Assistant'}\n\n${m.content}${sources}`
+        return `### ${m.role === 'user' ? 'User' : 'Assistant'}\n\n${m.content}${m.images?.map(image => `\n\n![${image.name.replace(/[\[\]\\]/g, '')}](mdr-chat-image:${image.id})`).join('') ?? ''}${sources}`
       })
       .join('\n\n---\n\n')
-    await window.api.chat.exportMarkdown(`# Chat Export\n\n${md}`)
+    await window.api.chat.exportMarkdown(`# Chat Export\n\n${md}`, messages.flatMap(message => message.images ?? []))
   }
 
   const handleSessionChange = async (sessionId: string) => {
@@ -173,134 +176,97 @@ export function ChatPanel() {
   }
 
   return (
-    <div className="ai-sidebar flex h-full flex-col bg-chat-bg ui-text">
-      {/* Header */}
-      <div className="flex min-h-[86px] flex-col justify-center gap-2 border-b border-border bg-surface-alt px-4 py-2.5">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-on-surface text-surface">
-              <svg className="h-4 w-4" viewBox="0 0 16 16" aria-hidden="true">
-                <path className="icon-stroke" d="M8 1.75l.9 3.35L12.25 6l-3.35.9L8 10.25l-.9-3.35L3.75 6l3.35-.9L8 1.75z" />
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <div className="text-[13px] font-semibold leading-none text-on-surface">Conversation</div>
-              {availableModels.length > 0 && (
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  title={selectedModel}
-                  className="mt-1 block w-full max-w-[140px] appearance-none truncate bg-transparent text-[10px] font-medium uppercase leading-tight tracking-[0.08em] text-on-surface-muted outline-none"
-                >
-                  {!selectedModel && <option value="">Select model</option>}
-                  {availableModels.map((m) => (
-                    <option key={m} value={m}>{modelLabel(m)}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-          </div>
-          <button
-            onClick={handleExport}
-            className="rounded border border-[var(--hair-2)] px-2.5 py-1 text-[10.5px] font-medium uppercase tracking-[0.06em] text-on-surface-muted transition-colors hover:border-[var(--hair-3)] hover:text-on-surface"
-            title="Export chat (⌘⇧E)"
-          >
-            Export
-          </button>
+    <div className="ai-sidebar chat-workspace ui-text">
+      <header className="chat-heading">
+        <div className="chat-heading-row">
+          <span className="assistant-mark"><Sparkles /></span><h2>읽기 도우미</h2>
+          <Button variant="ghost" size="icon-sm" onClick={handleExport} title="Export chat (⌘⇧E)" aria-label="대화 내보내기"><Download /></Button>
+          <Button variant="ghost" size="icon-sm" onClick={() => void startNewSession()} disabled={isLoadingSession || isStreaming || isPreparingMessage} title="새 대화" aria-label="새 대화"><Plus /></Button>
+          <Button variant="ghost" size="icon-sm" onClick={() => useUIStore.getState().toggleSettings()} title="AI 설정" aria-label="AI 설정"><Settings2 /></Button>
         </div>
-        <div className="flex min-w-0 items-center gap-2">
-          <select
-            value={currentSessionId ?? ''}
-            onChange={(event) => void handleSessionChange(event.target.value)}
-            disabled={isLoadingSession || isStreaming}
-            className="min-w-0 flex-1 rounded border border-[var(--hair-2)] bg-surface px-2 py-1.5 text-[11px] text-on-surface outline-none transition-colors hover:border-[var(--hair-3)] disabled:opacity-60"
-            title="Saved sessions for this reading context"
-          >
-            <option value="">New session</option>
-            {availableSessions.map((session) => (
-              <option key={session.id} value={session.id}>
-                {session.title} · {formatSessionDate(session.updatedAt)} · {session.messageCount}
-              </option>
-            ))}
+        <div className="chat-model-row">
+          <select value={selectedModel} disabled={isStreaming || isPreparingMessage || !availableModels.length} onChange={e => setSelectedModel(e.target.value)} title={selectedModel} aria-label="AI 모델">
+            {!selectedModel && <option value="">모델 선택</option>}
+            {availableModels.map(m => <option key={m} value={m}>{modelLabel(m)}</option>)}
           </select>
-          <button
-            onClick={() => void startNewSession()}
-            disabled={isLoadingSession || isStreaming}
-            className="shrink-0 rounded border border-[var(--hair-2)] px-2.5 py-1.5 text-[10.5px] font-medium uppercase tracking-[0.06em] text-on-surface-muted transition-colors hover:border-[var(--hair-3)] hover:text-on-surface disabled:opacity-60"
-          >
-            New
-          </button>
         </div>
-      </div>
+        <div className="chat-session-row">
+          <select value={currentSessionId ?? ''} onChange={e => void handleSessionChange(e.target.value)} disabled={isLoadingSession || isStreaming || isPreparingMessage} title="Saved sessions for this reading context" aria-label="저장된 대화">
+            <option value="">New session</option>
+            {availableSessions.map(session => <option key={session.id} value={session.id}>{session.title} · {formatSessionDate(session.updatedAt)} · {session.messageCount}</option>)}
+          </select>
+        </div>
+      </header>
+      {fileName && <div className="chat-context" title={fileName}><BookOpen /><span>{fileName}</span></div>}
 
       {/* Messages */}
-      <div className="min-w-0 flex-1 space-y-5 overflow-y-auto px-4 py-5">
-        {selectedContext && (
-          <div className="rounded-md border border-[var(--hair-2)] bg-surface px-3.5 py-3">
-            <div className="small-caps mb-2 flex items-center gap-2 text-on-surface-muted">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-              <span>Selected Context · 1 Passage</span>
-            </div>
-            <p className="line-clamp-2 font-serif text-[13px] italic leading-relaxed text-on-surface">
-              "{selectedContext}"
-            </p>
-          </div>
-        )}
-        {messages.length === 0 && !isStreaming && (
-          <div className="flex h-full flex-col items-center justify-center px-5 text-center text-on-surface-muted">
-            <div className="mb-8 flex h-14 w-14 items-center justify-center rounded-full border border-dashed border-[var(--hair-3)]">
-              <svg className="h-5 w-5 text-accent" viewBox="0 0 16 16" aria-hidden="true">
-                <path className="icon-stroke" d="M8 1.75l.9 3.35L12.25 6l-3.35.9L8 10.25l-.9-3.35L3.75 6l3.35-.9L8 1.75z" />
-              </svg>
-            </div>
-            <p className="font-serif text-[18px] leading-snug text-on-surface">Your reading<br />companion is ready.</p>
-            <p className="mt-5 max-w-[230px] text-[12px] font-medium leading-6">
-              Open a document to begin a conversation. Select any passage to ask, summarize, or extract.
-            </p>
-          </div>
-        )}
-        {sessionView === 'historical' && !isStreaming
-          ? <HistoricalTranscript messages={messages} />
-          : messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} />
-          ))}
-        {isStreaming && (
-          streamingContent ? (
-            <ChatMessage
-              message={{
-                id: 'streaming',
-                role: 'assistant',
-                content: streamingContent,
-                timestamp: Date.now(),
-                sources: streamingSources
-              }}
-              isStreaming
-            />
-          ) : (
-            <div className="flex justify-start max-w-full">
-              <div className="px-1 py-3 text-sm text-on-surface">
-                {streamingSearchQuery && (
-                  <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-on-surface-muted">
-                    Searching TinyFish...
-                  </div>
-                )}
-                <div className="flex gap-1">
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-on-surface-muted [animation-delay:-0.3s]"></span>
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-on-surface-muted [animation-delay:-0.15s]"></span>
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-on-surface-muted"></span>
+      <div className="relative min-h-0 min-w-0 flex-1">
+        <div ref={viewportRef} aria-label="Conversation messages" tabIndex={0} className="h-full min-h-0 overflow-y-auto overscroll-contain [overflow-anchor:none]">
+          <div ref={contentRef} className="min-h-full flex flex-col gap-5 px-5 py-4">
+            {selectedContext && (
+              <div className="rounded-md border border-[var(--hair-2)] bg-surface px-3.5 py-3">
+                <div className="small-caps mb-2 flex items-center gap-2 text-on-surface-muted">
+                  <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                  <span>Selected Context · 1 Passage</span>
                 </div>
+                <p className="line-clamp-2 font-serif text-[13px] italic leading-relaxed text-on-surface">
+                  "{selectedContext}"
+                </p>
               </div>
-            </div>
-          )
+            )}
+            {messages.length === 0 && !isStreaming && (
+              <Empty className="chat-welcome"><EmptyHeader><EmptyMedia variant="icon"><BookOpen /></EmptyMedia><EmptyTitle>{fileName ? '어디부터 살펴볼까요?' : '읽고, 묻고, 연결하세요.'}</EmptyTitle><EmptyDescription>{fileName ? '핵심을 요약하거나, 문장을 선택해 함께 살펴보세요.' : '문서를 열면 본문을 바탕으로 대화할 수 있습니다.'}</EmptyDescription></EmptyHeader>
+                {!selectedModel && <Button variant="outline" size="sm" onClick={() => useUIStore.getState().toggleSettings()}>AI 계정 연결</Button>}
+              </Empty>
+            )}
+            {sessionView === 'historical' && !isStreaming
+              ? <HistoricalTranscript messages={messages} />
+              : messages.map((msg) => (
+                <ChatMessage key={msg.id} message={msg} />
+              ))}
+            {isStreaming && (
+              streamingContent ? (
+                <ChatMessage
+                  message={{
+                    id: 'streaming',
+                    role: 'assistant',
+                    content: streamingContent,
+                    timestamp: Date.now(),
+                    sources: streamingSources
+                  }}
+                  isStreaming
+                />
+              ) : (
+                <div className="flex justify-start max-w-full">
+                  <div className="px-1 py-3 text-sm text-on-surface">
+                    {(
+                      <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-on-surface-muted">
+                        {streamingSearchQuery ? '자료 검색 중…' : '답변 준비 중…'}
+                      </div>
+                    )}
+                    <div className="flex gap-1">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-on-surface-muted [animation-delay:-0.3s]"></span>
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-on-surface-muted [animation-delay:-0.15s]"></span>
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-on-surface-muted"></span>
+                    </div>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+        {showLatest && (
+          <button onClick={scrollToLatest} title="Jump to latest answer" className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-on-surface shadow-sm">
+            Latest answer ↓
+          </button>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Quick Actions */}
-      <QuickActions onAction={handleSendMessage} disabled={isStreaming || !selectedModel} />
+      <QuickActions onAction={handleSendMessage} disabled={isStreaming || isPreparingMessage || !selectedModel} />
 
       {/* Input */}
-      <ChatInput onSend={handleSendMessage} disabled={isStreaming || !selectedModel} />
+      <ChatInput onSend={handleSendMessage} disabled={isStreaming || isPreparingMessage || !selectedModel} />
     </div>
   )
 }

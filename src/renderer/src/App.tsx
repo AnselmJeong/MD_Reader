@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react'
+import { NavigationRail } from './components/NavigationRail'
 import { Toolbar } from './components/Toolbar'
 import { DocumentReader } from './components/DocumentReader/DocumentReader'
 import { ChatPanel } from './components/ChatPanel/ChatPanel'
@@ -28,6 +29,7 @@ function toReaderPageWidth(contentWidth: number, spread: boolean): string {
 }
 
 export default function App() {
+  const [showHome, setShowHome] = useState(false)
   const { activeTab, filePath, content, kind, isDirty, setDocument, setRecentFiles, markSaved } = useDocumentStore()
   
   // Use selectors to avoid re-rendering App on every token stream (streamingContent/messages updates)
@@ -41,7 +43,7 @@ export default function App() {
   const chatIsStreaming = useChatStore(s => s.isStreaming)
 
   const { fontSize, aiSidebarFontSize, lineHeight, contentWidth, readerFontFamily, setTheme, setFontSize, setAiSidebarFontSize, setLineHeight, setContentWidth, setReaderFontFamily, cycleTheme } = useSettingsStore()
-  const { showChat, showSettings, toggleChat, toggleSettings, toggleToC, setShowSearch, chatWidth, setChatWidth } = useUIStore()
+  const { showChat, showSettings, showSearch, toggleChat, toggleSettings, toggleToC, setShowSearch, chatWidth, setChatWidth } = useUIStore()
   const chatContextMeta = useMemo(() => getChatContextMeta(activeTab), [
     activeTab?.kind,
     activeTab?.filePath,
@@ -83,6 +85,18 @@ export default function App() {
       setChatWidth(clampedWidth)
     }
   }, [setChatWidth])
+
+  useEffect(() => { setShowHome(false) }, [activeTab?.id])
+
+  useEffect(() => {
+    let active = true
+    void window.api.file.getRecent().then(files => { if (active) setRecentFiles(files) }).catch(console.error)
+    return () => { active = false }
+  }, [filePath, setRecentFiles])
+
+  useEffect(() => {
+    if (showSearch && activeTab) setShowHome(false)
+  }, [showSearch, activeTab?.id])
 
   // Load initial settings & models
   useEffect(() => {
@@ -165,10 +179,15 @@ export default function App() {
     const result = await window.api.file.openDialog()
     if (result) {
       setDocument(result)
+      setShowHome(false)
     }
   }, [setDocument])
 
   const handleSaveFile = useCallback(async () => {
+    if (filePath && kind === 'epub') {
+      window.dispatchEvent(new Event('md-reader:save-commentary'))
+      return
+    }
     if (!filePath || content == null || kind !== 'markdown') return
     try {
       const result = await window.api.file.save(filePath, content)
@@ -190,6 +209,11 @@ export default function App() {
     const handleDragEnter = (e: DragEvent) => {
       e.preventDefault()
       e.stopPropagation()
+      if (document.querySelector('.commentary-editor[open]')) {
+        dragCounter.current = 0
+        setIsDragging(false)
+        return
+      }
       dragCounter.current++
       if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
         setIsDragging(true)
@@ -210,6 +234,7 @@ export default function App() {
       e.stopPropagation()
       setIsDragging(false)
       dragCounter.current = 0
+      if (document.querySelector('.commentary-editor[open]')) return
       
       const files = e.dataTransfer?.files
       if (!files?.length) return
@@ -221,6 +246,7 @@ export default function App() {
         if (filePath && (name.endsWith('.qmd') || name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt') || name.endsWith('.epub'))) {
           const result = await window.api.file.read(filePath)
           setDocument(result)
+          setShowHome(false)
         }
       }
     }
@@ -246,6 +272,7 @@ export default function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (showSettings) return
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key === 'o') { e.preventDefault(); handleOpenFile() }
       if (mod && e.key === 's') { e.preventDefault(); handleSaveFile() }
@@ -258,26 +285,27 @@ export default function App() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleOpenFile, handleSaveFile, toggleChat, toggleToC, setShowSearch, cycleTheme, fontSize, setFontSize])
+  }, [showSettings, handleOpenFile, handleSaveFile, toggleChat, toggleToC, setShowSearch, cycleTheme, fontSize, setFontSize])
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-surface text-on-surface selection:bg-accent/20">
       {/* Toolbar (Fixed Top) */}
-      <div className="absolute left-0 right-0 top-0 z-20 h-[38px]">
+      <div className="absolute left-0 right-0 top-0 z-20 h-[52px]">
         <Toolbar
           onOpenFile={handleOpenFile}
           onSaveFile={handleSaveFile}
-          canSave={Boolean(filePath && content !== null && kind === 'markdown')}
+          canSave={Boolean(filePath && content !== null)}
           isDirty={isDirty}
         />
       </div>
 
       {/* Main Content Area (Absolute Middle) */}
-      <div className="absolute bottom-6 left-0 right-0 top-[38px] flex overflow-hidden">
+      <div className="absolute bottom-6 left-0 right-0 top-[52px] flex overflow-hidden">
         
+        <NavigationRail home={showHome || !activeTab} hasDocument={Boolean(activeTab)} onHome={() => { setShowSearch(false); setShowHome(true) }} onReader={() => setShowHome(false)} onOpen={handleOpenFile} />
         {/* Document Reader */}
         <div className="flex h-full min-w-0 flex-1 flex-col">
-          {activeTab && <DocumentTabs />}
+          {activeTab && <DocumentTabs onSelect={() => setShowHome(false)} />}
           <div className="relative min-h-0 flex-1">
             <div
               className="absolute inset-0 overflow-hidden"
@@ -290,7 +318,8 @@ export default function App() {
                 '--reader-font-family': toReaderFontStack(readerFontFamily)
               } as React.CSSProperties}
             >
-              {activeTab ? <DocumentReader /> : <WelcomeScreen onOpenFile={handleOpenFile} />}
+              {activeTab && <div className="absolute inset-0" style={{ visibility: showHome ? 'hidden' : 'visible' }} aria-hidden={showHome} inert={showHome}><DocumentReader /></div>}
+              {(showHome || !activeTab) && <WelcomeScreen onOpenFile={handleOpenFile} onDocumentOpened={() => setShowHome(false)} />}
             </div>
           </div>
         </div>
@@ -300,6 +329,7 @@ export default function App() {
           <>
             {/* Resize Handle */}
             <div
+              role="separator" aria-label="AI 패널 너비" aria-orientation="vertical"
               className="relative z-30 h-full w-px flex-shrink-0 cursor-col-resize bg-border transition-all hover:bg-[var(--hair-3)]"
               onMouseDown={startResizing}
             />
@@ -308,6 +338,7 @@ export default function App() {
               className="relative h-full flex-shrink-0 border-l border-border bg-surface" 
               style={{
                 width: `${chatWidth}px`,
+                maxWidth: 'min(60vw, calc(100vw - 280px))',
                 '--ai-sidebar-font-size': `${aiSidebarFontSize}px`
               } as React.CSSProperties}
             >

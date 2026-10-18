@@ -29,3 +29,12 @@ export function resolveAiSystemPrompt(value: unknown): string {
   }
   return value
 }
+
+export const AI_MATH_FORMAT_INSTRUCTIONS = String.raw`Mathematical notation must render in KaTeX:
+- Write all mathematical variables and inline formulas in $...$, for example $w_{ij}=w_{ji}$.
+- Put standalone equations between $$ delimiters on their own lines, for example:
+$$
+E = -\frac{1}{2}\sum_{i,j} w_{ij}s_i s_j
+$$
+- Use valid LaTeX commands and braced subscripts/superscripts. Do not output formulas as bare text such as w_ij or Unicode Σ_ij, and do not put math in code blocks.
+Keep ordinary prose and source citation markers such as [S1] outside math delimiters.`

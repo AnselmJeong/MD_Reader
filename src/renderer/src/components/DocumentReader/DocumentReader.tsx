@@ -1,3 +1,4 @@
+import { isReaderInteractionBlocked } from '../../lib/readerInteraction'
 import { metadataText, readDocumentMetadata } from '../../../../shared/document-metadata'
 import { extractQuartoHeadings } from './utils/headings'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -92,6 +93,7 @@ function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isReaderInteractionBlocked(scrollRef.current)) return
       const target = event.target as HTMLElement | null
       if (
         event.defaultPrevented

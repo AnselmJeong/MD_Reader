@@ -1,6 +1,7 @@
 import { getAiProviderConfig } from './ai-provider-settings'
 import { chatCompletionsStream, chatCompletionsText } from './subscription-client'
 import { searchTinyFishWeb, fetchTinyFishPages } from './tinyfish-web-search-service'
+import { AI_MATH_FORMAT_INSTRUCTIONS } from '../shared/ai-prompts'
 import type { ChatCompletionMetadata, ChatMessageInput, ChatSource } from './ai-chat-types'
 import { ENGLISH_SEARCH_INSTRUCTIONS, prepareEnglishSearchQuery, selectRelevantExcerpt } from './web-research'
 import type { ChatRequestOptions } from '../shared/chat-request-options'
@@ -113,7 +114,7 @@ async function collectResearchSources(
 function buildMessages(params: StreamGroundedChatParams, sources: ChatSource[]): ChatMessageInput[] {
   const messages = [...params.messages]
   const sourceBlock = buildSourceBlock(sources)
-  const systemPrompt = [params.systemPrompt, sourceBlock].filter(Boolean).join('\n\n---\n\n')
+  const systemPrompt = [params.systemPrompt, AI_MATH_FORMAT_INSTRUCTIONS, sourceBlock].filter(Boolean).join('\n\n---\n\n')
 
   if (systemPrompt) {
     return [{ role: 'system', content: systemPrompt }, ...messages]

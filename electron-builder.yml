@@ -8,6 +8,7 @@ files:
   - out/preload/**/*
   - out/renderer/**/*
   - package.json
+  - docs/design/licenses/**/*
 mac:
   target: dmg
   icon: build/icon.png

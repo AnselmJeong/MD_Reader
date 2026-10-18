@@ -2,6 +2,8 @@ import { app } from 'electron'
 import path from 'path'
 import crypto from 'crypto'
 import Database from 'better-sqlite3'
+import { validateChatImages, type ChatImage } from '../shared/chat-images'
+import { decodeChatImage } from './chat-image-service'
 
 export type ChatDocumentKind = 'markdown' | 'epub'
 export type ChatMessageRole = 'user' | 'assistant'
@@ -35,6 +37,7 @@ export interface StoredChatMessage {
   timestamp: number
   quotedText?: string | null
   sources?: ChatSource[]
+  images?: ChatImage[]
 }
 
 export interface ChatSessionSummary {
@@ -163,6 +166,16 @@ export function getChatDb(): Database.Database {
       quoted_text TEXT,
       created_at INTEGER NOT NULL,
       ordinal INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_message_images (
+      message_id TEXT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+      ordinal INTEGER NOT NULL,
+      image_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      data BLOB NOT NULL,
+      PRIMARY KEY (message_id, ordinal)
     );
 
     CREATE INDEX IF NOT EXISTS idx_chat_sessions_context_updated
@@ -526,6 +539,9 @@ export function listChatSessions(meta: ChatContextMeta): { contextKey: string; s
 
 export function saveChatSession(params: SaveChatSessionParams): { sessionId: string; contextKey: string; title: string } {
   const database = getDb()
+  const attachments = params.messages.map(message => validateChatImages(message.images).map(image => ({
+    ...image, bytes: decodeChatImage(image), mime: image.dataUrl.slice(5, image.dataUrl.indexOf(';'))
+  })))
   const save = database.transaction(() => {
     const context = resolveChatContext(params.contextMeta)
     const now = Date.now()
@@ -574,10 +590,12 @@ export function saveChatSession(params: SaveChatSessionParams): { sessionId: str
         @id, @sessionId, @role, @content, @quotedText, @sourcesJson, @createdAt, @ordinal
       )
     `)
+    const insertImage = database.prepare('INSERT INTO chat_message_images (message_id, ordinal, image_id, name, mime_type, data) VALUES (?, ?, ?, ?, ?, ?)')
 
     params.messages.forEach((message, index) => {
+      const messageId = message.id || createId('msg')
       insertMessage.run({
-        id: message.id || createId('msg'),
+        id: messageId,
         sessionId,
         role: message.role,
         content: message.content,
@@ -586,6 +604,7 @@ export function saveChatSession(params: SaveChatSessionParams): { sessionId: str
         createdAt: message.timestamp || now,
         ordinal: index
       })
+      attachments[index].forEach((image, ordinal) => insertImage.run(messageId, ordinal, image.id, image.name, image.mime, image.bytes))
     })
 
     return { sessionId, contextKey: context.context_key, title }
@@ -623,9 +642,16 @@ export function loadChatSession(sessionId: string): { session: ChatSessionRecord
       content: row.content,
       timestamp: row.created_at,
       quotedText: row.quoted_text,
-      sources: parseSourcesJson(row.sources_json)
+      sources: parseSourcesJson(row.sources_json),
+      images: loadMessageImages(database, row.id)
     }))
   }
+}
+
+function loadMessageImages(database: Database.Database, messageId: string): ChatImage[] {
+  const rows = database.prepare('SELECT image_id, name, mime_type, data FROM chat_message_images WHERE message_id = ? ORDER BY ordinal')
+    .all(messageId) as Array<{ image_id: string; name: string; mime_type: string; data: Buffer }>
+  return rows.map(row => ({ id: row.image_id, name: row.name, dataUrl: `data:${row.mime_type};base64,${row.data.toString('base64')}` }))
 }
 
 export function loadChatSessionWithContext(sessionId: string): {
