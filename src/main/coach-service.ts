@@ -224,10 +224,11 @@ export async function createCoachSelectionCard(request: CoachSelectionCardReques
 
 // ─── Pictures ───
 
-// Misses are retried after a day (they used to stick for 30 days, which hid the
-// thumb.wikimedia.org bug). Keys carry a version so those old misses are ignored.
+// Misses are retried after a day. Keys carry a version so misses cached by older
+// bugs (thumb.wikimedia.org rejected; WebP/GIF pictures that could not be decoded) are ignored.
 const NONE_TTL = 86400000
-const IMAGE_KEY_VERSION = 'v2:'
+const IMAGE_KEY_VERSION = 'v3:'
+const MAX_RAW_IMAGE_BYTES = 2 * 1024 * 1024
 const MAX_IMAGE_WIDTH = 640
 
 function cleanCard(card: { title?: unknown; imageQuery?: unknown }) {
@@ -236,15 +237,27 @@ function cleanCard(card: { title?: unknown; imageQuery?: unknown }) {
   return { title, imageQuery }
 }
 
+function imageMime(bytes: Buffer): string | null {
+  if (bytes.length > 8 && bytes[0] === 0x89 && bytes.toString('ascii', 1, 4) === 'PNG') return 'image/png'
+  if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg'
+  if (bytes.length > 6 && bytes.toString('ascii', 0, 4) === 'GIF8') return 'image/gif'
+  if (bytes.length > 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') return 'image/webp'
+  return null
+}
+
+/** PNG/JPEG are resized to PNG. Electron cannot decode GIF or WebP, so those are kept as they are (the page can show them). */
 function toPng(bytes: Uint8Array | Buffer): Buffer | null {
-  let image = nativeImage.createFromBuffer(Buffer.from(bytes))
-  if (image.isEmpty()) return null
+  const buffer = Buffer.from(bytes)
+  let image = nativeImage.createFromBuffer(buffer)
+  if (image.isEmpty()) return imageMime(buffer) && buffer.length <= MAX_RAW_IMAGE_BYTES ? buffer : null
   if (image.getSize().width > MAX_IMAGE_WIDTH) image = image.resize({ width: MAX_IMAGE_WIDTH, quality: 'good' })
   return image.toPNG()
 }
 
+const dataUrl = (bytes: Buffer) => `data:${imageMime(bytes) ?? 'image/png'};base64,${bytes.toString('base64')}`
+
 function readyImage(png: Buffer, info: { pageTitle?: string | null; pageUrl?: string | null; source?: string | null }): CoachImage {
-  return { status: 'ready', dataUrl: `data:image/png;base64,${png.toString('base64')}`, pageTitle: info.pageTitle ?? undefined, pageUrl: info.pageUrl ?? undefined, source: info.source ?? undefined }
+  return { status: 'ready', dataUrl: dataUrl(png), pageTitle: info.pageTitle ?? undefined, pageUrl: info.pageUrl ?? undefined, source: info.source ?? undefined }
 }
 
 /** Wikipedia (through TinyFish) first; Brave only when Wikipedia has no picture. Throws only when every configured source failed. */
@@ -308,7 +321,7 @@ export async function searchCoachImages(rawQuery: string): Promise<CoachImageSea
     const found = await findWikipediaImage({ title: query, imageQuery: query }, (q, signal) =>
       searchTinyFishWeb(q, config.tinyfishApiKey, { signal, maxResults: 5, includeDomains: ['wikipedia.org'] })).catch(() => null)
     const png = found ? toPng(found.bytes) : null
-    if (found && png) candidates.push({ title: found.pageTitle, dataUrl: `data:image/png;base64,${png.toString('base64')}`, pageUrl: found.pageUrl, source: found.source })
+    if (found && png) candidates.push({ title: found.pageTitle, dataUrl: dataUrl(png), pageUrl: found.pageUrl, source: found.source })
   }
   if (config.braveApiKey) {
     try {
@@ -317,7 +330,7 @@ export async function searchCoachImages(rawQuery: string): Promise<CoachImageSea
         const image = await fetchImageBytes(result.thumbnailUrl).catch(() => null)
         const png = image ? toPng(image.bytes) : null
         if (!png) continue
-        candidates.push({ title: result.title, dataUrl: `data:image/png;base64,${png.toString('base64')}`, pageUrl: result.pageUrl, source: `Brave · ${result.source}` })
+        candidates.push({ title: result.title, dataUrl: dataUrl(png), pageUrl: result.pageUrl, source: `Brave · ${result.source}` })
       }
     } catch (error) { warning = error instanceof Error ? error.message : String(error) }
   } else warning = 'Brave Search API 키를 Settings > 웹 검색에 넣으면 Wikipedia 밖의 그림도 후보로 나옵니다.'
