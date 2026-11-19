@@ -17,6 +17,11 @@ import { epubTableStyles } from './utils/epubTableStyles'
 import { EpubTableViewer } from './EpubTableViewer'
 import { EpubImageViewer } from './EpubImageViewer'
 import type { CommentaryAnchor } from '../../../../shared/commentary'
+import { CoachIntakeDialog } from './CoachIntakeDialog'
+import { CoachHoverCard } from './CoachCard'
+import { CoachRail } from './CoachRail'
+import { useEpubCoach } from './hooks/useEpubCoach'
+import { useCoachStore } from '../../store/useCoachStore'
 
 interface EpubDocumentViewProps {
   tab: EpubDocumentTab
@@ -341,6 +346,12 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   const [commentarySections, setCommentarySections] = useState<CommentarySection[]>([])
   const [returnCfi, setReturnCfi] = useState<string | null>(null)
   const [isEpubDragging, setIsEpubDragging] = useState(false)
+  const [atChapterEnd, setAtChapterEnd] = useState(false)
+  const coach = useEpubCoach({
+    documentId: tab.documentHash, bookTitle: title, chapterHref: tab.currentChapterHref, chapterLabel: tab.currentChapterLabel,
+    visibleText: tab.content, currentLocation: tab.currentLocation, sections: commentarySections, theme
+  })
+  const coachEnabled = useCoachStore(state => Boolean(state.preferences?.enabled))
 
   const bookBuffer = useMemo(() => base64ToArrayBuffer(tab.epubBase64), [tab.epubBase64])
 
@@ -877,6 +888,8 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
       if (nextProgress != null) setProgress(nextProgress)
       const chapterHref = location.start?.href?.split('#')[0] ?? null
       const chapterLabel = findCurrentTocLabel(tocItemsRef.current, location.start?.href)
+      const endPage = location.end?.displayed
+      setAtChapterEnd(Boolean(location.atEnd || (endPage && endPage.total > 0 && endPage.page >= endPage.total)))
       currentCfiRef.current = cfi
       latestChapterHrefRef.current = chapterHref
       latestChapterLabelRef.current = chapterLabel
@@ -1435,6 +1448,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
         >
           2p
         </button>
+        <button onClick={() => useCoachStore.getState().setIntakeOpen(true)} aria-pressed={coachEnabled} className={coachEnabled ? 'active' : ''} title="독서 코치 설정">코치</button>
         <button onClick={() => setSpreadMode('comments')} aria-pressed={spreadMode === 'comments'} className={spreadMode === 'comments' ? 'active' : ''} title="Scroll through text and commentary">주석 읽기</button>
       </div>
       <ReadingPaneFooter progress={progress} detail="EPUB" />
@@ -1474,7 +1488,14 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
           onHighlight={handleHighlightSelection}
           onClose={clearSelection}
           onAnnotate={() => { useCommentaryStore.getState().open(tab.documentHash); clearSelection() }}
+          onAsk={() => coach.recordMiss(selection.text)}
         />
+      )}
+      <CoachIntakeDialog />
+      <CoachRail visibleText={tab.content} atChapterEnd={atChapterEnd} />
+      {coach.hovered && !hoveredLink && (
+        <CoachHoverCard key={coach.hovered.card.id} card={coach.hovered.card} deck={coach.hovered.deck} rect={coach.hovered.rect}
+          cardRef={coach.cardRef} {...coach.hoverHandlers} />
       )}
       {hoveredLink && (
         <LinkTooltip key={`${hoveredLink.url}:${hoveredLink.title}`} tooltipRef={tooltipRef}

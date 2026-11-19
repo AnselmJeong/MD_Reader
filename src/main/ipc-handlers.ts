@@ -3,8 +3,13 @@ import type { SubscriptionProvider } from '../shared/subscription'
 import { readDocumentImage } from './document-image-service'
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import path from 'node:path'
-import { listCommentary, saveCommentary, setCommentaryDeleted, importCommentaryImage, importCommentaryHtml, commentaryDeletionPlan, permanentlyDeleteCommentary } from './commentary-service'
+import { listCommentary, saveCommentary, setCommentaryDeleted, importCommentaryImage, importCommentaryImageData, importCommentaryHtml, commentaryDeletionPlan, permanentlyDeleteCommentary } from './commentary-service'
 import { exportCommentaryEpub, commentaryExportPath } from './commentary-epub'
+import {
+  getCoachImage, getCoachPreferences, getCoachProfile, getCoachSettings, getCoachUsage, recordCoachEvent,
+  requestCoachDeck, resetCoachProfile, setCoachChatBusyProbe, setCoachPreferences, setCoachSettings
+} from './coach-service'
+import type { CoachDeckRequest, CoachEvent, CoachPreferences, CoachSettings } from '../shared/coach'
 import type { SaveCommentary } from '../shared/commentary'
 import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent, setDocumentBibliography } from './file-service'
 import { listModels, generateChatTitle } from './ai-service'
@@ -90,6 +95,19 @@ export function registerIpcHandlers(): void {
     const result = await dialog.showOpenDialog({ title: '주석에 그림 추가', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }] })
     return result.canceled || !result.filePaths[0] ? null : importCommentaryImage(documentId, result.filePaths[0])
   })
+  ipcMain.handle('commentary:image-data', (_event, documentId: string, dataUrl: string, name: string) => importCommentaryImageData(documentId, dataUrl, name))
+  // ─── Reading coach (separate from ai:chat so background work never cancels a question) ───
+  setCoachChatBusyProbe(() => activeAiRequests.size > 0)
+  ipcMain.handle('coach:preferences:get', (_event, documentId: string) => getCoachPreferences(documentId))
+  ipcMain.handle('coach:preferences:set', (_event, documentId: string, preferences: CoachPreferences) => setCoachPreferences(documentId, preferences))
+  ipcMain.handle('coach:settings:get', () => getCoachSettings())
+  ipcMain.handle('coach:settings:set', (_event, partial: Partial<CoachSettings>) => setCoachSettings(partial))
+  ipcMain.handle('coach:deck', (_event, request: CoachDeckRequest) => requestCoachDeck(request))
+  ipcMain.handle('coach:event', (_event, event: CoachEvent) => recordCoachEvent(event))
+  ipcMain.handle('coach:profile', () => getCoachProfile())
+  ipcMain.handle('coach:profile:reset', () => resetCoachProfile())
+  ipcMain.handle('coach:usage', () => getCoachUsage())
+  ipcMain.handle('coach:image', (_event, card: { title: string; imageQuery: string }) => getCoachImage(card))
   ipcMain.handle('commentary:export', async (_event, filePath: string, documentId: string) => {
     const result = await dialog.showSaveDialog({ title: '주석을 포함한 EPUB 저장', defaultPath: commentaryExportPath(filePath), filters: [{ name: 'Quarto', extensions: ['qmd'] },
         { name: 'EPUB', extensions: ['epub'] }] })

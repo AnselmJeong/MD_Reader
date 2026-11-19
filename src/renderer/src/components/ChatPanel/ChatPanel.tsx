@@ -10,6 +10,8 @@ import { ChatInput } from './ChatInput'
 import { QuickActions } from './QuickActions'
 import { ChatMessage as ChatMessageType, useChatStore } from '../../store/useChatStore'
 import { useDocumentStore } from '../../store/useDocumentStore'
+import { useCoachStore } from '../../store/useCoachStore'
+import { CoachTab } from './CoachTab'
 
 function formatSessionDate(timestamp: number) {
   return new Intl.DateTimeFormat(undefined, {
@@ -93,6 +95,10 @@ export function ChatPanel() {
     setStreamingSearchQuery, setStreamingSources
   } = useChatStore()
   const { content, fileName } = useDocumentStore()
+  const isEpub = useDocumentStore(state => state.activeTab?.kind === 'epub')
+  const coachPanel = useCoachStore(state => state.panel)
+  const setCoachPanel = useCoachStore(state => state.setPanel)
+  const panel = isEpub ? coachPanel : 'chat'
   const lastQuestionId = [...messages].reverse().find((message) => message.role === 'user')?.id ?? ''
   const { viewportRef, contentRef, showLatest, scrollToLatest } = useChatScroll(
     lastQuestionId, sessionView === 'historical'
@@ -198,6 +204,11 @@ export function ChatPanel() {
         </div>
       </header>
       {fileName && <div className="chat-context" title={fileName}><BookOpen /><span>{fileName}</span></div>}
+      {isEpub && <div role="tablist" aria-label="읽기 도우미 보기" className="flex gap-1 border-b border-[var(--hair-2)] px-5 text-[12px]">
+        {([['chat', '대화'], ['coach', '코치']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={panel === id} onClick={() => setCoachPanel(id)}
+          className={`-mb-px border-b-2 px-2 py-1.5 ${panel === id ? 'border-accent font-semibold text-on-surface' : 'border-transparent text-on-surface-muted'}`}>{label}</button>)}
+      </div>}
+      {panel === 'coach' ? <CoachTab /> : <>
 
       {/* Messages */}
       <div className="relative min-h-0 min-w-0 flex-1">
@@ -267,6 +278,7 @@ export function ChatPanel() {
 
       {/* Input */}
       <ChatInput onSend={handleSendMessage} disabled={isStreaming || isPreparingMessage || !selectedModel} />
+      </>}
     </div>
   )
 }

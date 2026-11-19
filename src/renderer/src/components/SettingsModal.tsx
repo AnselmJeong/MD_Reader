@@ -1,4 +1,4 @@
-import { BookOpen, Sparkles, Brain, Globe, Check, FolderOpen } from 'lucide-react'
+import { BookOpen, Sparkles, Brain, Globe, Check, FolderOpen, GraduationCap } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Textarea } from './ui/textarea'
@@ -15,6 +15,7 @@ import { useSettingsStore } from '../store/useSettingsStore'
 import { useChatStore } from '../store/useChatStore'
 import { filterSubscriptionModels } from '../utils/subscription-model-filter'
 import type { AgentMemoryStatus, AiProviderStatus } from '../global'
+import { DEFAULT_COACH_SETTINGS, type CoachSettings, type CoachUsage } from '../../../shared/coach'
 
 interface SettingsModalProps {
   onClose: () => void
@@ -29,6 +30,16 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const [fontError, setFontError] = useState('')
   useEffect(() => { void window.api.fonts.listKorean().then(setFonts).catch(() => setFontError('설치된 글꼴을 불러올 수 없습니다.')) }, [])
   const [memorySaving, setMemorySaving] = useState(false)
+  const [coachSettings, setCoachSettings] = useState<CoachSettings>(DEFAULT_COACH_SETTINGS)
+  const [coachUsage, setCoachUsage] = useState<CoachUsage | null>(null)
+  useEffect(() => {
+    void window.api.coach.getSettings().then(setCoachSettings).catch(() => {})
+    void window.api.coach.getUsage().then(setCoachUsage).catch(() => {})
+  }, [])
+  const updateCoach = (partial: Partial<CoachSettings>) => {
+    setCoachSettings(current => ({ ...current, ...partial }))
+    void window.api.coach.setSettings(partial).then(setCoachSettings).catch(() => {})
+  }
   const [memoryError, setMemoryError] = useState('')
   const [clearMemoryKey, setClearMemoryKey] = useState(false)
   const [memoryStatus, setMemoryStatus] = useState<AgentMemoryStatus | null>(null)
@@ -171,7 +182,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       <DialogHeader className="settings-heading"><DialogTitle>설정</DialogTitle><DialogDescription>읽기 환경과 AI 연결을 한곳에서 관리하세요.</DialogDescription></DialogHeader>
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="설정 항목">
-          {[{ id: 'appearance', label: '읽기 환경', Icon: BookOpen }, { id: 'ai', label: 'AI 계정', Icon: Sparkles }, { id: 'search', label: '웹 검색', Icon: Globe }, { id: 'memory', label: '메모리', Icon: Brain }].map(({id, label, Icon}) => <button key={id} onClick={() => navigate(id)} aria-current={section === id}><Icon />{label}</button>)}
+          {[{ id: 'appearance', label: '읽기 환경', Icon: BookOpen }, { id: 'ai', label: 'AI 계정', Icon: Sparkles }, { id: 'search', label: '웹 검색', Icon: Globe }, { id: 'memory', label: '메모리', Icon: Brain }, { id: 'coach', label: '독서 코치', Icon: GraduationCap }].map(({id, label, Icon}) => <button key={id} onClick={() => navigate(id)} aria-current={section === id}><Icon />{label}</button>)}
         </nav>
         <div className="settings-content">
           <section id="settings-appearance" className="settings-section">
@@ -226,6 +237,19 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                 {memoryError && <p role="alert" className="text-sm text-destructive">{memoryError}</p>}
                 <p role="status" className="text-xs text-muted-foreground">{memoryStatus?.hindsight.ok ? 'Hindsight connected' : memoryStatus?.hindsight.error || 'Hindsight 연결 상태 확인 전'}</p>
                 <div className="flex gap-2"><Button variant="outline" onClick={() => void window.api.agentMemory.openFolder()}><FolderOpen data-icon="inline-start" />폴더</Button><Button onClick={saveMemorySettings} disabled={memorySaving}>{memorySaving ? 'Connecting…' : 'Save & Connect'}</Button></div>
+              </FieldGroup>
+            </FramePanel></Frame>
+          </section>
+          <section id="settings-coach" className="settings-section">
+            <Frame className="settings-frame"><FrameHeader><FrameTitle>독서 코치 (EPUB)</FrameTitle></FrameHeader><FramePanel>
+              <FieldGroup>
+                <Field orientation="horizontal"><FieldLabel htmlFor="coach-ask">새 책을 열 때 묻기</FieldLabel><input id="coach-ask" type="checkbox" checked={coachSettings.askOnOpen} onChange={e => updateCoach({ askOnOpen: e.target.checked })} /></Field>
+                <FieldDescription>끄면 새 책은 코치 없이 열립니다. 읽기 화면 아래 "코치" 버튼으로 언제든 켤 수 있습니다.</FieldDescription>
+                <Field><FieldLabel htmlFor="coach-model">코치 모델</FieldLabel><select id="coach-model" value={coachSettings.coachModel} onChange={e => updateCoach({ coachModel: e.target.value })}><option value="auto">자동 (Claude는 Sonnet, Codex는 GPT-6.2 Sol)</option>{availableModels.map(m => <option key={m} value={m}>{modelLabel(m)}</option>)}</select><FieldDescription>장마다 한 번, 백그라운드에서 카드 묶음을 만들 때 씁니다.</FieldDescription></Field>
+                <Field orientation="horizontal" className="settings-row"><FieldLabel htmlFor="coach-limit">하루 장 준비 한도</FieldLabel><Input id="coach-limit" type="number" min={0} max={200} value={coachSettings.dailyLimit} onChange={e => updateCoach({ dailyLimit: Number(e.target.value) })} className="w-24" /></Field>
+                <Field orientation="horizontal" className="settings-row"><FieldLabel htmlFor="coach-quota">구독 사용률이 이 값(%)을 넘으면 멈춤</FieldLabel><Input id="coach-quota" type="number" min={10} max={100} value={coachSettings.quotaPausePercent} onChange={e => updateCoach({ quotaPausePercent: Number(e.target.value) })} className="w-24" /></Field>
+                <FieldDescription>그림은 웹 검색 설정의 TinyFish 키로 Wikipedia 문서를 찾아 가져옵니다. 외부로는 검색어만 나갑니다.</FieldDescription>
+                {coachUsage && <p role="status" className="text-xs text-muted-foreground">오늘 코치 호출 {coachUsage.calls}회 · 캐시에서 해결 {coachUsage.cacheHits}회{coachUsage.failures ? ` · 실패 ${coachUsage.failures}회` : ''}</p>}
               </FieldGroup>
             </FramePanel></Frame>
           </section>

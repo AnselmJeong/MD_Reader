@@ -188,6 +188,26 @@ export async function importCommentaryImage(documentId: string, filePath: string
   return { id, name, dataUrl: `data:image/png;base64,${png.toString('base64')}` }
 }
 
+/** Register picture data that is already in memory (for example a coach card's Wikipedia image). */
+export function importCommentaryImageData(documentId: string, dataUrl: string, name: string): CommentaryAsset {
+  validateDocumentId(documentId)
+  const match = typeof dataUrl === 'string' ? /^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl) : null
+  if (!match) throw new Error('그림 데이터가 올바르지 않습니다.')
+  const bytes = Buffer.from(match[2], 'base64')
+  if (bytes.length > 8 * 1024 * 1024) throw new Error('그림은 8 MB 이하로 추가해 주세요.')
+  const image = nativeImage.createFromBuffer(bytes)
+  if (image.isEmpty()) throw new Error('그림 데이터를 읽을 수 없습니다.')
+  const size = image.getSize()
+  if (size.width * size.height > 40000000) throw new Error('그림 해상도가 너무 큽니다.')
+  const png = image.toPNG()
+  if (png.length > 8 * 1024 * 1024) throw new Error('변환된 그림이 8 MB를 넘습니다.')
+  const id = createHash('sha256').update(png).digest('hex')
+  const safeName = (typeof name === 'string' ? name : 'image').replace(/[\\/:*?"<>|\x00-\x1f]/g, '').slice(0, 80).replace(/\.[^.]+$/, '') || 'image'
+  database().prepare('INSERT OR IGNORE INTO commentary_assets VALUES (?, ?, ?, ?)').run(documentId, id, `${safeName}.png`, png)
+  changed(documentId)
+  return { id, name: `${safeName}.png`, dataUrl: `data:image/png;base64,${png.toString('base64')}` }
+}
+
 export function importCommentarySnapshot(documentId: string, snapshot: CommentarySnapshot) {
   validateDocumentId(documentId)
   if (!snapshot || !Array.isArray(snapshot.notes) || snapshot.notes.length > 10000
