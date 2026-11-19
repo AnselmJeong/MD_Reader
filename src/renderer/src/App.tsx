@@ -87,6 +87,11 @@ export default function App() {
   }, [setChatWidth])
 
   useEffect(() => { setShowHome(false) }, [activeTab?.id])
+  // Floating reader UI (coach and link cards) is portalled to <body>, outside the hidden reader layer.
+  useEffect(() => {
+    document.body.toggleAttribute('data-reader-hidden', showHome)
+    return () => document.body.removeAttribute('data-reader-hidden')
+  }, [showHome])
 
   useEffect(() => {
     let active = true
@@ -318,7 +323,7 @@ export default function App() {
                 '--reader-font-family': toReaderFontStack(readerFontFamily)
               } as React.CSSProperties}
             >
-              {activeTab && <div className="absolute inset-0" style={{ visibility: showHome ? 'hidden' : 'visible' }} aria-hidden={showHome} inert={showHome}><DocumentReader /></div>}
+              {activeTab && <div className="reader-layer absolute inset-0" data-hidden={showHome ? 'true' : undefined} aria-hidden={showHome} inert={showHome}><DocumentReader /></div>}
               {(showHome || !activeTab) && <WelcomeScreen onOpenFile={handleOpenFile} onDocumentOpened={() => setShowHome(false)} />}
             </div>
           </div>

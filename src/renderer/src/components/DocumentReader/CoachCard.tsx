@@ -169,7 +169,7 @@ export function CoachPendingCard({ rect, text, error, onClose }: { rect: DOMRect
   }, [onClose])
   return createPortal(
     <div role={error ? 'alert' : 'status'} aria-live="polite" data-selection-menu="true" data-commentary-ui
-      className="fixed z-50 rounded-md border border-border px-3 py-3 ui-text"
+      className="reader-overlay fixed z-50 rounded-md border border-border px-3 py-3 ui-text"
       style={{ top, left, width, maxWidth: 'calc(100vw - 16px)', background: 'var(--color-surface-alt)', boxShadow: 'var(--shadow-md)' }}>
       <div className="mb-1 flex items-center gap-2 text-[11px] text-on-surface-muted"><span>AI 코치 · 내가 요청한 카드</span>
         <button className="ml-auto rounded px-1 hover:bg-[var(--ink-3)]" aria-label="닫기" onClick={onClose}>✕</button></div>
@@ -205,7 +205,7 @@ export function CoachHoverCard({ card, deck, rect, cardRef, onPointerEnter, onPo
     <div ref={cardRef} role="dialog" aria-label={`코치 카드: ${card.title}`} data-selection-menu="true" data-commentary-ui
       onPointerEnter={onPointerEnter} onPointerLeave={onPointerLeave}
       onKeyDown={event => { if (event.key === 'Escape') onClose() }}
-      className="fixed z-50 w-[340px] rounded-md border border-border px-3 py-3 ui-text"
+      className="reader-overlay fixed z-50 w-[340px] rounded-md border border-border px-3 py-3 ui-text"
       style={{ ...position, maxWidth: 'calc(100vw - 16px)', maxHeight: 'calc(100vh - 16px)', overflowY: 'auto', background: 'var(--color-surface-alt)', boxShadow: 'var(--shadow-md)' }}>
       <CoachCardBody card={card} deck={deck} image={image} onDone={onClose} />
     </div>,
