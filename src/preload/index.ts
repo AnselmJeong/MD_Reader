@@ -1,6 +1,7 @@
 import type { AiProviderStatus, SubscriptionStatus, SubscriptionProvider } from '../shared/subscription'
 import type { BibliographyResult } from '../shared/bibliography'
 import type { CommentaryAPI } from '../shared/commentary'
+import type { CoachAPI, CoachDeckUpdate } from '../shared/coach'
 import type { ChatImage, ModelVisionInfo } from '../shared/chat-images'
 import type { ChatRequestOptions } from '../shared/chat-request-options'
 import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron'
@@ -128,6 +129,7 @@ export interface EpubReadingProgressRecord {
 
 export interface ElectronAPI {
   commentary: CommentaryAPI
+  coach: CoachAPI
   file: {
     selectBibliography: (path: string) => Promise<BibliographyResult | null>
     resetBibliography: (path: string) => Promise<BibliographyResult>
@@ -274,6 +276,7 @@ const api: ElectronAPI = {
     save: (params) => ipcRenderer.invoke('commentary:save', params),
     setDeleted: (documentId, id, deleted) => ipcRenderer.invoke('commentary:deleted', documentId, id, deleted),
     importImage: (documentId) => ipcRenderer.invoke('commentary:image', documentId),
+    importImageData: (documentId, dataUrl, name) => ipcRenderer.invoke('commentary:image-data', documentId, dataUrl, name),
     importHtml: () => ipcRenderer.invoke('commentary:html'),
     permanentlyDelete: (documentId, id, expectedUpdatedAt) => ipcRenderer.invoke('commentary:permanently-delete', documentId, id, expectedUpdatedAt),
     exportEpub: (filePath, documentId) => ipcRenderer.invoke('commentary:export', filePath, documentId)
@@ -361,6 +364,23 @@ const api: ElectronAPI = {
     updateSettings: (partial) => ipcRenderer.invoke('agent-memory:update-settings', partial),
     processSession: (sessionId) => ipcRenderer.invoke('agent-memory:process-session', sessionId),
     openFolder: () => ipcRenderer.invoke('agent-memory:open-folder')
+  },
+  coach: {
+    getPreferences: (documentId) => ipcRenderer.invoke('coach:preferences:get', documentId),
+    setPreferences: (documentId, preferences) => ipcRenderer.invoke('coach:preferences:set', documentId, preferences),
+    getSettings: () => ipcRenderer.invoke('coach:settings:get'),
+    setSettings: (partial) => ipcRenderer.invoke('coach:settings:set', partial),
+    requestDeck: (request) => ipcRenderer.invoke('coach:deck', request),
+    recordEvent: (event) => ipcRenderer.invoke('coach:event', event),
+    getProfile: () => ipcRenderer.invoke('coach:profile'),
+    resetProfile: () => ipcRenderer.invoke('coach:profile:reset'),
+    getUsage: () => ipcRenderer.invoke('coach:usage'),
+    getImage: (card) => ipcRenderer.invoke('coach:image', card),
+    onDeck: (callback) => {
+      const handler = (_event: IpcRendererEvent, update: CoachDeckUpdate) => callback(update)
+      ipcRenderer.on('coach:deck', handler)
+      return () => ipcRenderer.removeListener('coach:deck', handler)
+    }
   },
   epub: {
     listAnnotations: (params) => ipcRenderer.invoke('epub:annotations:list', params),

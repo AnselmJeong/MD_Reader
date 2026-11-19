@@ -60,6 +60,7 @@ export interface CommentaryAPI {
   save: (params: SaveCommentary) => Promise<CommentaryNote>
   setDeleted: (documentId: string, id: string, deleted: boolean) => Promise<CommentaryNote>
   importImage: (documentId: string) => Promise<CommentaryAsset | null>
+  importImageData: (documentId: string, dataUrl: string, name: string) => Promise<CommentaryAsset>
   importHtml: () => Promise<CommentaryHtml | null>
   permanentlyDelete: (documentId: string, id: string, expectedUpdatedAt: number) => Promise<boolean>
   exportEpub: (filePath: string, documentId: string) => Promise<{ filePath: string } | null>

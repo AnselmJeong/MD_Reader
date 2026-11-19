@@ -2,7 +2,7 @@ import type { ChatSource } from './ai-chat-types'
 
 const SEARCH_URL = 'https://api.search.tinyfish.ai'
 const FETCH_URL = 'https://api.fetch.tinyfish.ai'
-type Options = { signal?: AbortSignal; maxResults?: number; fetchImpl?: typeof fetch; timeoutMs?: number }
+type Options = { signal?: AbortSignal; maxResults?: number; fetchImpl?: typeof fetch; timeoutMs?: number; includeDomains?: string[] }
 const compact = (value: unknown, limit: number) => typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, limit) : ''
 function httpUrl(value: unknown): string | null {
   try { const url = new URL(String(value)); return /^https?:$/.test(url.protocol) ? url.href : null } catch { return null }
@@ -18,7 +18,10 @@ async function payload(response: Response): Promise<{ results: unknown[] }> {
 }
 export async function searchTinyFishWeb(query: string, apiKey: string, options: Options = {}): Promise<ChatSource[]> {
   if (!apiKey.trim()) throw new Error('Set a TinyFish API key in Settings to use web search.')
-  const url = `${SEARCH_URL}?${new URLSearchParams({ query: query.replace(/\s+/g, ' ').trim().slice(0, 500), language: 'en' })}`
+  const params = new URLSearchParams({ query: query.replace(/\s+/g, ' ').trim().slice(0, 500), language: 'en' })
+  const domains = (options.includeDomains ?? []).map(domain => domain.trim().toLowerCase()).filter(domain => /^[a-z0-9.-]+$/.test(domain))
+  if (domains.length) params.set('include_domains', domains.join(','))
+  const url = `${SEARCH_URL}?${params}`
   const data = await payload(await (options.fetchImpl || fetch)(url, {
     headers: { Accept: 'application/json', 'X-API-Key': apiKey.trim() },
     signal: requestSignal(options.signal, options.timeoutMs ?? 8000)

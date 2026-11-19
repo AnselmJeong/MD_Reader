@@ -8,6 +8,7 @@ import { closeEpubAnnotationDb } from './epub-annotation-service'
 import { closeEpubReadingProgressDb } from './epub-reading-progress-service'
 import { initializeAgentMemoryStartupRoutine } from './agent-memory-service'
 import { closeCommentaryDb } from './commentary-service'
+import { closeCoachDb } from './coach-store'
 import { readWindowState, rememberWindowState } from './window-state-service'
 
 let mainWindow: BrowserWindow | null = null
@@ -69,6 +70,7 @@ app.on('before-quit', () => {
   closeEpubAnnotationDb()
   closeEpubReadingProgressDb()
   closeCommentaryDb()
+  closeCoachDb()
 })
 
 app.on('window-all-closed', () => {

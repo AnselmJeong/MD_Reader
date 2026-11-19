@@ -57,7 +57,7 @@ function Note({ note, notes, urls, onChange, onError, onViewHtml, onRead, depth 
   return <section className="thread" data-note-id={note.id}>
     <div className="note-actions"><button onClick={event => onRead(note.id, event.currentTarget)}>주석을 스크롤로 읽기 ↗</button></div>
     <div className="note-actions">
-      <span className="note-meta">{note.origin ? 'AI 대화에서 가져옴' : '내 주석'} · {new Date(note.createdAt).toLocaleDateString()}</span>
+      <span className="note-meta">{note.origin?.messageId.startsWith('coach:') ? 'AI 코치 카드' : note.origin ? 'AI 대화에서 가져옴' : '내 주석'} · {new Date(note.createdAt).toLocaleDateString()}</span>
       <button onClick={() => setCollapsed(value => !value)} aria-expanded={!collapsed}>{collapsed ? '펼치기' : '접기'}</button>
       {!note.deletedAt && <button onClick={() => edit({ ...note, expectedUpdatedAt: note.updatedAt })}>수정</button>}
       <button disabled={busy} onClick={remove}>{note.deletedAt ? '복원' : '삭제'}</button>

@@ -23,9 +23,11 @@ interface TextSelectionMenuProps {
   onHighlight: (style: EpubAnnotationStyle) => void
   onClose: () => void
   onAnnotate?: () => void
+  /** Called when the selection is sent to the AI (the coach records a "missed" passage). */
+  onAsk?: () => void
 }
 
-export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose, onAnnotate }: TextSelectionMenuProps) {
+export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose, onAnnotate, onAsk }: TextSelectionMenuProps) {
   const [showHighlightChoices, setShowHighlightChoices] = useState(false)
   const {
     sendMessage,
@@ -49,6 +51,7 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose, on
   }
 
   const sendToAI = (prompt: string) => {
+    onAsk?.()
     ensureChatOpen()
 
     if (!selectedModel || isStreaming) {
@@ -66,6 +69,7 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose, on
   }
 
   const handleAskAI = () => {
+    onAsk?.()
     ensureChatOpen()
     setPendingQuotedText(selectedText)
     setInputDraft('')
