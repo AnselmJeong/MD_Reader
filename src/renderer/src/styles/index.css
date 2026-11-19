@@ -514,3 +514,9 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
 @media (prefers-reduced-motion: no-preference) { .home-workspace { animation: workspace-enter 240ms ease-out; } .chat-welcome { animation: workspace-enter 220ms ease-out; } .recent-document:hover .recent-arrow { transform: translate(2px,-2px); transition: transform 150ms; } }
 @keyframes workspace-enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* The reader stays mounted behind Home so the book keeps its place. epub.js writes
+   visibility: visible inline on its page frames, which overrides an inherited
+   hidden, so hide every descendant explicitly. */
+.reader-layer[data-hidden='true'], .reader-layer[data-hidden='true'] * { visibility: hidden !important; }
+body[data-reader-hidden] .reader-overlay { display: none !important; }

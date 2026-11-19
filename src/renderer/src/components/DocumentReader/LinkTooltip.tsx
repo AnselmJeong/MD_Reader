@@ -24,7 +24,7 @@ export function LinkTooltip({ url, title, rect, tooltipRef }: LinkTooltipProps) 
   return createPortal(
     <div
       ref={tooltipRef}
-      className="fixed z-50 max-w-[360px] rounded-md border border-border px-3 py-2 ui-text text-xs text-on-surface"
+      className="reader-overlay fixed z-50 max-w-[360px] rounded-md border border-border px-3 py-2 ui-text text-xs text-on-surface"
       style={{ ...position, maxWidth: 'min(360px, calc(100vw - 16px))', maxHeight: 'calc(100vh - 16px)', overflowY: 'auto', background: 'var(--color-surface-alt)', boxShadow: 'var(--shadow-md)' }}
     >
       {url ? (
