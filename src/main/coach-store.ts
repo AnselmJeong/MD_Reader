@@ -2,8 +2,8 @@ import { app } from 'electron'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import {
-  DEFAULT_COACH_SETTINGS, EMPTY_COACH_PROFILE, sanitizePreferences,
-  type CoachDeck, type CoachEvent, type CoachPreferences, type CoachProfile, type CoachSettings, type CoachUsage
+  coachTermKey, DEFAULT_COACH_SETTINGS, EMPTY_COACH_PROFILE, sanitizePreferences,
+  type CoachDeck, type CoachEncounter, type CoachReviewItem, type CoachEvent, type CoachPreferences, type CoachProfile, type CoachSettings, type CoachUsage
 } from '../shared/coach'
 
 // Everything the coach learns stays in this file on the device.
@@ -20,6 +20,10 @@ function database() {
     CREATE TABLE IF NOT EXISTS coach_kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS coach_images (query_key TEXT PRIMARY KEY, status TEXT NOT NULL, png BLOB, page_title TEXT, page_url TEXT, created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS coach_usage (date TEXT PRIMARY KEY, calls INTEGER NOT NULL DEFAULT 0, cache_hits INTEGER NOT NULL DEFAULT 0, failures INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS coach_terms (term_key TEXT NOT NULL, document_id TEXT NOT NULL, card_id TEXT NOT NULL, book_title TEXT NOT NULL, chapter_label TEXT NOT NULL, title TEXT NOT NULL, gloss TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (term_key, document_id));
+    CREATE INDEX IF NOT EXISTS idx_coach_events_card ON coach_events(card_id, type);
+    CREATE TABLE IF NOT EXISTS coach_reviews (id TEXT PRIMARY KEY, document_id TEXT NOT NULL, book_title TEXT NOT NULL, chapter_href TEXT NOT NULL, chapter_label TEXT NOT NULL, question TEXT NOT NULL, recap TEXT NOT NULL, due_at INTEGER NOT NULL, interval_days INTEGER NOT NULL, reps INTEGER NOT NULL, created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS idx_coach_reviews_due ON coach_reviews(due_at);
   `)
   return db
 }
@@ -105,6 +109,62 @@ export function writeImage(queryKey: string, image: StoredImage) {
   database().prepare(`INSERT INTO coach_images VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(query_key) DO UPDATE SET
     status = excluded.status, png = excluded.png, page_title = excluded.page_title, page_url = excluded.page_url, created_at = excluded.created_at`)
     .run(queryKey, image.status, image.png, image.pageTitle, image.pageUrl, image.createdAt)
+}
+
+// ─── Phase 5: terms across books, review questions, small key-value cache ───
+
+export function readKv<T>(key: string, fallback: T): T { return getKv(key, fallback) }
+export function writeKv(key: string, value: unknown) { setKv(key, value) }
+
+export function writeTerms(deck: CoachDeck, bookTitle: string, chapterLabel: string) {
+  const insert = database().prepare(`INSERT INTO coach_terms VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(term_key, document_id) DO UPDATE SET
+    card_id = excluded.card_id, book_title = excluded.book_title, chapter_label = excluded.chapter_label, title = excluded.title, gloss = excluded.gloss`)
+  database().transaction(() => {
+    for (const card of deck.cards) {
+      const key = coachTermKey(card)
+      if (key.length >= 3) insert.run(key, deck.documentId, card.id, bookTitle.slice(0, 300), chapterLabel.slice(0, 300), card.title, card.gloss, deck.createdAt)
+    }
+  })()
+}
+
+/** Earlier encounters of these terms in other books, newest first. */
+export function readEncounters(termKeys: string[], excludeDocumentId: string, perTerm = 3): Map<string, CoachEncounter[]> {
+  const result = new Map<string, CoachEncounter[]>()
+  const query = database().prepare(`SELECT t.document_id, t.book_title, t.chapter_label, t.title, t.gloss, t.created_at,
+      EXISTS (SELECT 1 FROM coach_events e WHERE e.card_id = t.card_id AND e.document_id = t.document_id AND e.type = 'known') AS known
+    FROM coach_terms t WHERE t.term_key = ? AND t.document_id != ? ORDER BY t.created_at DESC LIMIT ?`)
+  for (const key of new Set(termKeys)) {
+    const rows = query.all(key, excludeDocumentId, perTerm) as Array<{ document_id: string; book_title: string; chapter_label: string; title: string; gloss: string; created_at: number; known: number }>
+    if (rows.length) result.set(key, rows.map(row => ({ documentId: row.document_id, bookTitle: row.book_title, chapterLabel: row.chapter_label, title: row.title, gloss: row.gloss, known: row.known === 1, at: row.created_at })))
+  }
+  return result
+}
+
+export function readOpenedCardIds(documentId: string, chapterHref: string): string[] {
+  return (database().prepare(`SELECT DISTINCT card_id FROM coach_events WHERE document_id = ? AND chapter_href = ? AND card_id IS NOT NULL AND type IN ('open', 'more') ORDER BY id`)
+    .all(documentId, chapterHref) as Array<{ card_id: string }>).map(row => row.card_id)
+}
+
+type ReviewRow = { id: string; document_id: string; book_title: string; chapter_href: string; chapter_label: string; question: string; recap: string; due_at: number; interval_days: number; reps: number; created_at: number }
+const reviewFromRow = (row: ReviewRow): CoachReviewItem => ({ id: row.id, documentId: row.document_id, bookTitle: row.book_title, chapterHref: row.chapter_href, chapterLabel: row.chapter_label,
+  question: row.question, recap: JSON.parse(row.recap), dueAt: row.due_at, intervalDays: row.interval_days, reps: row.reps, createdAt: row.created_at })
+
+/** Returns how many new questions were scheduled (existing ones keep their schedule). */
+export function insertReviews(items: CoachReviewItem[]): number {
+  const insert = database().prepare('INSERT OR IGNORE INTO coach_reviews VALUES (@id, @documentId, @bookTitle, @chapterHref, @chapterLabel, @question, @recap, @dueAt, @intervalDays, @reps, @createdAt)')
+  let added = 0
+  database().transaction(() => { for (const item of items) added += insert.run({ ...item, recap: JSON.stringify(item.recap) }).changes })()
+  return added
+}
+export function readDueReviews(now: number, limit = 20): CoachReviewItem[] {
+  return (database().prepare('SELECT * FROM coach_reviews WHERE due_at <= ? ORDER BY due_at LIMIT ?').all(now, limit) as ReviewRow[]).map(reviewFromRow)
+}
+export function readReview(id: string): CoachReviewItem | null {
+  const row = database().prepare('SELECT * FROM coach_reviews WHERE id = ?').get(id) as ReviewRow | undefined
+  return row ? reviewFromRow(row) : null
+}
+export function updateReview(item: CoachReviewItem) {
+  database().prepare('UPDATE coach_reviews SET due_at = ?, interval_days = ?, reps = ? WHERE id = ?').run(item.dueAt, item.intervalDays, item.reps, item.id)
 }
 
 export function closeCoachDb() { db?.close(); db = null }

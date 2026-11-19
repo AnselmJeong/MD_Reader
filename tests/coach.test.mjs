@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   applyCoachEvent, baseCardScore, buildCoachDeckPrompt, coachDeckCacheInput, DEFAULT_COACH_PREFERENCES, EMPTY_COACH_PROFILE,
   estimatedLevels, parseCoachDeck, partForVisibleText, profileMismatch, sanitizePreferences, selectCoachCards, showsBriefing,
-  splitChapterText
+  splitChapterText, coachTermKey, nextReviewInterval, summarizeCoachProfile
 } from '../src/shared/coach.ts'
 import { findWikipediaImage, wikipediaArticle, wikipediaTitleMatches } from '../src/main/coach-image-service.ts'
 import { searchTinyFishWeb } from '../src/main/tinyfish-web-search-service.ts'
@@ -150,4 +150,23 @@ test('picture lookup: TinyFish finds the article, Wikipedia supplies the picture
   assert.equal(await findWikipediaImage({ title: 't', imageQuery: 'Karl Jaspers' }, search(disambiguation), { fetchImpl: disambiguation }), null)
   const unrelated = async () => Response.json({ results: [{ url: 'https://en.wikipedia.org/wiki/Tokyo' }] })
   assert.equal(await findWikipediaImage({ title: 't', imageQuery: 'Karl Jaspers' }, search(unrelated), { fetchImpl: unrelated }), null)
+})
+
+test('phase 5: term keys match across books, review intervals expand, profile summary', () => {
+  assert.equal(coachTermKey({ quote: 'The  “Axial Age”', title: '축의 시대' }), coachTermKey({ quote: '"axial age"', title: 'Axial' }))
+  assert.deepEqual([1, 3, 7, 16, 35, 80].map(days => nextReviewInterval(days, true)), [3, 7, 16, 35, 80, 176])
+  assert.equal(nextReviewInterval(0, true), 1)
+  assert.equal(nextReviewInterval(35, false), 1)
+  const now = Date.now()
+  let profile = EMPTY_COACH_PROFILE
+  for (let index = 0; index < 4; index += 1) {
+    profile = applyCoachEvent(profile, { documentId: 'd', chapterHref: 'c', type: 'known', domain: ['philosophy'], kind: 'term', difficulty: 2, at: now })
+    profile = applyCoachEvent(profile, { documentId: 'd', chapterHref: 'c', type: 'more', domain: ['philosophy'], kind: 'critique', difficulty: 4, at: now })
+    profile = applyCoachEvent(profile, { documentId: 'd', chapterHref: 'c', type: 'notInterested', domain: ['philosophy'], kind: 'place', difficulty: 3, at: now })
+  }
+  const lines = summarizeCoachProfile(profile, now)
+  assert.ok(lines.some(line => /philosophy: (intermediate|advanced)/.test(line)), lines.join('\n'))
+  assert.ok(lines.some(line => /useful: .*critique \(philosophy\)/.test(line)))
+  assert.ok(lines.some(line => /Does not want .*place \(philosophy\)/.test(line)))
+  assert.deepEqual(summarizeCoachProfile(EMPTY_COACH_PROFILE, now), [])
 })

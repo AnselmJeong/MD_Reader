@@ -83,15 +83,18 @@ export function hindsightDocumentId(content: string, metadata: Record<string, un
 export async function retainHindsightMemory(settings: AgentMemorySettings, params: {
   content: string
   metadata: Record<string, unknown>
+  /** A fixed ID replaces the earlier version (used for the coach profile summary). */
+  documentId?: string
+  context?: string
 }): Promise<{ memoryId: string; eventId?: string }> {
-  const documentId = hindsightDocumentId(params.content, params.metadata)
+  const documentId = params.documentId ?? hindsightDocumentId(params.content, params.metadata)
   const metadata = Object.fromEntries(Object.entries(params.metadata)
     .filter(([, value]) => value !== undefined && value !== null)
     .map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]))
   const result = await request(settings, '/memories', 'POST', {
     async: false,
     items: [{ content: params.content, document_id: documentId, metadata,
-      context: 'Curated reading insight from an MD Reader conversation; preserve uncertainty and provenance.',
+      context: params.context ?? 'Curated reading insight from an MD Reader conversation; preserve uncertainty and provenance.',
       tags: ['md-reader'], ...(metadata.created_at ? { timestamp: metadata.created_at } : {}) }]
   }, undefined, 120000)
   if (result.success !== true || result.async !== false || result.items_count !== 1) throw new Error('Hindsight did not confirm completed retention')

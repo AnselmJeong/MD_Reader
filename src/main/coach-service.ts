@@ -6,11 +6,17 @@ import { getAiProviderConfig } from './ai-provider-settings'
 import { findWikipediaImage } from './coach-image-service'
 import { searchTinyFishWeb } from './tinyfish-web-search-service'
 import {
-  appendEvent, countUsage, readDeck, readImage, readLastPreferences, readPreferences, readProfile, readSettings, readUsage,
-  writeDeck, writeImage, writePreferences, writeProfile, writeSettings
+  appendEvent, countUsage, insertReviews, readDeck, readDueReviews, readEncounters, readImage, readKv, readLastPreferences, readOpenedCardIds, readPreferences,
+  readProfile, readReview, readSettings, readUsage, updateReview, writeDeck, writeImage, writeKv, writePreferences, writeProfile, writeSettings, writeTerms
 } from './coach-store'
+import { searchChatQuestions } from './chat-session-service'
+import { searchCommentaryNotes } from './commentary-service'
+import { getAgentMemorySettings } from './agent-memory-settings'
+import { COACH_PROFILE_SECTION, replaceUserSection } from './agent-memory-files'
+import { checkHindsightHealth, recallHindsight, retainHindsightMemory } from './hindsight-client'
 import {
-  applyCoachEvent, buildCoachDeckPrompt, coachDeckCacheInput, EMPTY_COACH_PROFILE, parseCoachDeck, sanitizePreferences,
+  applyCoachEvent, buildCoachDeckPrompt, coachDeckCacheInput, coachHash, coachTermKey, EMPTY_COACH_PROFILE, nextReviewInterval, parseCoachDeck, sanitizePreferences,
+  summarizeCoachProfile, type CoachChapterLinks, type CoachLinksRequest, type CoachMemoryLinks, type CoachPersonalLink, type CoachReviewItem, type CoachReviewRequest,
   type CoachDeck, type CoachDeckRequest, type CoachDeckUpdate, type CoachEvent, type CoachImage, type CoachPreferences, type CoachProfile, type CoachSettings
 } from '../shared/coach'
 import { validateDocumentId } from './commentary-service'
@@ -50,6 +56,7 @@ export function recordCoachEvent(event: CoachEvent): CoachProfile {
   appendEvent(clean)
   const profile = applyCoachEvent(readProfile(), clean)
   writeProfile(profile)
+  scheduleProfileSync()
   return profile
 }
 
@@ -159,6 +166,9 @@ async function runJob({ key, request, preferences }: Job) {
     if (!parsed.cards.length && !parsed.brief) throw new Error('본문과 맞는 카드를 만들지 못했습니다. "이 장 다시 준비"로 다시 시도해 보세요.')
     const deck: CoachDeck = { ...parsed, key, documentId: request.documentId, chapterHref: request.chapterHref.split('#')[0], part: request.part, model, createdAt: Date.now() }
     writeDeck(deck)
+    // Remember terms so later books can reuse them without another model call.
+    writeTerms(deck, request.bookTitle, request.chapterTitle)
+    writeKv(`book:${request.documentId}`, request.bookTitle.slice(0, 300))
     broadcast({ ...base, status: 'ready', deck })
   } catch (error) {
     countUsage('failures')
@@ -192,4 +202,135 @@ export async function getCoachImage(card: { title: string; imageQuery: string })
   const png = image.toPNG()
   writeImage(queryKey, { status: 'ready', png, pageTitle: found.pageTitle, pageUrl: found.pageUrl, createdAt: Date.now() })
   return { status: 'ready', dataUrl: `data:image/png;base64,${png.toString('base64')}`, pageTitle: found.pageTitle, pageUrl: found.pageUrl }
+}
+
+// ─── Phase 5: memory and connections ───
+
+const MAX_LINK_TERMS = 30
+
+function decksFor(request: Pick<CoachLinksRequest, 'documentId' | 'deckKeys'>): CoachDeck[] {
+  validateDocumentId(request?.documentId)
+  if (!Array.isArray(request.deckKeys)) throw new Error('코치 요청이 올바르지 않습니다.')
+  return request.deckKeys.filter(key => typeof key === 'string' && /^[a-f0-9]{64}$/.test(key)).slice(0, 20)
+    .map(key => readDeck(key)).filter((deck): deck is CoachDeck => Boolean(deck && deck.documentId === request.documentId))
+}
+
+const excerpt = (text: string, limit = 220) => {
+  const clean = text.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/[#*_>`]/g, '').replace(/\s+/g, ' ').trim()
+  return clean.length > limit ? `${clean.slice(0, limit)}…` : clean
+}
+
+/** Same terms in other books, and my own notes or questions about them. No model call. */
+export function getCoachLinks(request: CoachLinksRequest): CoachChapterLinks {
+  const decks = decksFor(request)
+  const cards = decks.flatMap(deck => deck.cards)
+  if (request.bookTitle) writeKv(`book:${request.documentId}`, String(request.bookTitle).slice(0, 300))
+  const encounters = readEncounters(cards.map(card => coachTermKey(card)), request.documentId)
+  const byCard: CoachChapterLinks['encounters'] = {}
+  for (const card of cards) {
+    const found = encounters.get(coachTermKey(card))
+    if (found) byCard[card.id] = found
+  }
+  const personal: CoachPersonalLink[] = []
+  const seen = new Set<string>()
+  // Terms from the text (quotes) are searched; longer ones first because they are more specific.
+  const terms = [...new Map(cards.map(card => [coachTermKey(card), card])).values()]
+    .filter(card => coachTermKey(card).length >= 4).sort((a, b) => b.quote.length - a.quote.length).slice(0, MAX_LINK_TERMS)
+  for (const card of terms) {
+    for (const hit of searchChatQuestions(card.quote, 2)) {
+      const key = `chat:${hit.createdAt}:${hit.question.slice(0, 40)}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      personal.push({ cardId: card.id, source: 'chat', bookTitle: hit.bookTitle, question: excerpt(hit.question, 160), excerpt: excerpt(hit.answer || hit.quotedText || ''), at: hit.createdAt })
+    }
+    for (const note of searchCommentaryNotes(card.quote, 2)) {
+      const key = `note:${note.documentId}:${note.createdAt}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      personal.push({ cardId: card.id, source: 'commentary', bookTitle: note.documentId === request.documentId ? '이 책' : readKv(`book:${note.documentId}`, '다른 책'), excerpt: excerpt(note.markdown), at: note.createdAt })
+    }
+    if (personal.length >= 12) break
+  }
+  return { encounters: byCard, personal: personal.sort((a, b) => b.at - a.at) }
+}
+
+/** "Connector" items from long-term memory (Hindsight recall), cached for a week per chapter. */
+export async function getCoachMemoryLinks(request: CoachLinksRequest): Promise<CoachMemoryLinks> {
+  const decks = decksFor(request)
+  const settings = getAgentMemorySettings()
+  if (!settings.enabled || !settings.runtimeInjectionEnabled || !decks.length) return { status: 'off', items: [] }
+  const cacheKey = `memory:${decks.map(deck => deck.key).join(',')}`
+  const cached = readKv<{ at: number; items: string[] } | null>(cacheKey, null)
+  if (cached && Date.now() - cached.at < 7 * 86400000) return { status: 'ok', items: cached.items }
+  const health = await checkHindsightHealth(settings)
+  if (!health.ok) return { status: 'error', items: [], error: health.error }
+  const titles = decks.flatMap(deck => deck.cards).filter(card => ['term', 'person', 'background', 'connection', 'critique'].includes(card.kind)).slice(0, 10).map(card => card.title)
+  const query = [
+    `Book: ${String(request.bookTitle).slice(0, 200)} · Chapter: ${String(request.chapterTitle).slice(0, 200)}`,
+    `Topics: ${[...new Set(decks.flatMap(deck => deck.domain))].join(', ')}; ${titles.join(', ')}`,
+    'Need: what this reader read, asked or concluded before that connects to these topics (other books, research interests).'
+  ].join('\n')
+  try {
+    const results = await recallHindsight(settings, query, 3)
+    const items = results.map(item => excerpt(item.memory, 400)).filter(Boolean)
+    writeKv(cacheKey, { at: Date.now(), items })
+    return { status: 'ok', items }
+  } catch (error) {
+    return { status: 'error', items: [], error: error instanceof Error ? error.message : 'Hindsight recall failed' }
+  }
+}
+
+export function getOpenedCards(documentId: string, chapterHref: string): string[] {
+  validateDocumentId(documentId)
+  return readOpenedCardIds(documentId, String(chapterHref).split('#')[0])
+}
+
+// Spaced review of the chapter's self-check questions.
+export function addCoachReviews(request: CoachReviewRequest): number {
+  const decks = decksFor(request)
+  const now = Date.now()
+  const items: CoachReviewItem[] = decks.flatMap(deck => deck.questions.map(question => ({
+    id: coachHash(`${request.documentId}|${question}`) + coachHash(`${question}|${request.documentId}`),
+    documentId: request.documentId, bookTitle: String(request.bookTitle).slice(0, 300),
+    chapterHref: String(request.chapterHref).split('#')[0], chapterLabel: String(request.chapterLabel ?? '').slice(0, 300),
+    question, recap: deck.recap, dueAt: now + 86400000, intervalDays: 1, reps: 0, createdAt: now
+  })))
+  return insertReviews(items)
+}
+export const getDueCoachReviews = () => readDueReviews(Date.now())
+export function answerCoachReview(id: string, remembered: boolean): CoachReviewItem | null {
+  const item = typeof id === 'string' ? readReview(id) : null
+  if (!item) return null
+  const intervalDays = nextReviewInterval(item.intervalDays, remembered === true)
+  const next = { ...item, intervalDays, reps: item.reps + 1, dueAt: Date.now() + intervalDays * 86400000 }
+  updateReview(next)
+  return next
+}
+
+// The coach's summary of the reader goes into USER.md and long-term memory, so chat answers match it too.
+let syncTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleProfileSync() {
+  if (syncTimer) return
+  syncTimer = setTimeout(() => { syncTimer = null; void syncCoachProfileToMemory() }, 60000)
+  syncTimer.unref?.()
+}
+export async function syncCoachProfileToMemory(): Promise<void> {
+  const settings = getAgentMemorySettings()
+  if (!settings.enabled) return
+  const lines = summarizeCoachProfile(readProfile())
+  if (!lines.length) return
+  try {
+    const changed = await replaceUserSection(COACH_PROFILE_SECTION, lines)
+    const last = readKv<{ at: number; text: string } | null>('profileRetained', null)
+    const text = `Reading coach profile of this reader (estimated from accepted and dismissed help cards):\n${lines.map(line => `- ${line}`).join('\n')}`
+    if (!changed && last?.text === text) return
+    if (last && Date.now() - last.at < 86400000) return
+    const health = await checkHindsightHealth(settings)
+    if (!health.ok) return
+    await retainHindsightMemory(settings, {
+      content: text, documentId: 'md-reader-coach-profile', context: 'Reading level and preferences inferred by the MD Reader reading coach; replaces earlier versions.',
+      metadata: { source: 'reading-coach', created_at: new Date().toISOString() }
+    })
+    writeKv('profileRetained', { at: Date.now(), text })
+  } catch (error) { console.error('[Coach] Failed to sync profile to memory:', error) }
 }

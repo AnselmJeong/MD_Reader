@@ -4,7 +4,7 @@ import {
   normalizeCoachText, partForVisibleText, selectCoachCards, splitChapterText,
   type CoachCard, type CoachDeck
 } from '../../../../../shared/coach'
-import { deckSlot, useCoachStore } from '../../../store/useCoachStore'
+import { deckSlot, linksKey, useCoachStore } from '../../../store/useCoachStore'
 import { useChatStore } from '../../../store/useChatStore'
 import { recordCardEvent } from '../utils/coachActions'
 import { attachCoachHover, coachQuoteBlock, setCoachMarks } from '../utils/epubCoachMarks'
@@ -24,23 +24,25 @@ interface Options {
   currentLocation: string | null
   sections: Section[]
   theme: string
+  atChapterEnd: boolean
 }
 
 const chapterText = (section: Section | undefined) => section?.contents.document?.body?.textContent?.replace(/[ \t]+/g, ' ') ?? ''
 
 /** Connects the coach to the EPUB view: deck requests, marks in the iframe, hover cards and signals. */
-export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel, visibleText, currentLocation, sections, theme }: Options) {
+export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel, visibleText, currentLocation, sections, theme, atChapterEnd }: Options) {
   const preferences = useCoachStore(state => state.preferences)
   const profile = useCoachStore(state => state.profile)
   const suppressed = useCoachStore(state => state.suppressed)
   const decks = useCoachStore(state => state.decks)
+  const links = useCoachStore(state => state.links)
   const chapter = chapterHref?.split('#')[0] ?? null
 
   useEffect(() => { void useCoachStore.getState().load(documentId) }, [documentId])
   useEffect(() => window.api.coach.onDeck(update => {
     if (update.documentId === useCoachStore.getState().documentId) useCoachStore.getState().applyDeckUpdate(update)
   }), [])
-  useEffect(() => { useCoachStore.getState().setChapter(chapter, chapterLabel) }, [chapter, chapterLabel])
+  useEffect(() => { useCoachStore.getState().setChapter(chapter, chapterLabel, bookTitle) }, [bookTitle, chapter, chapterLabel])
 
   const currentSection = sections.find(section => section.chapterHref === chapter && section.contents.window?.frameElement?.isConnected)
   const parts = useMemo(() => splitChapterText(chapterText(currentSection)), [currentSection])
@@ -91,6 +93,27 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
     }
     return map
   }, [decks, documentId])
+  // Phase 5: links to other books and my own records (local lookups, no model call).
+  const chapterDecks = useMemo(() => (chapter ? decksByChapter.get(chapter) ?? [] : []).slice().sort((a, b) => a.part - b.part), [chapter, decksByChapter])
+  const chapterLinksKey = linksKey(chapterDecks)
+  useEffect(() => {
+    if (chapterDecks.length) void useCoachStore.getState().loadLinks(chapterDecks, bookTitle, chapterLabel ?? '')
+  }, [chapterLinksKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Terms the reader already marked "이미 알아요" in another book are not marked again.
+  const knownElsewhere = useMemo(() => {
+    const ids = new Set<string>()
+    for (const value of Object.values(links)) for (const [cardId, encounters] of Object.entries(value.encounters)) if (encounters.some(item => item.known)) ids.add(cardId)
+    return ids
+  }, [links])
+  // Self-check questions join the spaced review once the reader reaches the chapter's end.
+  const reviewed = useRef(new Set<string>())
+  useEffect(() => {
+    if (!atChapterEnd || !chapter || !chapterDecks.some(deck => deck.questions.length) || reviewed.current.has(chapterLinksKey)) return
+    reviewed.current.add(chapterLinksKey)
+    void window.api.coach.addReviews({ documentId, bookTitle, chapterHref: chapter, chapterLabel: chapterLabel ?? '', deckKeys: chapterDecks.map(deck => deck.key) })
+      .then(() => useCoachStore.getState().loadReviews()).catch(error => console.error('[Coach] Failed to schedule review:', error))
+  }, [atChapterEnd, chapter, chapterLinksKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const cardIndex = useRef(new Map<string, { card: CoachCard; deck: CoachDeck }>())
   useEffect(() => {
     const accent = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || (theme === 'dark' ? '#e0a07e' : '#914c35')
@@ -99,13 +122,13 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
     for (const section of sections) {
       if (!section.contents.document?.body) continue
       const entries = (decksByChapter.get(section.chapterHref) ?? []).flatMap(deck =>
-        selectCoachCards(deck, preferences, profile, { suppressed, day }).map(({ card }) => {
+        selectCoachCards(deck, preferences, profile, { suppressed: new Set([...suppressed, ...knownElsewhere]), day }).map(({ card }) => {
           cardIndex.current.set(card.id, { card, deck })
           return { cardId: card.id, quote: card.quote }
         }))
       try { setCoachMarks(section.contents, entries, accent) } catch (error) { console.error('[Coach] Failed to draw marks:', error) }
     }
-  }, [decksByChapter, preferences, profile, sections, suppressed, theme])
+  }, [decksByChapter, knownElsewhere, preferences, profile, sections, suppressed, theme])
 
   // Hover cards.
   const [hovered, setHovered] = useState<{ card: CoachCard; deck: CoachDeck; rect: DOMRect } | null>(null)
