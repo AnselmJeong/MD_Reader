@@ -88,8 +88,8 @@ export function setCoachMarks(contents: Contents, entries: CoachMarkEntry[], col
     style.id = STYLE_ID
     doc.head.appendChild(style)
   }
-  // A coloured dotted underline on a faint wash of the same colour: visible at a glance, quiet enough to read through.
-  style.textContent = `::highlight(${HIGHLIGHT_NAME}) { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-thickness: 2px; text-decoration-color: ${color}; text-underline-offset: 3px; background-color: color-mix(in oklab, ${color} 11%, transparent); }`
+  // Only the dotted underline is coloured; the words themselves are left as they are.
+  style.textContent = `::highlight(${HIGHLIGHT_NAME}) { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-thickness: 2px; text-decoration-color: ${color}; text-underline-offset: 3px; }`
   const ranges = findQuoteRanges(doc, entries)
   registry.set(doc, ranges)
   if (ranges.length) win.CSS.highlights.set(HIGHLIGHT_NAME, new win.Highlight(...ranges.map(item => item.range)))

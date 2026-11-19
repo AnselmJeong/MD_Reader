@@ -79,7 +79,8 @@ export async function fetchImageBytes(url: string, doFetch: typeof fetch = fetch
   let parsed: URL
   try { parsed = new URL(url) } catch { return null }
   if (parsed.protocol !== 'https:') return null
-  const image = await doFetch(parsed.href, { headers: { 'User-Agent': WIKIPEDIA_USER_AGENT, Accept: 'image/png,image/jpeg,image/webp,image/gif' }, signal: timeout(signal, 10000) })
+  // Wikimedia serves WebP whenever the Accept header mentions it, and Electron cannot decode WebP.
+  const image = await doFetch(parsed.href, { headers: { 'User-Agent': WIKIPEDIA_USER_AGENT, Accept: 'image/png,image/jpeg,image/gif' }, signal: timeout(signal, 10000) })
   const contentType = (image.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
   if (!image.ok || !/^image\/(png|jpeg|gif|webp)$/.test(contentType)) return null
   const declared = Number(image.headers.get('content-length') || 0)
