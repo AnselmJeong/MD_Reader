@@ -1,6 +1,6 @@
 import { RefObject, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { COACH_KIND_LABELS, type CoachCard as CoachCardData, type CoachDeck, type CoachImage } from '../../../../shared/coach'
+import { COACH_KIND_LABELS, coachImageKey, type CoachCard as CoachCardData, type CoachDeck, type CoachImage, type CoachImageCandidate } from '../../../../shared/coach'
 import { askCoachMore, insertCoachCard, markCardKnown, markKindUnwanted } from './utils/coachActions'
 import { useCoachStore } from '../../store/useCoachStore'
 
@@ -24,10 +24,10 @@ export function CoachCardConnections({ card }: { card: CoachCardData }) {
 }
 
 const imageRequests = new Map<string, Promise<CoachImage>>()
-/** Pictures are fetched only for cards the reader opens, once per search phrase. */
+const imageEvents = new EventTarget()
+/** Pictures are fetched only for cards the reader opens, once per card. */
 export function loadCoachImage(card: CoachCardData): Promise<CoachImage> {
-  if (!card.imageQuery) return Promise.resolve({ status: 'none' })
-  const key = card.imageQuery.toLowerCase()
+  const key = coachImageKey(card)
   let request = imageRequests.get(key)
   if (!request) {
     request = window.api.coach.getImage({ title: card.title, imageQuery: card.imageQuery }).catch(() => ({ status: 'none' as const }))
@@ -36,21 +36,84 @@ export function loadCoachImage(card: CoachCardData): Promise<CoachImage> {
   return request
 }
 
+function setCoachImage(card: CoachCardData, image: CoachImage) {
+  const key = coachImageKey(card)
+  imageRequests.set(key, Promise.resolve(image))
+  imageEvents.dispatchEvent(new CustomEvent('change', { detail: { key, image } }))
+}
+
 export function useCoachImage(card: CoachCardData | null) {
   const [image, setImage] = useState<CoachImage | null>(null)
+  const key = card ? coachImageKey(card) : ''
   useEffect(() => {
     setImage(null)
-    if (!card?.imageQuery) return
+    if (!card) return
     let active = true
     void loadCoachImage(card).then(result => { if (active) setImage(result) })
-    return () => { active = false }
-  }, [card?.id, card?.imageQuery])
+    const onChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ key: string; image: CoachImage }>).detail
+      if (active && detail.key === key) setImage(detail.image)
+    }
+    imageEvents.addEventListener('change', onChange)
+    return () => { active = false; imageEvents.removeEventListener('change', onChange) }
+  }, [card?.id, key])
   return image
+}
+
+/** Picture picker: edit the search phrase, compare three candidates, keep one. */
+export function CoachImagePicker({ card, onClose }: { card: CoachCardData; onClose: () => void }) {
+  const [query, setQuery] = useState(card.imageQuery || card.title)
+  const [candidates, setCandidates] = useState<CoachImageCandidate[]>([])
+  const [selected, setSelected] = useState<number | null>(null)
+  const [status, setStatus] = useState('')
+  const [busy, setBusy] = useState(false)
+  const search = async () => {
+    if (!query.trim()) return
+    setBusy(true); setStatus('그림을 찾는 중…'); setSelected(null)
+    try {
+      const result = await window.api.coach.searchImages(query)
+      setCandidates(result.candidates)
+      setStatus(result.candidates.length ? (result.warning ?? '') : (result.warning ?? '맞는 그림을 찾지 못했습니다.'))
+    } catch (error) { setCandidates([]); setStatus(error instanceof Error ? error.message : String(error)) }
+    finally { setBusy(false) }
+  }
+  useEffect(() => { void search() }, [])
+  const save = async () => {
+    if (selected === null || !candidates[selected]) return
+    setBusy(true)
+    try { setCoachImage(card, await window.api.coach.saveImage({ title: card.title, imageQuery: card.imageQuery }, candidates[selected])); onClose() }
+    catch (error) { setStatus(error instanceof Error ? error.message : String(error)) }
+    finally { setBusy(false) }
+  }
+  return <div className="mb-2 rounded border border-border p-2 text-[12px]">
+    <form className="flex gap-1" onSubmit={event => { event.preventDefault(); void search() }}>
+      <input aria-label="그림 검색어" value={query} onChange={event => setQuery(event.target.value)}
+        className="min-w-0 flex-1 rounded border border-border bg-transparent px-2 py-1 text-[12px] text-on-surface" />
+      <button type="submit" disabled={busy || !query.trim()} className="rounded px-2 py-1 hover:bg-[var(--ink-3)]">검색</button>
+    </form>
+    {candidates.length > 0 && <div className="mt-2 grid grid-cols-3 gap-1">
+      {candidates.map((candidate, index) => (
+        <button key={candidate.dataUrl.slice(-48) + index} type="button" aria-pressed={selected === index} title={candidate.title}
+          onClick={() => setSelected(index)}
+          className={`flex flex-col overflow-hidden rounded border text-left ${selected === index ? 'border-accent ring-1 ring-[var(--color-accent)]' : 'border-border'}`}>
+          <img src={candidate.dataUrl} alt={candidate.title} className="h-[72px] w-full object-cover" />
+          <span className="truncate px-1 py-0.5 text-[10px] text-on-surface-muted">{candidate.source}</span>
+        </button>
+      ))}
+    </div>}
+    {status && <p role="status" className="mt-1 text-on-surface-muted">{status}</p>}
+    <div className="mt-2 flex justify-end gap-1">
+      <button type="button" className="rounded px-2 py-1 text-on-surface-muted hover:bg-[var(--ink-3)]" onClick={onClose}>취소</button>
+      <button type="button" disabled={busy || selected === null} className="rounded px-2 py-1 font-semibold text-accent hover:bg-[var(--ink-3)] disabled:opacity-50" onClick={() => void save()}>저장</button>
+    </div>
+  </div>
 }
 
 export function CoachCardBody({ card, deck, image, onDone, compact = false }: { card: CoachCardData; deck: CoachDeck; image: CoachImage | null; onDone?: () => void; compact?: boolean }) {
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
+  const [picking, setPicking] = useState(false)
+  useEffect(() => { setPicking(false) }, [card.id])
   const run = async (action: () => Promise<unknown>, done = true) => {
     setBusy(true)
     try {
@@ -60,27 +123,29 @@ export function CoachCardBody({ card, deck, image, onDone, compact = false }: { 
     } catch (error) { setStatus(error instanceof Error ? error.message : String(error)) }
     finally { setBusy(false) }
   }
+  // The figure appears only once a picture is actually in hand: no placeholder box that later vanishes.
+  const ready = image?.status === 'ready' && Boolean(image.dataUrl)
   return <>
-    {!compact && card.imageQuery && image?.status !== 'none' && image?.status !== 'unavailable' && (
-      image?.status === 'ready' && image.dataUrl
-        ? <img src={image.dataUrl} alt={image.pageTitle ?? card.title} className="mb-2 max-h-[180px] w-full rounded object-cover" />
-        : <div aria-hidden="true" className="mb-2 h-[120px] w-full animate-pulse rounded bg-[var(--ink-3)]" />
+    {!compact && picking && <CoachImagePicker card={card} onClose={() => setPicking(false)} />}
+    {!compact && !picking && ready && (
+      <img src={image!.dataUrl} alt={image!.pageTitle ?? card.title} className="mb-2 max-h-[180px] w-full rounded object-cover" />
     )}
     <div className="mb-1 flex items-center gap-2 text-[11px] text-on-surface-muted">
       <span className="rounded border border-border px-1.5 py-0.5">{COACH_KIND_LABELS[card.kind]}</span>
       <span>난이도 {card.difficulty}</span>
-      <span className="ml-auto">AI 코치 · 이 책의 맥락에서</span>
+      <span className="ml-auto">AI 코치</span>
     </div>
     <p className="text-[14px] font-semibold text-on-surface">{card.title}</p>
     <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-on-surface">{card.gloss}</p>
     <CoachCardConnections card={card} />
-    {image?.status === 'ready' && image.pageUrl && (
-      <a href={image.pageUrl} className="mt-1 block text-[11px] text-on-surface-muted hover:underline"
-        onClick={event => { event.preventDefault(); void window.api.shell.openExternal(image.pageUrl!) }}>그림: Wikipedia — {image.pageTitle} ↗</a>
+    {ready && image!.pageUrl && (
+      <a href={image!.pageUrl} className="mt-1 block truncate text-[11px] text-on-surface-muted hover:underline" title={image!.pageTitle}
+        onClick={event => { event.preventDefault(); void window.api.shell.openExternal(image!.pageUrl!) }}>그림: {image!.source ?? 'Wikipedia'}{image!.pageTitle ? ` — ${image!.pageTitle}` : ''} ↗</a>
     )}
     <div className="mt-2 flex flex-wrap gap-1 text-[12px]">
       <button disabled={busy} className="rounded px-2 py-1 font-semibold text-accent hover:bg-[var(--ink-3)]" onClick={() => void run(() => askCoachMore(card, deck))}>더 자세히</button>
       <button disabled={busy} className="rounded px-2 py-1 hover:bg-[var(--ink-3)]" onClick={() => void run(() => insertCoachCard(card, deck, image), false)}>EPUB에 넣기</button>
+      {!compact && <button disabled={busy} className="rounded px-2 py-1 text-on-surface-muted hover:bg-[var(--ink-3)]" onClick={() => setPicking(value => !value)}>{ready ? '그림 바꾸기' : '그림 찾기'}</button>}
       <button disabled={busy} className="rounded px-2 py-1 text-on-surface-muted hover:bg-[var(--ink-3)]" title="너무 쉬운 카드는 덜 보여 줍니다" onClick={() => void run(() => markCardKnown(card, deck))}>이미 알아요</button>
       <button disabled={busy} className="rounded px-2 py-1 text-on-surface-muted hover:bg-[var(--ink-3)]" title={`"${COACH_KIND_LABELS[card.kind]}" 카드를 덜 보여 줍니다`} onClick={() => void run(() => markKindUnwanted(card, deck))}>이런 건 그만</button>
     </div>

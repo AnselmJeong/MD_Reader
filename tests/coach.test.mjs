@@ -5,7 +5,7 @@ import {
   estimatedLevels, parseCoachDeck, partForVisibleText, profileMismatch, sanitizePreferences, selectCoachCards, showsBriefing,
   splitChapterText, coachTermKey, nextReviewInterval, summarizeCoachProfile
 } from '../src/shared/coach.ts'
-import { findWikipediaImage, wikipediaArticle, wikipediaTitleMatches } from '../src/main/coach-image-service.ts'
+import { findWikipediaImage, searchBraveImages, wikipediaArticle, wikipediaTitleMatches } from '../src/main/coach-image-service.ts'
 import { searchTinyFishWeb } from '../src/main/tinyfish-web-search-service.ts'
 
 const chapter = `The “Axial Age” was named by Karl Jaspers. In this period, Confucius and the Buddha taught.
@@ -139,6 +139,7 @@ test('picture lookup: TinyFish finds the article, Wikipedia supplies the picture
   const found = await findWikipediaImage({ title: '카를 야스퍼스', imageQuery: 'Karl Jaspers philosopher' }, search(fetchImpl), { fetchImpl })
   assert.equal(found.pageTitle, 'Karl Jaspers')
   assert.equal(found.pageUrl, 'https://en.wikipedia.org/wiki/Karl_Jaspers')
+  assert.equal(found.source, 'Wikipedia')
   assert.deepEqual([...found.bytes], [...png])
   assert.equal(calls.length, 3)
 
@@ -150,6 +151,50 @@ test('picture lookup: TinyFish finds the article, Wikipedia supplies the picture
   assert.equal(await findWikipediaImage({ title: 't', imageQuery: 'Karl Jaspers' }, search(disambiguation), { fetchImpl: disambiguation }), null)
   const unrelated = async () => Response.json({ results: [{ url: 'https://en.wikipedia.org/wiki/Tokyo' }] })
   assert.equal(await findWikipediaImage({ title: 't', imageQuery: 'Karl Jaspers' }, search(unrelated), { fetchImpl: unrelated }), null)
+})
+
+test('picture lookup: skips interwiki hits and accepts thumb.wikimedia.org thumbnails', async () => {
+  assert.equal(wikipediaArticle('https://ar.wikipedia.org/wiki/d:Q3076659'), null)
+  const png = new Uint8Array([1, 2, 3])
+  const fetchImpl = async (url) => {
+    if (String(url).startsWith('https://api.search.tinyfish.ai')) return Response.json({ results: [
+      { url: 'https://ar.wikipedia.org/wiki/d:Q3076659' },
+      { url: 'https://en.wikipedia.org/wiki/Diffusion_tensor_tractography' },
+      { url: 'https://en.wikipedia.org/wiki/Tractography' }
+    ] })
+    if (String(url).includes('Diffusion_tensor_tractography')) return new Response('missing', { status: 404 })
+    if (String(url).includes('/page/summary/Tractography')) return Response.json({ type: 'standard', title: 'Tractography',
+      thumbnail: { source: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ce/T.gif/330px-T.gif?utm_source=x' } })
+    assert.equal(new URL(url).hostname, 'thumb.wikimedia.org')
+    return new Response(png, { headers: { 'content-type': 'image/gif' } })
+  }
+  const search = (query, signal) => searchTinyFishWeb(query, 'key', { fetchImpl, signal, includeDomains: ['wikipedia.org'] })
+  const found = await findWikipediaImage({ title: '트랙토그래피', imageQuery: 'diffusion mri tractography' }, search, { fetchImpl })
+  assert.equal(found?.pageTitle, 'Tractography')
+  assert.equal(found.contentType, 'image/gif')
+})
+
+test('Brave image search: ranks by confidence, keeps https thumbnails, sends the key header', async () => {
+  const fetchImpl = async (url, init) => {
+    const parsed = new URL(url)
+    assert.equal(parsed.hostname, 'api.search.brave.com')
+    assert.equal(parsed.searchParams.get('q'), 'Karl Jaspers')
+    assert.equal(parsed.searchParams.get('safesearch'), 'strict')
+    assert.equal(init.headers['X-Subscription-Token'], 'brave-key')
+    return Response.json({ results: [
+      { title: 'low', url: 'https://a.example/p', source: 'a.example', confidence: 'low', thumbnail: { src: 'https://imgs.search.brave.com/a' }, properties: { url: 'https://a.example/a.jpg' } },
+      { title: 'high', url: 'https://www.b.example/p', confidence: 'high', thumbnail: { src: 'https://imgs.search.brave.com/b' }, properties: { url: 'https://b.example/b.jpg' } },
+      { title: 'insecure thumb', url: 'https://c.example/p', thumbnail: { src: 'http://imgs.search.brave.com/c' }, properties: { url: 'https://c.example/c.jpg' } },
+      { title: 'duplicate', url: 'https://d.example/p', thumbnail: { src: 'https://imgs.search.brave.com/d' }, properties: { url: 'https://a.example/a.jpg' } }
+    ] })
+  }
+  const results = await searchBraveImages('Karl  Jaspers', 'brave-key', { fetchImpl })
+  assert.deepEqual(results.map(result => result.title), ['high', 'low'])
+  assert.equal(results[0].source, 'b.example')
+  assert.equal(results[1].source, 'a.example')
+  assert.deepEqual(await searchBraveImages('Karl Jaspers', '', { fetchImpl }), [])
+  const failing = async () => new Response('quota', { status: 429 })
+  await assert.rejects(searchBraveImages('x', 'k', { fetchImpl: failing }), /429/)
 })
 
 test('phase 5: term keys match across books, review intervals expand, profile summary', () => {

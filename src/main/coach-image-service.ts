@@ -1,7 +1,8 @@
-// Finds a Wikipedia picture for a coach card without Electron APIs, so it can be
-// tested with an injected fetch. TinyFish search has no image results, so it is
-// used only to find the right Wikipedia article (restricted to wikipedia.org);
-// the picture and its page link come from Wikipedia's public page summary API.
+// Finds pictures for coach cards without Electron APIs, so it can be tested with
+// an injected fetch. Brave Image Search is the main source (several candidates
+// the reader can choose from). Without a Brave key, TinyFish finds the right
+// Wikipedia article (restricted to wikipedia.org) and the picture comes from
+// Wikipedia's public page summary API.
 // Only the card's search phrase leaves the device: never book text or user data.
 // No runtime imports here: the module runs directly under `node --test`.
 import type { ChatSource } from './ai-chat-types'
@@ -14,6 +15,8 @@ export interface CoachImageLookup {
   contentType: string
   pageTitle: string
   pageUrl: string
+  /** Caption source, e.g. "Wikipedia" or "Brave · britannica.com". */
+  source: string
 }
 
 type Options = { fetchImpl?: typeof fetch; signal?: AbortSignal }
@@ -30,9 +33,25 @@ export async function findWikipediaImage(card: { title: string; imageQuery: stri
   const query = card.imageQuery.trim()
   if (!query) return null
   const results = await search(query, options.signal)
-  const article = results.map(result => wikipediaArticle(result.url)).find(Boolean)
-  if (!article || !wikipediaTitleMatches(article.title, card)) return null
+  const seen = new Set<string>()
+  const articles = results.map(result => wikipediaArticle(result.url))
+    .filter((article): article is { lang: string; title: string } => Boolean(article && wikipediaTitleMatches(article.title, card)))
+    .filter(article => { const key = `${article.lang}:${article.title}`; if (seen.has(key)) return false; seen.add(key); return true })
+    .slice(0, 3)
+  for (const article of articles) {
+    const found = await wikipediaArticleImage(article, card, doFetch, options.signal).catch(() => null)
+    if (found) return found
+  }
+  return null
+}
 
+/** Accept pictures only from Wikimedia's own media hosts (the summary API now serves thumb.wikimedia.org). */
+export function isWikimediaImageUrl(url: URL): boolean {
+  return url.protocol === 'https:' && (url.hostname === 'upload.wikimedia.org' || url.hostname === 'thumb.wikimedia.org')
+}
+
+async function wikipediaArticleImage(article: { lang: string; title: string }, card: { title: string; imageQuery: string }, doFetch: typeof fetch, signal?: AbortSignal): Promise<CoachImageLookup | null> {
+  const options = { signal }
   const summaryUrl = `https://${article.lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(article.title.replace(/ /g, '_'))}`
   const response = await doFetch(summaryUrl, {
     headers: { Accept: 'application/json', 'User-Agent': WIKIPEDIA_USER_AGENT },
@@ -45,22 +64,86 @@ export async function findWikipediaImage(card: { title: string; imageQuery: stri
   const source = typeof thumbnail?.source === 'string' ? thumbnail.source : ''
   let imageUrl: URL
   try { imageUrl = new URL(source) } catch { return null }
-  // Accept pictures only from Wikimedia's own media host.
-  if (imageUrl.protocol !== 'https:' || imageUrl.hostname !== 'upload.wikimedia.org') return null
+  if (!isWikimediaImageUrl(imageUrl)) return null
   const pageTitle = typeof summary.title === 'string' ? summary.title : article.title.replace(/_/g, ' ')
   if (!wikipediaTitleMatches(pageTitle, card)) return null
   const desktop = (summary.content_urls as { desktop?: { page?: unknown } } | undefined)?.desktop?.page
   const pageUrl = typeof desktop === 'string' && wikipediaArticle(desktop) ? desktop
     : `https://${article.lang}.wikipedia.org/wiki/${encodeURIComponent(article.title.replace(/ /g, '_'))}`
 
-  const image = await doFetch(imageUrl.href, { headers: { 'User-Agent': WIKIPEDIA_USER_AGENT }, signal: timeout(options.signal, 10000) })
-  const contentType = image.headers.get('content-type') || ''
-  if (!image.ok || !/^image\/(png|jpeg|gif|webp)/.test(contentType)) return null
+  const image = await fetchImageBytes(imageUrl.href, doFetch, signal)
+  return image ? { ...image, pageTitle, pageUrl, source: 'Wikipedia' } : null
+}
+
+/** Download a picture (https only, size-limited, raster types only). */
+export async function fetchImageBytes(url: string, doFetch: typeof fetch = fetch, signal?: AbortSignal): Promise<{ bytes: Uint8Array; contentType: string } | null> {
+  let parsed: URL
+  try { parsed = new URL(url) } catch { return null }
+  if (parsed.protocol !== 'https:') return null
+  const image = await doFetch(parsed.href, { headers: { 'User-Agent': WIKIPEDIA_USER_AGENT, Accept: 'image/png,image/jpeg,image/webp,image/gif' }, signal: timeout(signal, 10000) })
+  const contentType = (image.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
+  if (!image.ok || !/^image\/(png|jpeg|gif|webp)$/.test(contentType)) return null
   const declared = Number(image.headers.get('content-length') || 0)
   if (declared > MAX_IMAGE_BYTES) return null
   const bytes = new Uint8Array(await image.arrayBuffer())
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) return null
-  return { bytes, contentType, pageTitle, pageUrl }
+  return { bytes, contentType }
+}
+
+// ─── Brave Image Search ───
+
+const BRAVE_IMAGE_SEARCH_URL = 'https://api.search.brave.com/res/v1/images/search'
+
+export interface BraveImageResult {
+  title: string
+  /** Brave's proxied thumbnail (imgs.search.brave.com): what we download. */
+  thumbnailUrl: string
+  imageUrl: string
+  pageUrl: string
+  source: string
+}
+
+function httpsUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  try { const url = new URL(value); return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null } catch { return null }
+}
+
+export async function searchBraveImages(query: string, apiKey: string, options: Options & { count?: number } = {}): Promise<BraveImageResult[]> {
+  const q = query.replace(/\s+/g, ' ').trim().slice(0, 400)
+  if (!q || !apiKey.trim()) return []
+  const url = new URL(BRAVE_IMAGE_SEARCH_URL)
+  url.searchParams.set('q', q)
+  url.searchParams.set('country', 'ALL')
+  url.searchParams.set('search_lang', /[가-힣]/u.test(q) ? 'ko' : 'en')
+  url.searchParams.set('count', '12')
+  url.searchParams.set('safesearch', 'strict')
+  url.searchParams.set('spellcheck', 'true')
+  const response = await (options.fetchImpl || fetch)(url.href, {
+    headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey.trim() },
+    signal: timeout(options.signal, 10000)
+  })
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 200)
+    throw new Error(`Brave 이미지 검색 실패 (HTTP ${response.status})${detail ? `: ${detail}` : ''}`)
+  }
+  const payload = await response.json() as { results?: Array<Record<string, any>> }
+  const rank = (value: Record<string, any>) => value?.confidence === 'high' ? 2 : value?.confidence === 'medium' ? 1 : 0
+  const ordered = [...(Array.isArray(payload?.results) ? payload.results : [])].sort((a, b) => rank(b) - rank(a))
+  const seen = new Set<string>()
+  const results: BraveImageResult[] = []
+  for (const item of ordered) {
+    const thumbnailUrl = httpsUrl(item?.thumbnail?.src)
+    const imageUrl = httpsUrl(item?.properties?.url)
+    const pageUrl = httpsUrl(item?.url)
+    if (!thumbnailUrl || !thumbnailUrl.startsWith('https:') || !imageUrl || !pageUrl || seen.has(imageUrl)) continue
+    seen.add(imageUrl)
+    const host = new URL(pageUrl).hostname.replace(/^www\./, '')
+    const source = (typeof item.source === 'string' && item.source.trim()) || item?.meta_url?.hostname || host
+    const title = typeof item.title === 'string' ? item.title.replace(/\s+/g, ' ').trim().slice(0, 200) : ''
+    results.push({ title: title || q, thumbnailUrl, imageUrl, pageUrl, source: String(source).replace(/^www\./, '').slice(0, 80) })
+    if (results.length >= Math.min(12, Math.max(1, options.count ?? 6))) break
+  }
+  return results
 }
 
 // ─── Wikipedia matching ───
@@ -73,6 +156,7 @@ export function wikipediaArticle(url: string): { lang: string; title: string } |
     if (parsed.protocol !== 'https:' || !host || !path) return null
     const title = decodeURIComponent(path[1])
     if (/^(Special|File|Category|Help|Wikipedia|Talk|Portal|Template)[:_]/i.test(title)) return null
+    if (/^[a-z]{1,8}:/i.test(title)) return null // interwiki links such as d:Q123
     return { lang: host[1], title }
   } catch { return null }
 }

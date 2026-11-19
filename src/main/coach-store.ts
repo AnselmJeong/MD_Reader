@@ -25,6 +25,9 @@ function database() {
     CREATE TABLE IF NOT EXISTS coach_reviews (id TEXT PRIMARY KEY, document_id TEXT NOT NULL, book_title TEXT NOT NULL, chapter_href TEXT NOT NULL, chapter_label TEXT NOT NULL, question TEXT NOT NULL, recap TEXT NOT NULL, due_at INTEGER NOT NULL, interval_days INTEGER NOT NULL, reps INTEGER NOT NULL, created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS idx_coach_reviews_due ON coach_reviews(due_at);
   `)
+  // v0.10.1: caption source for pictures (Wikipedia or a Brave result's site).
+  const imageColumns = db.prepare('PRAGMA table_info(coach_images)').all() as Array<{ name: string }>
+  if (!imageColumns.some(column => column.name === 'source')) db.exec('ALTER TABLE coach_images ADD COLUMN source TEXT')
   return db
 }
 
@@ -99,16 +102,16 @@ export function countUsage(field: 'calls' | 'cache_hits' | 'failures') {
   database().prepare(`INSERT INTO coach_usage (date, ${field}) VALUES (?, 1) ON CONFLICT(date) DO UPDATE SET ${field} = ${field} + 1`).run(today())
 }
 
-export interface StoredImage { status: 'ready' | 'none'; png: Buffer | null; pageTitle: string | null; pageUrl: string | null; createdAt: number }
+export interface StoredImage { status: 'ready' | 'none'; png: Buffer | null; pageTitle: string | null; pageUrl: string | null; source: string | null; createdAt: number }
 export function readImage(queryKey: string): StoredImage | null {
-  const row = database().prepare('SELECT status, png, page_title, page_url, created_at FROM coach_images WHERE query_key = ?').get(queryKey) as
-    { status: 'ready' | 'none'; png: Buffer | null; page_title: string | null; page_url: string | null; created_at: number } | undefined
-  return row ? { status: row.status, png: row.png, pageTitle: row.page_title, pageUrl: row.page_url, createdAt: row.created_at } : null
+  const row = database().prepare('SELECT status, png, page_title, page_url, source, created_at FROM coach_images WHERE query_key = ?').get(queryKey) as
+    { status: 'ready' | 'none'; png: Buffer | null; page_title: string | null; page_url: string | null; source: string | null; created_at: number } | undefined
+  return row ? { status: row.status, png: row.png, pageTitle: row.page_title, pageUrl: row.page_url, source: row.source, createdAt: row.created_at } : null
 }
 export function writeImage(queryKey: string, image: StoredImage) {
-  database().prepare(`INSERT INTO coach_images VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(query_key) DO UPDATE SET
-    status = excluded.status, png = excluded.png, page_title = excluded.page_title, page_url = excluded.page_url, created_at = excluded.created_at`)
-    .run(queryKey, image.status, image.png, image.pageTitle, image.pageUrl, image.createdAt)
+  database().prepare(`INSERT INTO coach_images (query_key, status, png, page_title, page_url, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(query_key) DO UPDATE SET
+    status = excluded.status, png = excluded.png, page_title = excluded.page_title, page_url = excluded.page_url, source = excluded.source, created_at = excluded.created_at`)
+    .run(queryKey, image.status, image.png, image.pageTitle, image.pageUrl, image.source, image.createdAt)
 }
 
 // ─── Phase 5: terms across books, review questions, small key-value cache ───

@@ -40,7 +40,7 @@ export async function askCoachMore(card: CoachCard, deck: CoachDeck) {
   if (!ui.showChat) ui.toggleChat()
   coach.setPanel('chat')
   const chat = useChatStore.getState()
-  const prompt = `"${card.title}"(본문의 "${card.quote}")을 이 책의 맥락에서 더 자세히 설명해 주세요. ${preferencesPromptLine(coach.preferences)}`.trim()
+  const prompt = `"${card.title}"(본문의 "${card.quote}")을 더 자세히 설명해 주세요. 책 본문을 다시 요약하지 말고, 일반적인 정의와 이 개념이 나온 학문적·역사적 배경, 더 넓은 의의를 당신의 지식으로 설명하고, 이 책과의 관련은 끝에 짧게만 덧붙여 주세요. ${preferencesPromptLine(coach.preferences)}`.trim()
   if (!chat.selectedModel || chat.isStreaming || chat.isPreparingMessage) {
     chat.setInputDraft(prompt)
     if (context?.paragraph) chat.setPendingQuotedText(context.paragraph)
@@ -59,7 +59,7 @@ export async function insertCoachCard(card: CoachCard, deck: CoachDeck, image: C
   if (image?.status === 'ready' && image.dataUrl) {
     const asset = await window.api.commentary.importImageData(deck.documentId, image.dataUrl, card.title)
     lines.push('', `![${card.title}](mdr-asset:${asset.id})`)
-    if (image.pageUrl) lines.push('', `그림 출처: [Wikipedia — ${image.pageTitle ?? card.title}](${image.pageUrl}) (라이선스는 원본 파일 페이지 참조)`)
+    if (image.pageUrl) lines.push('', `그림 출처: [${image.source ?? 'Wikipedia'} — ${image.pageTitle ?? card.title}](${image.pageUrl}) (라이선스는 원본 페이지 참조)`)
   }
   lines.push('', '— AI 코치가 만든 설명')
   await window.api.commentary.save({

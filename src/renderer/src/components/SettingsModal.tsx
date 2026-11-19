@@ -46,6 +46,8 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const [aiProviderStatus, setAiProviderStatus] = useState<AiProviderStatus | null>(null)
   const [aiProviderDraft, setAiProviderDraft] = useState({
     tinyfishApiKey: '',
+    braveApiKey: '',
+    clearBraveApiKey: false,
     webSearchEnabled: true
   })
   const [memoryDraft, setMemoryDraft] = useState({
@@ -157,11 +159,13 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     try {
       const status = await window.api.aiProvider.updateSettings({
         tinyfishApiKey: aiProviderDraft.tinyfishApiKey.trim() || undefined,
+        braveApiKey: aiProviderDraft.braveApiKey.trim() || undefined,
+        clearBraveApiKey: aiProviderDraft.clearBraveApiKey || undefined,
         webSearchEnabled: aiProviderDraft.webSearchEnabled
       })
       setAiProviderStatus(status)
       setProviderSaved(true)
-      setAiProviderDraft((draft) => ({ ...draft, tinyfishApiKey: '' }))
+      setAiProviderDraft((draft) => ({ ...draft, tinyfishApiKey: '', braveApiKey: '', clearBraveApiKey: false }))
       const models = await window.api.ai.listModels()
       const modelNames = filterSubscriptionModels(models.map((m) => m.name))
       setAvailableModels(modelNames)
@@ -218,6 +222,12 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                   <label htmlFor="tinyfish-api-key" className="mb-2 block text-sm">TinyFish Search API Key {aiProviderStatus?.hasTinyfishApiKey ? '(saved)' : ''}</label>
                   <Input id="tinyfish-api-key" type="password" autoComplete="off" value={aiProviderDraft.tinyfishApiKey} onChange={e => { setAiProviderDraft(d => ({...d, tinyfishApiKey: e.target.value})); setProviderSaved(false) }} placeholder={aiProviderStatus?.hasTinyfishApiKey ? '비워 두면 저장된 키를 유지합니다' : '웹 검색용 API 키'} />
                 </div>
+                <div>
+                  <label htmlFor="brave-api-key" className="mb-2 block text-sm">Brave Search API Key (그림 검색) {aiProviderStatus?.hasBraveApiKey ? (aiProviderStatus.braveApiKeySource === 'env' ? '(env)' : '(saved)') : ''}</label>
+                  <Input id="brave-api-key" type="password" autoComplete="off" value={aiProviderDraft.braveApiKey} onChange={e => { setAiProviderDraft(d => ({...d, braveApiKey: e.target.value, clearBraveApiKey: false})); setProviderSaved(false) }} placeholder={aiProviderStatus?.hasBraveApiKey ? '비워 두면 저장된 키를 유지합니다' : '코치 카드 그림 검색용 API 키'} />
+                  <FieldDescription>독서 코치 카드의 그림을 Brave 이미지 검색으로 찾습니다. 키가 없으면 TinyFish로 Wikipedia 그림만 찾습니다.</FieldDescription>
+                </div>
+                {aiProviderStatus?.braveApiKeySource === 'saved' && <Field orientation="horizontal"><input id="clear-brave-key" type="checkbox" checked={aiProviderDraft.clearBraveApiKey} onChange={e => { setAiProviderDraft(d => ({...d, clearBraveApiKey: e.target.checked})); setProviderSaved(false) }} /><FieldLabel htmlFor="clear-brave-key">저장된 Brave 키 지우기</FieldLabel></Field>}
                 <div className="flex items-center gap-3"><Button onClick={saveAiProviderSettings} disabled={providerSaving}>{providerSaving ? '저장 중…' : '검색 설정 저장'}</Button>{providerSaved && <Badge variant="primary-light"><Check />저장됨</Badge>}</div>
                 {providerError && <p role="alert" className="text-sm text-destructive">{providerError}</p>}
               </FieldGroup>
@@ -248,7 +258,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                 <Field><FieldLabel htmlFor="coach-model">코치 모델</FieldLabel><select id="coach-model" value={coachSettings.coachModel} onChange={e => updateCoach({ coachModel: e.target.value })}><option value="auto">자동 (Claude는 Sonnet, Codex는 GPT-6.2 Sol)</option>{availableModels.map(m => <option key={m} value={m}>{modelLabel(m)}</option>)}</select><FieldDescription>장마다 한 번, 백그라운드에서 카드 묶음을 만들 때 씁니다.</FieldDescription></Field>
                 <Field orientation="horizontal" className="settings-row"><FieldLabel htmlFor="coach-limit">하루 장 준비 한도</FieldLabel><Input id="coach-limit" type="number" min={0} max={200} value={coachSettings.dailyLimit} onChange={e => updateCoach({ dailyLimit: Number(e.target.value) })} className="w-24" /></Field>
                 <Field orientation="horizontal" className="settings-row"><FieldLabel htmlFor="coach-quota">구독 사용률이 이 값(%)을 넘으면 멈춤</FieldLabel><Input id="coach-quota" type="number" min={10} max={100} value={coachSettings.quotaPausePercent} onChange={e => updateCoach({ quotaPausePercent: Number(e.target.value) })} className="w-24" /></Field>
-                <FieldDescription>그림은 웹 검색 설정의 TinyFish 키로 Wikipedia 문서를 찾아 가져옵니다. 외부로는 검색어만 나갑니다.</FieldDescription>
+                <FieldDescription>그림은 웹 검색 설정의 Brave Search 키로 찾고, 없으면 TinyFish로 Wikipedia에서 찾습니다. 카드의 &quot;그림 바꾸기&quot;로 후보 중에서 고를 수 있습니다. 외부로는 검색어만 나갑니다.</FieldDescription>
                 {coachUsage && <p role="status" className="text-xs text-muted-foreground">오늘 코치 호출 {coachUsage.calls}회 · 캐시에서 해결 {coachUsage.cacheHits}회{coachUsage.failures ? ` · 실패 ${coachUsage.failures}회` : ''}</p>}
               </FieldGroup>
             </FramePanel></Frame>
