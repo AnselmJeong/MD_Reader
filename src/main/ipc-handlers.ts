@@ -6,11 +6,11 @@ import path from 'node:path'
 import { listCommentary, saveCommentary, setCommentaryDeleted, importCommentaryImage, importCommentaryImageData, importCommentaryHtml, commentaryDeletionPlan, permanentlyDeleteCommentary } from './commentary-service'
 import { exportCommentaryEpub, commentaryExportPath } from './commentary-epub'
 import {
-  getCoachImage, searchCoachImages, saveCoachImage, getCoachPreferences, getCoachProfile, getCoachSettings, getCoachUsage, recordCoachEvent,
+  getCoachImage, createCoachSelectionCard, getCoachUserDeck, searchCoachImages, saveCoachImage, getCoachPreferences, getCoachProfile, getCoachSettings, getCoachUsage, recordCoachEvent,
   requestCoachDeck, resetCoachProfile, setCoachChatBusyProbe, setCoachPreferences, setCoachSettings,
   addCoachReviews, answerCoachReview, getCoachLinks, getCoachMemoryLinks, getDueCoachReviews, getOpenedCards
 } from './coach-service'
-import type { CoachDeckRequest, CoachEvent, CoachImageCandidate, CoachLinksRequest, CoachPreferences, CoachReviewRequest, CoachSettings } from '../shared/coach'
+import type { CoachDeckRequest, CoachEvent, CoachImageCandidate, CoachSelectionCardRequest, CoachLinksRequest, CoachPreferences, CoachReviewRequest, CoachSettings } from '../shared/coach'
 import type { SaveCommentary } from '../shared/commentary'
 import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent, setDocumentBibliography } from './file-service'
 import { listModels, generateChatTitle } from './ai-service'
@@ -109,6 +109,8 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('coach:profile:reset', () => resetCoachProfile())
   ipcMain.handle('coach:usage', () => getCoachUsage())
   ipcMain.handle('coach:image', (_event, card: { title: string; imageQuery?: string }) => getCoachImage(card))
+  ipcMain.handle('coach:selection-card', (_event, request: CoachSelectionCardRequest) => createCoachSelectionCard(request))
+  ipcMain.handle('coach:user-deck', (_event, documentId: string, chapterHref: string) => getCoachUserDeck(documentId, chapterHref))
   ipcMain.handle('coach:image:search', (_event, query: string) => searchCoachImages(query))
   ipcMain.handle('coach:image:save', (_event, card: { title: string; imageQuery?: string }, candidate: CoachImageCandidate) => saveCoachImage(card, candidate))
   ipcMain.handle('coach:links', (_event, request: CoachLinksRequest) => getCoachLinks(request))

@@ -14,7 +14,7 @@ import { getAgentMemorySettings } from './agent-memory-settings'
 import { COACH_PROFILE_SECTION, replaceUserSection } from './agent-memory-files'
 import { checkHindsightHealth, recallHindsight, retainHindsightMemory } from './hindsight-client'
 import {
-  applyCoachEvent, buildCoachDeckPrompt, coachImageKey, coachDeckCacheInput, coachHash, coachTermKey, EMPTY_COACH_PROFILE, nextReviewInterval, parseCoachDeck, sanitizePreferences,
+  applyCoachEvent, buildCoachDeckPrompt, buildSelectionCardPrompt, COACH_USER_PART, coachImageKey, parseSelectionCard, type CoachCard, type CoachSelectionCardRequest, coachDeckCacheInput, coachHash, coachTermKey, EMPTY_COACH_PROFILE, nextReviewInterval, parseCoachDeck, sanitizePreferences,
   summarizeCoachProfile, type CoachChapterLinks, type CoachLinksRequest, type CoachMemoryLinks, type CoachPersonalLink, type CoachReviewItem, type CoachReviewRequest,
   type CoachDeck, type CoachDeckRequest, type CoachDeckUpdate, type CoachEvent, type CoachImage, type CoachImageCandidate, type CoachImageSearchResult, type CoachPreferences, type CoachProfile, type CoachSettings
 } from '../shared/coach'
@@ -173,6 +173,53 @@ async function runJob({ key, request, preferences }: Job) {
     countUsage('failures')
     broadcast({ ...base, status: 'error', error: error instanceof Error ? error.message : '코치 카드를 만들지 못했습니다.' })
   }
+}
+
+// ─── Cards the reader asks for ───
+
+const userDeckKey = (documentId: string, chapterHref: string) =>
+  createHash('sha256').update(JSON.stringify(['user-cards', documentId, chapterHref.split('#')[0]])).digest('hex')
+
+export function getCoachUserDeck(documentId: string, chapterHref: string): CoachDeck | null {
+  validateDocumentId(documentId)
+  if (typeof chapterHref !== 'string' || !chapterHref || chapterHref.length > 4096) return null
+  return readDeck(userDeckKey(documentId, chapterHref))
+}
+
+/** The reader asked for this card, so it skips the daily limit and quota pause (it still counts as a call). */
+export async function createCoachSelectionCard(request: CoachSelectionCardRequest): Promise<{ deck: CoachDeck; card: CoachCard }> {
+  validateDocumentId(request?.documentId)
+  if (typeof request.chapterHref !== 'string' || !request.chapterHref || request.chapterHref.length > 4096
+    || typeof request.selectedText !== 'string' || typeof request.chatModel !== 'string') throw new Error('코치 요청이 올바르지 않습니다.')
+  const selectedText = request.selectedText.replace(/\s+/g, ' ').trim()
+  if (selectedText.length < 2) throw new Error('카드를 만들 글을 선택해 주세요.')
+  if (selectedText.length > 1200) throw new Error('선택한 글이 너무 깁니다. 단어나 구절, 한두 문장 정도로 골라 주세요.')
+  const chapterHref = request.chapterHref.split('#')[0]
+  const model = await resolveCoachModel(request.chatModel)
+  const prompt = buildSelectionCardPrompt({
+    bookTitle: String(request.bookTitle ?? '').slice(0, 300), chapterTitle: String(request.chapterTitle ?? '').slice(0, 300),
+    selectedText, paragraph: String(request.paragraph ?? '').replace(/\s+/g, ' ').trim().slice(0, 3000),
+    request: readPreferences(request.documentId)?.request
+  })
+  countUsage('calls')
+  let card: CoachCard
+  try {
+    const raw = await chatCompletionsText({ model, responseFormat: { type: 'json_object' }, messages: [
+      { role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }
+    ] })
+    card = parseSelectionCard(JSON.parse(raw), selectedText)
+  } catch (error) {
+    countUsage('failures')
+    throw error instanceof SyntaxError ? new Error('코치 응답을 읽지 못했습니다. 다시 시도해 보세요.') : error
+  }
+  const key = userDeckKey(request.documentId, chapterHref)
+  const existing = readDeck(key)
+  const deck: CoachDeck = existing
+    ? { ...existing, cards: [...existing.cards.filter(item => item.id !== card.id && item.quote !== card.quote), card].slice(-100), model, createdAt: Date.now() }
+    : { key, documentId: request.documentId, chapterHref, part: COACH_USER_PART, domain: [], brief: '', sections: [], recap: [], questions: [], cards: [card], dropped: 0, model, createdAt: Date.now() }
+  writeDeck(deck)
+  writeKv(`book:${request.documentId}`, String(request.bookTitle ?? '').slice(0, 300))
+  return { deck, card }
 }
 
 // ─── Pictures ───

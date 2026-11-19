@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   applyCoachEvent, baseCardScore, buildCoachDeckPrompt, coachDeckCacheInput, DEFAULT_COACH_PREFERENCES, EMPTY_COACH_PROFILE,
   estimatedLevels, parseCoachDeck, partForVisibleText, profileMismatch, sanitizePreferences, selectCoachCards, showsBriefing,
-  splitChapterText, coachTermKey, nextReviewInterval, summarizeCoachProfile
+  splitChapterText, coachTermKey, nextReviewInterval, summarizeCoachProfile, buildSelectionCardPrompt, parseSelectionCard, isUserDeck, COACH_USER_PART
 } from '../src/shared/coach.ts'
 import { findWikipediaImage, searchBraveImages, wikipediaArticle, wikipediaTitleMatches } from '../src/main/coach-image-service.ts'
 import { searchTinyFishWeb } from '../src/main/tinyfish-web-search-service.ts'
@@ -195,6 +195,21 @@ test('Brave image search: ranks by confidence, keeps https thumbnails, sends the
   assert.deepEqual(await searchBraveImages('Karl Jaspers', '', { fetchImpl }), [])
   const failing = async () => new Response('quota', { status: 429 })
   await assert.rejects(searchBraveImages('x', 'k', { fetchImpl: failing }), /429/)
+})
+
+test('selection cards: prompt asks for broad knowledge, parser keeps the selection as the quote', () => {
+  const prompt = buildSelectionCardPrompt({ bookTitle: 'B', chapterTitle: 'C', selectedText: 'Axial Age', paragraph: 'The Axial Age was named by Karl Jaspers.' })
+  assert.match(prompt.system, /broad knowledge/)
+  assert.match(prompt.system, /Never paraphrase/)
+  assert.match(prompt.user, /<selected_text>\nAxial Age\n<\/selected_text>/)
+  const card = parseSelectionCard({ kind: 'nonsense', difficulty: 9, title: '축의 시대', gloss: '야스퍼스가 제안한 개념.', image_query: 'Axial Age' }, '  Axial   Age ')
+  assert.equal(card.quote, 'Axial Age')
+  assert.equal(card.kind, 'term')
+  assert.equal(card.difficulty, 5)
+  assert.equal(card.imageQuery, 'Axial Age')
+  assert.throws(() => parseSelectionCard({ title: '', gloss: 'x' }, 'Axial Age'))
+  assert.equal(isUserDeck({ part: COACH_USER_PART }), true)
+  assert.equal(isUserDeck({ part: 0 }), false)
 })
 
 test('phase 5: term keys match across books, review intervals expand, profile summary', () => {

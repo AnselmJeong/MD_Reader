@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Contents } from 'epubjs'
 import {
-  normalizeCoachText, partForVisibleText, selectCoachCards, splitChapterText,
+  COACH_USER_PART, isUserDeck, normalizeCoachText, partForVisibleText, selectCoachCards, splitChapterText,
   type CoachCard, type CoachDeck
 } from '../../../../../shared/coach'
 import { deckSlot, linksKey, useCoachStore } from '../../../store/useCoachStore'
 import { useChatStore } from '../../../store/useChatStore'
 import { recordCardEvent } from '../utils/coachActions'
-import { attachCoachHover, coachQuoteBlock, setCoachMarks } from '../utils/epubCoachMarks'
+import { attachCoachHover, coachMarkColor, coachQuoteBlock, setCoachMarks } from '../utils/epubCoachMarks'
 import { sourceAnchor } from '../utils/epubCommentaryAnchors'
 
 const DWELL_MS = 20000
@@ -43,6 +43,16 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
     if (update.documentId === useCoachStore.getState().documentId) useCoachStore.getState().applyDeckUpdate(update)
   }), [])
   useEffect(() => { useCoachStore.getState().setChapter(chapter, chapterLabel, bookTitle) }, [bookTitle, chapter, chapterLabel])
+
+  // Cards the reader made from a selection are stored per chapter and always loaded.
+  useEffect(() => {
+    if (!chapter) return
+    let active = true
+    window.api.coach.getUserDeck(documentId, chapter).then(deck => {
+      if (active && deck) useCoachStore.getState().applyDeckUpdate({ documentId, chapterHref: deck.chapterHref, part: COACH_USER_PART, status: 'ready', deck })
+    }).catch(error => console.error('[Coach] Failed to load my cards:', error))
+    return () => { active = false }
+  }, [chapter, documentId])
 
   const currentSection = sections.find(section => section.chapterHref === chapter && section.contents.window?.frameElement?.isConnected)
   const parts = useMemo(() => splitChapterText(chapterText(currentSection)), [currentSection])
@@ -116,13 +126,15 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
 
   const cardIndex = useRef(new Map<string, { card: CoachCard; deck: CoachDeck }>())
   useEffect(() => {
-    const accent = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || (theme === 'dark' ? '#e0a07e' : '#914c35')
+    const accent = coachMarkColor(theme)
     const day = new Date().toDateString()
     cardIndex.current = new Map()
     for (const section of sections) {
       if (!section.contents.document?.body) continue
+      const hidden = new Set([...suppressed, ...knownElsewhere])
       const entries = (decksByChapter.get(section.chapterHref) ?? []).flatMap(deck =>
-        selectCoachCards(deck, preferences, profile, { suppressed: new Set([...suppressed, ...knownElsewhere]), day }).map(({ card }) => {
+        // Cards the reader asked for are always marked, whatever the coach's filter says.
+        (isUserDeck(deck) ? deck.cards.filter(card => !suppressed.has(card.id)) : selectCoachCards(deck, preferences, profile, { suppressed: hidden, day }).map(item => item.card)).map(card => {
           cardIndex.current.set(card.id, { card, deck })
           return { cardId: card.id, quote: card.quote }
         }))
@@ -174,6 +186,37 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
   }, [hide, hovered])
   useEffect(() => () => { cancelHide(); if (openTimer.current != null) window.clearTimeout(openTimer.current) }, [cancelHide])
 
+  /** "코치 카드" in the selection menu: ask the coach for a card about the selected text. */
+  const [pendingCard, setPendingCard] = useState<{ rect: DOMRect; text: string; error?: string } | null>(null)
+  const pendingRun = useRef(0)
+  const createCardFromSelection = useCallback(async (contents: Contents, selectedText: string, rect: DOMRect) => {
+    const section = sections.find(item => item.contents === contents) ?? currentSection
+    const chapterHrefForCard = section?.chapterHref ?? chapter
+    if (!chapterHrefForCard) return
+    const run = ++pendingRun.current
+    hide()
+    setPendingCard({ rect, text: selectedText })
+    try {
+      const block = contents.document ? coachQuoteBlock(contents.document, selectedText) : null
+      const { deck, card } = await window.api.coach.createSelectionCard({
+        documentId, chapterHref: chapterHrefForCard, bookTitle, chapterTitle: chapterLabel ?? '', selectedText,
+        paragraph: normalizeCoachText(block?.textContent ?? '').slice(0, 3000), chatModel: useChatStore.getState().selectedModel || 'codex:default'
+      })
+      useCoachStore.getState().applyDeckUpdate({ documentId, chapterHref: deck.chapterHref, part: COACH_USER_PART, status: 'ready', deck })
+      if (run !== pendingRun.current) return
+      setPendingCard(null)
+      cardIndex.current.set(card.id, { card, deck })
+      cancelHide()
+      setHovered({ card, deck, rect })
+      opened.current.add(card.id)
+      void recordCardEvent('open', card, deck)
+    } catch (error) {
+      if (run === pendingRun.current) setPendingCard({ rect, text: selectedText, error: error instanceof Error ? error.message : String(error) })
+    }
+  }, [bookTitle, cancelHide, chapter, chapterLabel, currentSection, documentId, hide, sections])
+  const closePending = useCallback(() => { pendingRun.current += 1; setPendingCard(null) }, [])
+  useEffect(() => { if (pendingCard?.error) closePending() }, [currentLocation]) // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Asking the AI about a passage that has no card means the coach missed something. */
   const recordMiss = useCallback((selectedText: string) => {
     if (!preferences?.enabled || !chapter) return
@@ -185,7 +228,7 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
   }, [chapter, decksByChapter, documentId, preferences?.enabled])
 
   return {
-    hovered, cardRef, recordMiss,
+    hovered, cardRef, recordMiss, createCardFromSelection, pendingCard, closePending,
     hoverHandlers: { onPointerEnter: cancelHide, onPointerLeave: scheduleHide, onClose: () => { if (hovered) void recordCardEvent('dismiss', hovered.card, hovered.deck); hide() } }
   }
 }

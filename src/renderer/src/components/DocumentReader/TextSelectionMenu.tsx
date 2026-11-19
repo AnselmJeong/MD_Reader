@@ -25,9 +25,11 @@ interface TextSelectionMenuProps {
   onAnnotate?: () => void
   /** Called when the selection is sent to the AI (the coach records a "missed" passage). */
   onAsk?: () => void
+  /** Ask the reading coach for a card about the selection. */
+  onCoachCard?: () => void
 }
 
-export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose, onAnnotate, onAsk }: TextSelectionMenuProps) {
+export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose, onAnnotate, onAsk, onCoachCard }: TextSelectionMenuProps) {
   const [showHighlightChoices, setShowHighlightChoices] = useState(false)
   const {
     sendMessage,
@@ -122,6 +124,12 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose, on
         Ask AI
       </button>
       <div className="mx-1 h-4 w-px bg-white/10" />
+      {onCoachCard && (
+        <button onClick={() => { onCoachCard(); closeMenu() }} className={itemClass} title="이 글에 대한 코치 카드를 만들어 본문에 붙입니다">
+          <svg className={iconClass} viewBox="0 0 16 16" aria-hidden="true"><path className="icon-stroke" d="M2.5 4.5h11v8h-11zM5 2.5h6M5 7.5h6M5 10h3.5" /></svg>
+          코치 카드
+        </button>
+      )}
       {onAnnotate && <button onClick={onAnnotate} className={itemClass}>＋ 주석</button>}
       <button
         onClick={handleSummarize}

@@ -18,7 +18,7 @@ import { EpubTableViewer } from './EpubTableViewer'
 import { EpubImageViewer } from './EpubImageViewer'
 import type { CommentaryAnchor } from '../../../../shared/commentary'
 import { CoachIntakeDialog } from './CoachIntakeDialog'
-import { CoachHoverCard } from './CoachCard'
+import { CoachHoverCard, CoachPendingCard } from './CoachCard'
 import { CoachRail } from './CoachRail'
 import { useEpubCoach } from './hooks/useEpubCoach'
 import { useCoachStore } from '../../store/useCoachStore'
@@ -1489,10 +1489,12 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
           onClose={clearSelection}
           onAnnotate={() => { useCommentaryStore.getState().open(tab.documentHash); clearSelection() }}
           onAsk={() => coach.recordMiss(selection.text)}
+          onCoachCard={() => { void coach.createCardFromSelection(selection.contents, selection.text, selection.rect) }}
         />
       )}
       <CoachIntakeDialog />
       <CoachRail visibleText={tab.content} atChapterEnd={atChapterEnd} />
+      {coach.pendingCard && !coach.hovered && <CoachPendingCard {...coach.pendingCard} onClose={coach.closePending} />}
       {coach.hovered && !hoveredLink && (
         <CoachHoverCard key={coach.hovered.card.id} card={coach.hovered.card} deck={coach.hovered.deck} rect={coach.hovered.rect}
           cardRef={coach.cardRef} {...coach.hoverHandlers} />
