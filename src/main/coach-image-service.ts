@@ -1,8 +1,7 @@
 // Finds pictures for coach cards without Electron APIs, so it can be tested with
-// an injected fetch. Brave Image Search is the main source (several candidates
-// the reader can choose from). Without a Brave key, TinyFish finds the right
-// Wikipedia article (restricted to wikipedia.org) and the picture comes from
-// Wikipedia's public page summary API.
+// an injected fetch. Wikipedia comes first: TinyFish finds the right article
+// (restricted to wikipedia.org) and the picture comes from Wikipedia's public
+// page summary API. Brave Image Search is the fallback and fills the picker.
 // Only the card's search phrase leaves the device: never book text or user data.
 // No runtime imports here: the module runs directly under `node --test`.
 import type { ChatSource } from './ai-chat-types'

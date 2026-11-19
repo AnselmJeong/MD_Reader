@@ -201,11 +201,19 @@ function readyImage(png: Buffer, info: { pageTitle?: string | null; pageUrl?: st
   return { status: 'ready', dataUrl: `data:image/png;base64,${png.toString('base64')}`, pageTitle: info.pageTitle ?? undefined, pageUrl: info.pageUrl ?? undefined, source: info.source ?? undefined }
 }
 
-/** Brave first (when a key is set), then Wikipedia through TinyFish. Throws only when every configured source failed. */
+/** Wikipedia (through TinyFish) first; Brave only when Wikipedia has no picture. Throws only when every configured source failed. */
 async function lookupImage(card: { title: string; imageQuery: string }): Promise<CoachImageLookup | null> {
   const config = getAiProviderConfig()
   const errors: unknown[] = []
   let attempted = 0
+  if (config.tinyfishApiKey && config.webSearchEnabled) {
+    attempted += 1
+    try {
+      const found = await findWikipediaImage(card, (query, signal) =>
+        searchTinyFishWeb(query, config.tinyfishApiKey, { signal, maxResults: 5, includeDomains: ['wikipedia.org'] }))
+      if (found) return found
+    } catch (error) { errors.push(error); console.error('[Coach] Wikipedia image lookup failed:', error) }
+  }
   if (config.braveApiKey) {
     attempted += 1
     try {
@@ -214,14 +222,6 @@ async function lookupImage(card: { title: string; imageQuery: string }): Promise
         if (image) return { ...image, pageTitle: result.title, pageUrl: result.pageUrl, source: `Brave · ${result.source}` }
       }
     } catch (error) { errors.push(error); console.error('[Coach] Brave image search failed:', error) }
-  }
-  if (config.tinyfishApiKey && config.webSearchEnabled) {
-    attempted += 1
-    try {
-      const found = await findWikipediaImage(card, (query, signal) =>
-        searchTinyFishWeb(query, config.tinyfishApiKey, { signal, maxResults: 5, includeDomains: ['wikipedia.org'] }))
-      if (found) return found
-    } catch (error) { errors.push(error); console.error('[Coach] Wikipedia image lookup failed:', error) }
   }
   if (errors.length && errors.length === attempted) throw errors[0]
   return null
@@ -251,32 +251,32 @@ export async function getCoachImage(input: { title: string; imageQuery?: string 
   return readyImage(png, found)
 }
 
-/** Image picker: up to three candidates for a search phrase the reader can edit. */
+/** Image picker: up to three candidates, Wikipedia's picture first, then Brave results to fill the rest. */
 export async function searchCoachImages(rawQuery: string): Promise<CoachImageSearchResult> {
   const query = typeof rawQuery === 'string' ? rawQuery.replace(/\s+/g, ' ').trim().slice(0, 160) : ''
   if (!query) return { candidates: [] }
   const config = getAiProviderConfig()
   const candidates: CoachImageCandidate[] = []
   let warning: string | undefined
-  if (config.braveApiKey) {
-    try {
-      for (const result of await searchBraveImages(query, config.braveApiKey, { count: 8 })) {
-        const image = await fetchImageBytes(result.thumbnailUrl).catch(() => null)
-        const png = image ? toPng(image.bytes) : null
-        if (!png) continue
-        candidates.push({ title: result.title, dataUrl: `data:image/png;base64,${png.toString('base64')}`, pageUrl: result.pageUrl, source: `Brave · ${result.source}` })
-        if (candidates.length >= 3) break
-      }
-    } catch (error) { warning = error instanceof Error ? error.message : String(error) }
-  } else warning = 'Brave Search API 키가 없어 Wikipedia에서만 찾습니다. Settings > 웹 검색에서 키를 넣으면 후보가 늘어납니다.'
-  if (!candidates.length && config.tinyfishApiKey && config.webSearchEnabled) {
+  if (config.tinyfishApiKey && config.webSearchEnabled) {
     const found = await findWikipediaImage({ title: query, imageQuery: query }, (q, signal) =>
       searchTinyFishWeb(q, config.tinyfishApiKey, { signal, maxResults: 5, includeDomains: ['wikipedia.org'] })).catch(() => null)
     const png = found ? toPng(found.bytes) : null
     if (found && png) candidates.push({ title: found.pageTitle, dataUrl: `data:image/png;base64,${png.toString('base64')}`, pageUrl: found.pageUrl, source: found.source })
   }
-  if (!candidates.length && !config.braveApiKey && !(config.tinyfishApiKey && config.webSearchEnabled)) warning = 'Settings > 웹 검색에서 Brave Search API 키를 넣으면 그림을 찾을 수 있습니다.'
-  return { candidates, ...(candidates.length ? {} : { warning: warning ?? '맞는 그림을 찾지 못했습니다.' }) }
+  if (config.braveApiKey) {
+    try {
+      for (const result of await searchBraveImages(query, config.braveApiKey, { count: 8 })) {
+        if (candidates.length >= 3) break
+        const image = await fetchImageBytes(result.thumbnailUrl).catch(() => null)
+        const png = image ? toPng(image.bytes) : null
+        if (!png) continue
+        candidates.push({ title: result.title, dataUrl: `data:image/png;base64,${png.toString('base64')}`, pageUrl: result.pageUrl, source: `Brave · ${result.source}` })
+      }
+    } catch (error) { warning = error instanceof Error ? error.message : String(error) }
+  } else warning = 'Brave Search API 키를 Settings > 웹 검색에 넣으면 Wikipedia 밖의 그림도 후보로 나옵니다.'
+  if (!candidates.length && !config.braveApiKey && !(config.tinyfishApiKey && config.webSearchEnabled)) warning = 'Settings > 웹 검색에서 TinyFish 또는 Brave Search API 키를 넣으면 그림을 찾을 수 있습니다.'
+  return { candidates, ...(warning ? { warning } : {}) }
 }
 
 /** Keep the picture the reader chose for this card (replaces the automatic one). */
