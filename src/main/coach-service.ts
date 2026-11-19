@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { chatCompletionsText, getSubscriptionStatus } from './subscription-client'
 import { codexClient } from './codex/client'
 import { getAiProviderConfig } from './ai-provider-settings'
-import { findWikipediaImage } from './coach-image-service'
+import { fetchImageBytes, findWikipediaImage, searchBraveImages, type CoachImageLookup } from './coach-image-service'
 import { searchTinyFishWeb } from './tinyfish-web-search-service'
 import {
   appendEvent, countUsage, insertReviews, readDeck, readDueReviews, readEncounters, readImage, readKv, readLastPreferences, readOpenedCardIds, readPreferences,
@@ -15,9 +15,9 @@ import { getAgentMemorySettings } from './agent-memory-settings'
 import { COACH_PROFILE_SECTION, replaceUserSection } from './agent-memory-files'
 import { checkHindsightHealth, recallHindsight, retainHindsightMemory } from './hindsight-client'
 import {
-  applyCoachEvent, buildCoachDeckPrompt, coachDeckCacheInput, coachHash, coachTermKey, EMPTY_COACH_PROFILE, nextReviewInterval, parseCoachDeck, sanitizePreferences,
+  applyCoachEvent, buildCoachDeckPrompt, coachImageKey, coachDeckCacheInput, coachHash, coachTermKey, EMPTY_COACH_PROFILE, nextReviewInterval, parseCoachDeck, sanitizePreferences,
   summarizeCoachProfile, type CoachChapterLinks, type CoachLinksRequest, type CoachMemoryLinks, type CoachPersonalLink, type CoachReviewItem, type CoachReviewRequest,
-  type CoachDeck, type CoachDeckRequest, type CoachDeckUpdate, type CoachEvent, type CoachImage, type CoachPreferences, type CoachProfile, type CoachSettings
+  type CoachDeck, type CoachDeckRequest, type CoachDeckUpdate, type CoachEvent, type CoachImage, type CoachImageCandidate, type CoachImageSearchResult, type CoachPreferences, type CoachProfile, type CoachSettings
 } from '../shared/coach'
 import { validateDocumentId } from './commentary-service'
 
@@ -178,30 +178,120 @@ async function runJob({ key, request, preferences }: Job) {
 
 // ─── Pictures ───
 
-const NONE_TTL = 30 * 86400000
-export async function getCoachImage(card: { title: string; imageQuery: string }): Promise<CoachImage> {
+// Misses are retried after a day (they used to stick for 30 days, which hid the
+// thumb.wikimedia.org bug). Keys carry a version so those old misses are ignored.
+const NONE_TTL = 86400000
+const IMAGE_KEY_VERSION = 'v2:'
+const MAX_IMAGE_WIDTH = 640
+
+function cleanCard(card: { title?: unknown; imageQuery?: unknown }) {
   const imageQuery = typeof card?.imageQuery === 'string' ? card.imageQuery.replace(/\s+/g, ' ').trim().slice(0, 160) : ''
-  const title = typeof card?.title === 'string' ? card.title.slice(0, 120) : ''
-  if (!imageQuery) return { status: 'none' }
-  const queryKey = imageQuery.toLowerCase()
-  const cached = readImage(queryKey)
-  if (cached?.status === 'ready' && cached.png) return { status: 'ready', dataUrl: `data:image/png;base64,${cached.png.toString('base64')}`, pageTitle: cached.pageTitle ?? undefined, pageUrl: cached.pageUrl ?? undefined }
-  if (cached?.status === 'none' && Date.now() - cached.createdAt < NONE_TTL) return { status: 'none' }
+  const title = typeof card?.title === 'string' ? card.title.replace(/\s+/g, ' ').trim().slice(0, 120) : ''
+  return { title, imageQuery }
+}
+
+function toPng(bytes: Uint8Array | Buffer): Buffer | null {
+  let image = nativeImage.createFromBuffer(Buffer.from(bytes))
+  if (image.isEmpty()) return null
+  if (image.getSize().width > MAX_IMAGE_WIDTH) image = image.resize({ width: MAX_IMAGE_WIDTH, quality: 'good' })
+  return image.toPNG()
+}
+
+function readyImage(png: Buffer, info: { pageTitle?: string | null; pageUrl?: string | null; source?: string | null }): CoachImage {
+  return { status: 'ready', dataUrl: `data:image/png;base64,${png.toString('base64')}`, pageTitle: info.pageTitle ?? undefined, pageUrl: info.pageUrl ?? undefined, source: info.source ?? undefined }
+}
+
+/** Brave first (when a key is set), then Wikipedia through TinyFish. Throws only when every configured source failed. */
+async function lookupImage(card: { title: string; imageQuery: string }): Promise<CoachImageLookup | null> {
   const config = getAiProviderConfig()
-  if (!config.tinyfishApiKey || !config.webSearchEnabled) return { status: 'unavailable' }
-  let found
-  try {
-    found = await findWikipediaImage({ title, imageQuery }, (query, signal) =>
-      searchTinyFishWeb(query, config.tinyfishApiKey, { signal, maxResults: 5, includeDomains: ['wikipedia.org'] }))
+  const errors: unknown[] = []
+  let attempted = 0
+  if (config.braveApiKey) {
+    attempted += 1
+    try {
+      for (const result of (await searchBraveImages(card.imageQuery, config.braveApiKey, { count: 4 })).slice(0, 4)) {
+        const image = await fetchImageBytes(result.thumbnailUrl).catch(() => null)
+        if (image) return { ...image, pageTitle: result.title, pageUrl: result.pageUrl, source: `Brave · ${result.source}` }
+      }
+    } catch (error) { errors.push(error); console.error('[Coach] Brave image search failed:', error) }
   }
-  catch (error) { console.error('[Coach] Image lookup failed:', error); return { status: 'none' } }
-  if (!found) { writeImage(queryKey, { status: 'none', png: null, pageTitle: null, pageUrl: null, createdAt: Date.now() }); return { status: 'none' } }
-  let image = nativeImage.createFromBuffer(Buffer.from(found.bytes))
-  if (image.isEmpty()) return { status: 'none' }
-  if (image.getSize().width > 480) image = image.resize({ width: 480, quality: 'good' })
-  const png = image.toPNG()
-  writeImage(queryKey, { status: 'ready', png, pageTitle: found.pageTitle, pageUrl: found.pageUrl, createdAt: Date.now() })
-  return { status: 'ready', dataUrl: `data:image/png;base64,${png.toString('base64')}`, pageTitle: found.pageTitle, pageUrl: found.pageUrl }
+  if (config.tinyfishApiKey && config.webSearchEnabled) {
+    attempted += 1
+    try {
+      const found = await findWikipediaImage(card, (query, signal) =>
+        searchTinyFishWeb(query, config.tinyfishApiKey, { signal, maxResults: 5, includeDomains: ['wikipedia.org'] }))
+      if (found) return found
+    } catch (error) { errors.push(error); console.error('[Coach] Wikipedia image lookup failed:', error) }
+  }
+  if (errors.length && errors.length === attempted) throw errors[0]
+  return null
+}
+
+function imageSourcesAvailable() {
+  const config = getAiProviderConfig()
+  return Boolean(config.braveApiKey || (config.tinyfishApiKey && config.webSearchEnabled))
+}
+
+export async function getCoachImage(input: { title: string; imageQuery?: string }): Promise<CoachImage> {
+  const card = cleanCard(input)
+  if (!card.imageQuery && !card.title) return { status: 'none' }
+  const queryKey = IMAGE_KEY_VERSION + coachImageKey(card)
+  const cached = readImage(queryKey)
+  if (cached?.status === 'ready' && cached.png) return readyImage(cached.png, cached)
+  // Cards without a search phrase only show a picture the reader chose.
+  if (!card.imageQuery) return { status: 'none' }
+  if (cached?.status === 'none' && Date.now() - cached.createdAt < NONE_TTL) return { status: 'none' }
+  if (!imageSourcesAvailable()) return { status: 'unavailable' }
+  let found: CoachImageLookup | null
+  try { found = await lookupImage(card) }
+  catch { return { status: 'none' } } // network or quota trouble: do not remember a miss
+  const png = found ? toPng(found.bytes) : null
+  if (!found || !png) { writeImage(queryKey, { status: 'none', png: null, pageTitle: null, pageUrl: null, source: null, createdAt: Date.now() }); return { status: 'none' } }
+  writeImage(queryKey, { status: 'ready', png, pageTitle: found.pageTitle, pageUrl: found.pageUrl, source: found.source, createdAt: Date.now() })
+  return readyImage(png, found)
+}
+
+/** Image picker: up to three candidates for a search phrase the reader can edit. */
+export async function searchCoachImages(rawQuery: string): Promise<CoachImageSearchResult> {
+  const query = typeof rawQuery === 'string' ? rawQuery.replace(/\s+/g, ' ').trim().slice(0, 160) : ''
+  if (!query) return { candidates: [] }
+  const config = getAiProviderConfig()
+  const candidates: CoachImageCandidate[] = []
+  let warning: string | undefined
+  if (config.braveApiKey) {
+    try {
+      for (const result of await searchBraveImages(query, config.braveApiKey, { count: 8 })) {
+        const image = await fetchImageBytes(result.thumbnailUrl).catch(() => null)
+        const png = image ? toPng(image.bytes) : null
+        if (!png) continue
+        candidates.push({ title: result.title, dataUrl: `data:image/png;base64,${png.toString('base64')}`, pageUrl: result.pageUrl, source: `Brave · ${result.source}` })
+        if (candidates.length >= 3) break
+      }
+    } catch (error) { warning = error instanceof Error ? error.message : String(error) }
+  } else warning = 'Brave Search API 키가 없어 Wikipedia에서만 찾습니다. Settings > 웹 검색에서 키를 넣으면 후보가 늘어납니다.'
+  if (!candidates.length && config.tinyfishApiKey && config.webSearchEnabled) {
+    const found = await findWikipediaImage({ title: query, imageQuery: query }, (q, signal) =>
+      searchTinyFishWeb(q, config.tinyfishApiKey, { signal, maxResults: 5, includeDomains: ['wikipedia.org'] })).catch(() => null)
+    const png = found ? toPng(found.bytes) : null
+    if (found && png) candidates.push({ title: found.pageTitle, dataUrl: `data:image/png;base64,${png.toString('base64')}`, pageUrl: found.pageUrl, source: found.source })
+  }
+  if (!candidates.length && !config.braveApiKey && !(config.tinyfishApiKey && config.webSearchEnabled)) warning = 'Settings > 웹 검색에서 Brave Search API 키를 넣으면 그림을 찾을 수 있습니다.'
+  return { candidates, ...(candidates.length ? {} : { warning: warning ?? '맞는 그림을 찾지 못했습니다.' }) }
+}
+
+/** Keep the picture the reader chose for this card (replaces the automatic one). */
+export function saveCoachImage(input: { title: string; imageQuery?: string }, candidate: CoachImageCandidate): CoachImage {
+  const card = cleanCard(input)
+  if (!card.imageQuery && !card.title) throw new Error('카드 정보가 올바르지 않습니다.')
+  const match = typeof candidate?.dataUrl === 'string' ? /^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/=]+)$/.exec(candidate.dataUrl) : null
+  if (!match) throw new Error('그림 데이터가 올바르지 않습니다.')
+  const png = toPng(Buffer.from(match[2], 'base64'))
+  if (!png) throw new Error('그림을 읽지 못했습니다.')
+  let pageUrl: string | null = null
+  try { const url = new URL(String(candidate.pageUrl)); if (/^https?:$/.test(url.protocol)) pageUrl = url.href } catch { /* keep null */ }
+  const info = { pageTitle: String(candidate.title ?? '').slice(0, 200) || card.title, pageUrl, source: String(candidate.source ?? '').slice(0, 100) || null }
+  writeImage(IMAGE_KEY_VERSION + coachImageKey(card), { status: 'ready', png, ...info, createdAt: Date.now() })
+  return readyImage(png, info)
 }
 
 // ─── Phase 5: memory and connections ───

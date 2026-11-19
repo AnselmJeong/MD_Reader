@@ -17,7 +17,7 @@ async function insertOpenedCards(documentId: string, chapterHref: string, decks:
   let done = 0
   let missing = 0
   for (const { card, deck } of pending) {
-    try { await insertCoachCard(card, deck, card.imageQuery ? await loadCoachImage(card) : null); done += 1 }
+    try { await insertCoachCard(card, deck, await loadCoachImage(card)); done += 1 }
     catch { missing += 1 }
   }
   return `${done}장을 주석으로 저장했습니다.${missing ? ` ${missing}장은 화면에서 위치를 찾지 못해 건너뛰었습니다(해당 쪽을 연 뒤 다시 누르면 됩니다).` : ''} "주석을 포함한 EPUB 저장"으로 책에 넣을 수 있습니다.`

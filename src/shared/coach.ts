@@ -1,7 +1,7 @@
 // Reading coach: shared types and pure functions (no Node or DOM APIs), so the
 // selection and learning logic can be unit tested and used in both processes.
 
-export const COACH_PROMPT_VERSION = 'coach-deck-v1'
+export const COACH_PROMPT_VERSION = 'coach-deck-v2'
 export const COACH_PART_WORDS = 6000
 
 export type CoachPurpose = 'skim' | 'enjoy' | 'study' | 'critique' | 'research'
@@ -139,6 +139,27 @@ export interface CoachImage {
   dataUrl?: string
   pageTitle?: string
   pageUrl?: string
+  /** Caption source, e.g. "Wikipedia" or "Brave · britannica.com". */
+  source?: string
+}
+
+/** One picture the reader can choose in the image picker. */
+export interface CoachImageCandidate {
+  title: string
+  dataUrl: string
+  pageUrl: string
+  source: string
+}
+
+export interface CoachImageSearchResult {
+  candidates: CoachImageCandidate[]
+  /** Set when Brave is missing or failed and nothing was found. */
+  warning?: string
+}
+
+/** Pictures are stored per card: by its image search phrase, or by its title when it has none. */
+export function coachImageKey(card: { title: string; imageQuery?: string }): string {
+  return (card.imageQuery?.trim() || `title:${card.title.trim()}`).replace(/\s+/g, ' ').toLowerCase().slice(0, 200)
 }
 
 export interface CoachAPI {
@@ -151,7 +172,9 @@ export interface CoachAPI {
   getProfile: () => Promise<CoachProfile>
   resetProfile: () => Promise<CoachProfile>
   getUsage: () => Promise<CoachUsage>
-  getImage: (card: { title: string; imageQuery: string }) => Promise<CoachImage>
+  getImage: (card: { title: string; imageQuery?: string }) => Promise<CoachImage>
+  searchImages: (query: string) => Promise<CoachImageSearchResult>
+  saveImage: (card: { title: string; imageQuery?: string }, candidate: CoachImageCandidate) => Promise<CoachImage>
   onDeck: (callback: (update: CoachDeckUpdate) => void) => () => void
   /** Phase 5: links to other books, my notes and questions, and long-term memory. */
   getLinks: (request: CoachLinksRequest) => Promise<CoachChapterLinks>
@@ -321,7 +344,11 @@ export function buildCoachDeckPrompt(params: { bookTitle: string; chapterTitle: 
     'Return only one JSON object. Write every human-readable string (brief, summaries, recap, questions, titles, glosses) in Korean.',
     'Cover all reader levels and all card kinds at once; another program decides later what to show to whom.',
     'Every "quote" must be copied character for character from the chapter text (a short phrase of 1-8 words for cards, the heading or first words of the section for sections). Items whose quote is not in the text are discarded.',
-    'Glosses: at most two sentences, about the meaning in the context of this book. Do not invent facts or citations; if unsure, omit the card.'
+    'Glosses: two to four sentences written from your own broad knowledge, like a good encyclopedia or a knowledgeable tutor, not from the chapter.',
+    'Explain what the term, person, place or idea is in general: its standard definition, the field or history it comes from, and why it matters more widely. Add at most one short clause relating it to this book.',
+    'Never paraphrase or repeat the chapter text, and never summarise what the book says elsewhere: the reader already has the book. A gloss that only restates the passage is useless; omit such a card.',
+    'For structure cards, explain the kind of argument or move being made (e.g. what a reductio or a genealogical argument is) rather than retelling the paragraph.',
+    'Do not invent facts or citations; if unsure, omit the card.'
   ].join('\n')
   const schema = `{
   "domain": ["english field tags, e.g. religious studies"],
@@ -334,8 +361,8 @@ export function buildCoachDeckPrompt(params: { bookTitle: string; chapterTitle: 
     "difficulty": 1,
     "quote": "verbatim phrase from the text",
     "title": "Korean title",
-    "gloss": "at most two sentences",
-    "image_query": "optional English Wikipedia search phrase, only when a picture helps (people, places, artworks, objects, diagrams)"
+    "gloss": "2-4 sentences of general background knowledge, not a paraphrase of the text",
+    "image_query": "optional short English image search phrase naming the subject itself (e.g. \"Karl Jaspers\", \"diffusion tensor tractography\"), only when a picture helps (people, places, artworks, objects, instruments, diagrams)"
   }]
 }`
   const user = [
@@ -385,7 +412,7 @@ export function parseCoachDeck(raw: unknown, chapterText: string): Omit<CoachDec
     const kind = KINDS.includes(entry.kind as CoachCardKind) ? entry.kind as CoachCardKind : null
     const quote = str(entry.quote, 300)
     const title = str(entry.title, 120)
-    const gloss = str(entry.gloss, 600)
+    const gloss = str(entry.gloss, 900)
     if (!kind || !title || !gloss) return []
     if (!anchored(quote)) { dropped += 1; return [] }
     const id = coachHash(`${kind}|${normalizeCoachText(quote)}|${title}`)

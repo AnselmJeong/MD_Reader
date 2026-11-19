@@ -182,6 +182,8 @@ export interface ElectronAPI {
     status: () => Promise<AiProviderStatus>
     updateSettings: (partial: {
       tinyfishApiKey?: string
+      braveApiKey?: string
+      clearBraveApiKey?: boolean
       webSearchEnabled?: boolean
       webSearchMaxResults?: number
     }) => Promise<AiProviderStatus>
@@ -376,6 +378,8 @@ const api: ElectronAPI = {
     resetProfile: () => ipcRenderer.invoke('coach:profile:reset'),
     getUsage: () => ipcRenderer.invoke('coach:usage'),
     getImage: (card) => ipcRenderer.invoke('coach:image', card),
+    searchImages: (query) => ipcRenderer.invoke('coach:image:search', query),
+    saveImage: (card, candidate) => ipcRenderer.invoke('coach:image:save', card, candidate),
     getLinks: (request) => ipcRenderer.invoke('coach:links', request),
     getMemoryLinks: (request) => ipcRenderer.invoke('coach:memory-links', request),
     openedCards: (documentId, chapterHref) => ipcRenderer.invoke('coach:opened', documentId, chapterHref),

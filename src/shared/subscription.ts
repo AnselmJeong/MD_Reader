@@ -6,6 +6,8 @@ export interface SubscriptionStatus { codex: CodexStatus; claude: ClaudeStatus }
 export interface AiProviderStatus {
   hasTinyfishApiKey: boolean
   tinyfishApiKeySource: 'env' | 'saved' | 'none'
+  hasBraveApiKey: boolean
+  braveApiKeySource: 'env' | 'saved' | 'none'
   webSearchEnabled: boolean
   webSearchMaxResults: number
 }
