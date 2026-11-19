@@ -123,12 +123,16 @@ export function CoachCardBody({ card, deck, image, onDone, compact = false }: { 
     } catch (error) { setStatus(error instanceof Error ? error.message : String(error)) }
     finally { setBusy(false) }
   }
-  // The figure appears only once a picture is actually in hand: no placeholder box that later vanishes.
   const ready = image?.status === 'ready' && Boolean(image.dataUrl)
+  // While a card's picture is still loading, hold its place so the reader knows one is coming.
+  const loading = !image && Boolean(card.imageQuery)
   return <>
     {!compact && picking && <CoachImagePicker card={card} onClose={() => setPicking(false)} />}
     {!compact && !picking && ready && (
       <img src={image!.dataUrl} alt={image!.pageTitle ?? card.title} className="mb-2 max-h-[180px] w-full rounded object-cover" />
+    )}
+    {!compact && !picking && loading && (
+      <div role="status" aria-label="그림을 불러오는 중" className="mb-2 flex h-[120px] w-full animate-pulse items-center justify-center rounded bg-[var(--ink-3)] text-[11px] text-on-surface-muted">그림을 불러오는 중…</div>
     )}
     <div className="mb-1 flex items-center gap-2 text-[11px] text-on-surface-muted">
       <span className="rounded border border-border px-1.5 py-0.5">{COACH_KIND_LABELS[card.kind]}</span>
@@ -151,6 +155,36 @@ export function CoachCardBody({ card, deck, image, onDone, compact = false }: { 
     </div>
     {status && <p role="status" className="mt-1 text-[12px] text-on-surface-muted">{status}</p>}
   </>
+}
+
+/** Shown at the selection while the coach writes a card the reader asked for. */
+export function CoachPendingCard({ rect, text, error, onClose }: { rect: DOMRect; text: string; error?: string; onClose: () => void }) {
+  const width = 340
+  const left = Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8))
+  const top = rect.bottom + 140 <= window.innerHeight - 8 ? rect.bottom + 6 : Math.max(8, rect.top - 140)
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [onClose])
+  return createPortal(
+    <div role={error ? 'alert' : 'status'} aria-live="polite" data-selection-menu="true" data-commentary-ui
+      className="fixed z-50 rounded-md border border-border px-3 py-3 ui-text"
+      style={{ top, left, width, maxWidth: 'calc(100vw - 16px)', background: 'var(--color-surface-alt)', boxShadow: 'var(--shadow-md)' }}>
+      <div className="mb-1 flex items-center gap-2 text-[11px] text-on-surface-muted"><span>AI 코치 · 내가 요청한 카드</span>
+        <button className="ml-auto rounded px-1 hover:bg-[var(--ink-3)]" aria-label="닫기" onClick={onClose}>✕</button></div>
+      <p className="line-clamp-2 text-[13px] font-semibold text-on-surface">{text}</p>
+      {error
+        ? <p className="mt-1 text-[12px] text-on-surface-muted">{error}</p>
+        : <div className="mt-2 flex flex-col gap-1.5" aria-label="코치가 카드를 쓰는 중">
+            <p className="text-[12px] text-on-surface-muted">코치가 카드를 쓰는 중…</p>
+            <div className="h-2.5 w-full animate-pulse rounded bg-[var(--ink-3)]" />
+            <div className="h-2.5 w-5/6 animate-pulse rounded bg-[var(--ink-3)]" />
+            <div className="h-2.5 w-2/3 animate-pulse rounded bg-[var(--ink-3)]" />
+          </div>}
+    </div>,
+    document.body
+  )
 }
 
 /** Wikipedia-style hover preview for a coach mark. */

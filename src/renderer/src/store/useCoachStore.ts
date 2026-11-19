@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import {
-  DEFAULT_COACH_PREFERENCES, DEFAULT_COACH_SETTINGS, EMPTY_COACH_PROFILE,
+  COACH_USER_PART, DEFAULT_COACH_PREFERENCES, DEFAULT_COACH_SETTINGS, EMPTY_COACH_PROFILE,
   type CoachCard, type CoachChapterLinks, type CoachDeck, type CoachDeckUpdate, type CoachMemoryLinks, type CoachReviewItem, type CoachEvent, type CoachPreferences, type CoachProfile, type CoachSettings, type CoachUsage
 } from '../../../shared/coach'
 import type { CommentaryAnchor } from '../../../shared/commentary'
@@ -137,7 +137,8 @@ export function currentChapterDecks(state: Pick<CoachState, 'documentId' | 'chap
 export function currentChapterStatus(state: Pick<CoachState, 'documentId' | 'chapterHref' | 'decks'>): CoachDeckUpdate | null {
   if (!state.documentId || !state.chapterHref) return null
   const prefix = `${state.documentId}|${state.chapterHref}#`
-  const updates = Object.entries(state.decks).filter(([slot]) => slot.startsWith(prefix)).map(([, update]) => update)
+  // "My cards" (selection cards) do not say anything about whether the chapter itself is prepared.
+  const updates = Object.entries(state.decks).filter(([slot]) => slot.startsWith(prefix) && !slot.endsWith(`#${COACH_USER_PART}`)).map(([, update]) => update)
   return updates.find(update => update.status === 'generating') ?? updates.find(update => update.status === 'queued')
     ?? updates.find(update => update.status === 'error' || update.status === 'limited') ?? updates.find(update => update.status === 'ready') ?? null
 }

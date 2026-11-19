@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { AlertCircle, BookOpenCheck, CheckCircle2, ChevronDown, FileDown, GraduationCap, Hourglass, Link2, Loader2, RefreshCw, RotateCcw, Settings2, Sparkles } from 'lucide-react'
 import {
-  COACH_FAMILIARITY, COACH_KIND_LABELS, COACH_PROACTIVITY, COACH_PURPOSES, estimatedLevels, selectCoachCards,
+  COACH_FAMILIARITY, COACH_KIND_LABELS, COACH_PROACTIVITY, COACH_PURPOSES, estimatedLevels, isUserDeck, selectCoachCards,
   type CoachCard, type CoachDeck
 } from '../../../../shared/coach'
 import { currentChapterDecks, currentChapterStatus, linksKey, useCoachStore } from '../../store/useCoachStore'
@@ -124,7 +124,7 @@ export function CoachTab() {
   const parts = useMemo(() => {
     if (!documentId || !chapterHref) return { done: 0, total: 0 }
     const prefix = `${documentId}|${chapterHref}#`
-    const updates = Object.entries(deckMap).filter(([slot]) => slot.startsWith(prefix)).map(([, update]) => update)
+    const updates = Object.entries(deckMap).filter(([slot, update]) => slot.startsWith(prefix) && !(update.deck && isUserDeck(update.deck))).map(([, update]) => update)
     return { done: updates.filter(update => update.status === 'ready').length, total: updates.length }
   }, [documentId, chapterHref, deckMap])
   const [filter, setFilter] = useState<'all' | 'shown'>('all')
@@ -135,7 +135,7 @@ export function CoachTab() {
   useEffect(() => { void useCoachStore.getState().refreshUsage() }, [status?.status])
   // "부를 때만" builds the deck the first time the tab is opened for a chapter.
   useEffect(() => {
-    if (preferences?.enabled && preferences.proactivity === 'onDemand' && !decks.length && status?.status === 'idle') prepareCurrent?.(false)
+    if (preferences?.enabled && preferences.proactivity === 'onDemand' && !decks.some(deck => !isUserDeck(deck)) && status?.status === 'idle') prepareCurrent?.(false)
   }, [preferences?.enabled, preferences?.proactivity, chapterHref, prepareCurrent, decks.length, status?.status])
 
   if (!documentId) return <div className="coach-tab"><div className="coach-empty"><span className="coach-empty-icon"><GraduationCap /></span><p>EPUB을 열면 코치를 쓸 수 있습니다.</p></div></div>
@@ -143,7 +143,8 @@ export function CoachTab() {
   const levels = estimatedLevels(profile)
   const working = status?.status === 'generating' || status?.status === 'queued'
   const failed = status?.status === 'error' || status?.status === 'limited'
-  const cardCount = decks.reduce((sum, deck) => sum + deck.cards.length, 0)
+  const generatedDecks = decks.filter(deck => !isUserDeck(deck))
+  const cardCount = generatedDecks.reduce((sum, deck) => sum + deck.cards.length, 0)
   const chips = preferences?.enabled
     ? [label(COACH_PURPOSES, preferences.purpose), label(COACH_FAMILIARITY, preferences.familiarity), label(COACH_PROACTIVITY, preferences.proactivity === 'active' ? 'suggest' : preferences.proactivity)].filter(Boolean)
     : []
@@ -164,8 +165,8 @@ export function CoachTab() {
         <button className="coach-button is-primary" onClick={() => useCoachStore.getState().setIntakeOpen(true)}>
           {preferences?.enabled ? <Settings2 /> : <Sparkles />}{preferences?.enabled ? '코칭 설정 바꾸기' : '코치 켜기'}
         </button>
-        {preferences?.enabled && <button disabled={working} className="coach-button" onClick={() => prepareCurrent?.(decks.length > 0)}>
-          {working ? <Loader2 className="coach-spin" /> : <RefreshCw />}{working ? '준비 중' : decks.length ? '이 장 다시 준비' : '이 장 준비'}
+        {preferences?.enabled && <button disabled={working} className="coach-button" onClick={() => prepareCurrent?.(generatedDecks.length > 0)}>
+          {working ? <Loader2 className="coach-spin" /> : <RefreshCw />}{working ? '준비 중' : generatedDecks.length ? '이 장 다시 준비' : '이 장 준비'}
         </button>}
       </div>
     </section>
@@ -175,19 +176,26 @@ export function CoachTab() {
       <p className="coach-chapter">{chapterLabel || '제목 없는 장'}</p>
       {working && <PreparingStatus queued={status?.status === 'queued'} done={parts.done} total={parts.total} />}
       {failed && <p role="status" className="coach-alert"><AlertCircle />{status?.error || '코치가 이 장을 준비하지 못했습니다.'}</p>}
-      {!working && !failed && decks.length > 0 && <p className="coach-inline-status is-ready"><CheckCircle2 />카드 {cardCount}장 준비됨</p>}
-      {!working && !decks.length && !failed && preferences?.enabled &&
+      {!working && !failed && generatedDecks.length > 0 && <p className="coach-inline-status is-ready"><CheckCircle2 />카드 {cardCount}장 준비됨</p>}
+      {!working && !generatedDecks.length && !failed && preferences?.enabled &&
         <p className="coach-hint">이 장에 잠시 머물면 코치가 카드를 준비합니다. 바로 받으려면 "이 장 준비"를 누르세요.</p>}
     </section>
 
     {decks.map(deck => {
-      const shownIds = new Set(selectCoachCards(deck, preferences, profile, { suppressed, day: new Date().toDateString() }).map(item => item.card.id))
+      const mine = isUserDeck(deck)
+      const shownIds = new Set(mine ? deck.cards.filter(card => !suppressed.has(card.id)).map(card => card.id)
+        : selectCoachCards(deck, preferences, profile, { suppressed, day: new Date().toDateString() }).map(item => item.card.id))
       const cards = filter === 'shown' ? deck.cards.filter(card => shownIds.has(card.id)) : deck.cards
+      if (mine) return <section key={deck.key} className="coach-panel">
+        <SectionTitle icon={<Sparkles />}>내가 요청한 카드 {deck.cards.length}장</SectionTitle>
+        <ul className="coach-card-list">{deck.cards.slice().reverse().map(card => <CardRow key={card.id} card={card} deck={deck} shown={shownIds.has(card.id)} />)}</ul>
+        <p className="coach-footnote">본문에서 글을 선택하고 "코치 카드"를 누르면 여기에 쌓입니다.</p>
+      </section>
       return <section key={deck.key} className="coach-panel">
         {deck.brief && <div className="coach-brief"><SectionTitle icon={<Sparkles />}>이 장을 읽기 전에</SectionTitle><p className="whitespace-pre-wrap">{deck.brief}</p></div>}
         <SectionTitle aside={<select className="coach-select" value={filter} onChange={event => setFilter(event.target.value as 'all' | 'shown')} aria-label="카드 거르기">
           <option value="all">전체</option><option value="shown">본문에 표시된 것</option>
-        </select>}>카드 {deck.cards.length}장{decks.length > 1 ? ` · ${deck.part + 1}부` : ''}</SectionTitle>
+        </select>}>카드 {deck.cards.length}장{generatedDecks.length > 1 ? ` · ${deck.part + 1}부` : ''}</SectionTitle>
         <ul className="coach-card-list">{cards.map(card => <CardRow key={card.id} card={card} deck={deck} shown={shownIds.has(card.id)} />)}</ul>
         {deck.sections.length > 0 && <div className="coach-block"><p className="coach-subhead">절 요약</p>
           <ul className="flex flex-col gap-2">{deck.sections.map(section => <li key={section.quote}><span className="coach-quote">{section.quote}</span> {section.summary}</li>)}</ul></div>}

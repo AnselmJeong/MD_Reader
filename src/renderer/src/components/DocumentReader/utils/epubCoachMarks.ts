@@ -65,6 +65,13 @@ export function findQuoteRanges(doc: Document, entries: CoachMarkEntry[]): Regis
   return result
 }
 
+/** Coach marks get their own blue-teal, distinct from the app accent and from the reader's own highlights. */
+export function coachMarkColor(theme: string): string {
+  if (theme === 'dark') return 'oklch(0.76 0.11 215)'
+  if (theme === 'sepia') return 'oklch(0.52 0.11 210)'
+  return 'oklch(0.55 0.13 235)'
+}
+
 export function coachHighlightSupported(contents: Contents): boolean {
   const win = contents.window as HighlightWindow
   return Boolean(win.CSS?.highlights && win.Highlight)
@@ -81,7 +88,8 @@ export function setCoachMarks(contents: Contents, entries: CoachMarkEntry[], col
     style.id = STYLE_ID
     doc.head.appendChild(style)
   }
-  style.textContent = `::highlight(${HIGHLIGHT_NAME}) { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-thickness: 1.5px; text-decoration-color: ${color}; text-underline-offset: 3px; }`
+  // A coloured dotted underline on a faint wash of the same colour: visible at a glance, quiet enough to read through.
+  style.textContent = `::highlight(${HIGHLIGHT_NAME}) { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-thickness: 2px; text-decoration-color: ${color}; text-underline-offset: 3px; background-color: color-mix(in oklab, ${color} 11%, transparent); }`
   const ranges = findQuoteRanges(doc, entries)
   registry.set(doc, ranges)
   if (ranges.length) win.CSS.highlights.set(HIGHLIGHT_NAME, new win.Highlight(...ranges.map(item => item.range)))
