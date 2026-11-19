@@ -7,7 +7,7 @@ import {
   StoredChatMessage
 } from './chat-session-service'
 import { getAgentMemorySettings } from './agent-memory-settings'
-import { applyUserProfileItems, getAgentMemoryPaths, queueSoulDirectives, readAgentMemoryFiles } from './agent-memory-files'
+import { applyUserProfileItems, COACH_PROFILE_SECTION, getAgentMemoryPaths, queueSoulDirectives, readAgentMemoryFiles, readSection } from './agent-memory-files'
 import { retainHindsightMemory, checkHindsightHealth, recallHindsight } from './hindsight-client'
 import { extractSessionMemory, ExtractedInsight, MemoryExtractionResult } from './memory-extractor'
 
@@ -550,6 +550,8 @@ export async function buildMemoryContextForPrompt(params: RuntimeMemoryContextPa
       checkHindsightHealth(settings, signal)
     ])
     const userLines = compactLines(files.user, 18)
+    // The coach summary sits at the end of USER.md; include it even when earlier sections are long.
+    const coachLines = readSection(files.user, COACH_PROFILE_SECTION).filter(line => !userLines.includes(line)).slice(0, 8)
     const soulLines = compactLines(files.soul, 14)
     const query = [
       params.userText,
@@ -574,6 +576,7 @@ export async function buildMemoryContextForPrompt(params: RuntimeMemoryContextPa
     const sections = [
       soulLines.length ? `Behavioral instructions from SOUL.md:\n${soulLines.join('\n')}` : '',
       userLines.length ? `User profile from USER.md:\n${userLines.join('\n')}` : '',
+      coachLines.length ? `Reading level and preferences observed by the reading coach (match the depth of explanations to these):\n${coachLines.join('\n')}` : '',
       insights.length ? `Relevant prior insights:\n${insights.join('\n')}` : ''
     ].filter(Boolean)
 

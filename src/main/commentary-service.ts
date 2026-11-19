@@ -269,4 +269,16 @@ export function importCommentarySnapshot(documentId: string, snapshot: Commentar
   changed(documentId)
 }
 
+/** My own notes (not coach cards) that mention a term, across all documents, newest first. */
+export function searchCommentaryNotes(term: string, limit = 2): Array<{ documentId: string; markdown: string; quote: string; createdAt: number }> {
+  const needle = term.trim().toLowerCase()
+  if (needle.length < 3) return []
+  const rows = database().prepare('SELECT payload FROM commentary_notes WHERE instr(lower(payload), ?) > 0').all(needle) as { payload: string }[]
+  return rows.map(row => JSON.parse(row.payload) as CommentaryNote)
+    .filter(note => !note.deletedAt && !note.origin?.messageId.startsWith('coach:')
+      && (note.markdown.toLowerCase().includes(needle) || note.anchor.quote.toLowerCase().includes(needle)))
+    .sort((a, b) => b.createdAt - a.createdAt).slice(0, limit)
+    .map(note => ({ documentId: note.documentId, markdown: note.markdown, quote: note.anchor.quote, createdAt: note.createdAt }))
+}
+
 export function closeCommentaryDb() { db?.close(); db = null }

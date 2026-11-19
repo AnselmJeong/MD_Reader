@@ -1,4 +1,4 @@
-import { preferencesPromptLine, type CoachCard, type CoachDeck, type CoachEventType, type CoachImage } from '../../../../../shared/coach'
+import { preferencesPromptLine, type CoachCard, type CoachDeck, type CoachEventType, type CoachImage, type CoachReviewItem } from '../../../../../shared/coach'
 import { useCoachStore } from '../../../store/useCoachStore'
 import { useChatStore } from '../../../store/useChatStore'
 import { useUIStore } from '../../../store/useUIStore'
@@ -9,6 +9,26 @@ export function recordCardEvent(type: CoachEventType, card: CoachCard, deck: Pic
     documentId: deck.documentId, chapterHref: deck.chapterHref, type, domain: deck.domain,
     cardId: card.id, kind: card.kind, difficulty: card.difficulty
   })
+}
+
+async function sendToChat(prompt: string, quotedText?: string) {
+  const ui = useUIStore.getState()
+  if (!ui.showChat) ui.toggleChat()
+  useCoachStore.getState().setPanel('chat')
+  const chat = useChatStore.getState()
+  if (!chat.selectedModel || chat.isStreaming || chat.isPreparingMessage) {
+    chat.setInputDraft(prompt)
+    if (quotedText) chat.setPendingQuotedText(quotedText)
+    chat.requestInputFocus()
+    return
+  }
+  await chat.sendMessage({ text: prompt, documentContent: useDocumentStore.getState().content, quotedText })
+}
+
+/** Spaced review: check an answer against the chapter's recap through the normal chat. */
+export function askReviewAnswer(item: CoachReviewItem) {
+  const recap = item.recap.length ? `\n\n이 장의 요점(코치 정리):\n${item.recap.map(line => `- ${line}`).join('\n')}` : ''
+  return sendToChat(`복습 질문입니다. 《${item.bookTitle}》 ${item.chapterLabel}\n\n"${item.question}"${recap}\n\n이 질문의 핵심 답을 짧게 정리해 주세요. ${preferencesPromptLine(useCoachStore.getState().preferences)}`.trim())
 }
 
 /** "더 자세히": the expensive call happens only after this explicit click, through the normal chat. */

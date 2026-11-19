@@ -707,3 +707,27 @@ export function closeChatSessionDb(): void {
   db.close()
   db = null
 }
+
+/** Earlier questions (and the first answer) that mention a term, for the reading coach. */
+export function searchChatQuestions(term: string, limit = 2): Array<{ question: string; quotedText: string | null; answer: string; bookTitle: string; createdAt: number }> {
+  const needle = term.trim().toLowerCase()
+  if (needle.length < 3) return []
+  const database = getChatDb()
+  const rows = database.prepare(`
+    SELECT m.session_id, m.ordinal, m.content, m.quoted_text, m.created_at, c.file_name, c.context_title
+    FROM chat_messages m
+    JOIN chat_sessions s ON s.id = m.session_id
+    JOIN chat_contexts c ON c.context_key = s.context_key
+    WHERE m.role = 'user' AND s.archived_at IS NULL
+      AND (instr(lower(m.content), @needle) > 0 OR instr(lower(coalesce(m.quoted_text, '')), @needle) > 0)
+    ORDER BY m.created_at DESC LIMIT @limit
+  `).all({ needle, limit }) as Array<{ session_id: string; ordinal: number; content: string; quoted_text: string | null; created_at: number; file_name: string; context_title: string }>
+  const answer = database.prepare(`SELECT content FROM chat_messages WHERE session_id = ? AND ordinal > ? AND role = 'assistant' ORDER BY ordinal LIMIT 1`)
+  return rows.map(row => ({
+    question: row.content,
+    quotedText: row.quoted_text,
+    answer: (answer.get(row.session_id, row.ordinal) as { content: string } | undefined)?.content ?? '',
+    bookTitle: row.file_name.replace(/\.[^.]+$/, ''),
+    createdAt: row.created_at
+  }))
+}

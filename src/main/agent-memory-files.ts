@@ -107,6 +107,37 @@ function insertBullet(markdown: string, section: string, bullet: string): { mark
   return { markdown: `${before}${bulletLine}\n${after}`, applied: true }
 }
 
+export const COACH_PROFILE_SECTION = 'Reading Coach Profile'
+
+/** Lines of one USER.md section (bullets only). */
+export function readSection(markdown: string, section: string): string[] {
+  const heading = `## ${section}`
+  const start = markdown.indexOf(heading)
+  if (start === -1) return []
+  const next = markdown.indexOf('\n## ', start + heading.length)
+  return markdown.slice(start + heading.length, next === -1 ? undefined : next).split('\n').map(line => line.trim()).filter(line => line.startsWith('- '))
+}
+
+/** Replace a whole USER.md section (unlike extracted insights, the coach summary is rewritten, not appended). Returns whether the file changed. */
+export async function replaceUserSection(section: string, lines: string[]): Promise<boolean> {
+  await ensureMemoryFiles()
+  const paths = getAgentMemoryPaths()
+  const markdown = await fs.readFile(paths.user, 'utf-8')
+  const heading = `## ${section}`
+  const body = lines.map(line => `- ${normalizeBullet(line)}`).join('\n')
+  const block = `${heading}\n${body}${body ? '\n' : ''}`
+  const start = markdown.indexOf(heading)
+  let next: string
+  if (start === -1) next = `${markdown.replace(/\s*$/, '\n')}\n${block}`
+  else {
+    const end = markdown.indexOf('\n## ', start + heading.length)
+    next = `${markdown.slice(0, start)}${block}${end === -1 ? '' : markdown.slice(end)}`
+  }
+  if (next === markdown) return false
+  await fs.writeFile(paths.user, next, 'utf-8')
+  return true
+}
+
 export async function applyUserProfileItems(items: ExtractedUserProfile[]): Promise<number> {
   if (items.length === 0) return 0
   await ensureMemoryFiles()

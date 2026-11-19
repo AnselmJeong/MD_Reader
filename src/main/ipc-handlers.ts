@@ -7,9 +7,10 @@ import { listCommentary, saveCommentary, setCommentaryDeleted, importCommentaryI
 import { exportCommentaryEpub, commentaryExportPath } from './commentary-epub'
 import {
   getCoachImage, getCoachPreferences, getCoachProfile, getCoachSettings, getCoachUsage, recordCoachEvent,
-  requestCoachDeck, resetCoachProfile, setCoachChatBusyProbe, setCoachPreferences, setCoachSettings
+  requestCoachDeck, resetCoachProfile, setCoachChatBusyProbe, setCoachPreferences, setCoachSettings,
+  addCoachReviews, answerCoachReview, getCoachLinks, getCoachMemoryLinks, getDueCoachReviews, getOpenedCards
 } from './coach-service'
-import type { CoachDeckRequest, CoachEvent, CoachPreferences, CoachSettings } from '../shared/coach'
+import type { CoachDeckRequest, CoachEvent, CoachLinksRequest, CoachPreferences, CoachReviewRequest, CoachSettings } from '../shared/coach'
 import type { SaveCommentary } from '../shared/commentary'
 import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent, setDocumentBibliography } from './file-service'
 import { listModels, generateChatTitle } from './ai-service'
@@ -108,6 +109,12 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('coach:profile:reset', () => resetCoachProfile())
   ipcMain.handle('coach:usage', () => getCoachUsage())
   ipcMain.handle('coach:image', (_event, card: { title: string; imageQuery: string }) => getCoachImage(card))
+  ipcMain.handle('coach:links', (_event, request: CoachLinksRequest) => getCoachLinks(request))
+  ipcMain.handle('coach:memory-links', (_event, request: CoachLinksRequest) => getCoachMemoryLinks(request))
+  ipcMain.handle('coach:opened', (_event, documentId: string, chapterHref: string) => getOpenedCards(documentId, chapterHref))
+  ipcMain.handle('coach:reviews:add', (_event, request: CoachReviewRequest) => addCoachReviews(request))
+  ipcMain.handle('coach:reviews:due', () => getDueCoachReviews())
+  ipcMain.handle('coach:reviews:answer', (_event, id: string, remembered: boolean) => answerCoachReview(id, remembered))
   ipcMain.handle('commentary:export', async (_event, filePath: string, documentId: string) => {
     const result = await dialog.showSaveDialog({ title: '주석을 포함한 EPUB 저장', defaultPath: commentaryExportPath(filePath), filters: [{ name: 'Quarto', extensions: ['qmd'] },
         { name: 'EPUB', extensions: ['epub'] }] })

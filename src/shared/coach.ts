@@ -153,6 +153,113 @@ export interface CoachAPI {
   getUsage: () => Promise<CoachUsage>
   getImage: (card: { title: string; imageQuery: string }) => Promise<CoachImage>
   onDeck: (callback: (update: CoachDeckUpdate) => void) => () => void
+  /** Phase 5: links to other books, my notes and questions, and long-term memory. */
+  getLinks: (request: CoachLinksRequest) => Promise<CoachChapterLinks>
+  getMemoryLinks: (request: CoachLinksRequest) => Promise<CoachMemoryLinks>
+  openedCards: (documentId: string, chapterHref: string) => Promise<string[]>
+  addReviews: (request: CoachReviewRequest) => Promise<number>
+  dueReviews: () => Promise<CoachReviewItem[]>
+  answerReview: (id: string, remembered: boolean) => Promise<CoachReviewItem | null>
+}
+
+// ─── Phase 5: memory and connections ───
+
+export interface CoachLinksRequest {
+  documentId: string
+  bookTitle: string
+  chapterTitle: string
+  deckKeys: string[]
+}
+
+/** The same term met in another book (cards are reused without any model call). */
+export interface CoachEncounter {
+  documentId: string
+  bookTitle: string
+  chapterLabel: string
+  title: string
+  gloss: string
+  /** The reader said "이미 알아요" to it there. */
+  known: boolean
+  at: number
+}
+
+/** My own commentary or an earlier question that mentions a card's term. */
+export interface CoachPersonalLink {
+  cardId: string
+  source: 'chat' | 'commentary'
+  bookTitle: string
+  question?: string
+  excerpt: string
+  at: number
+}
+
+export interface CoachChapterLinks {
+  encounters: Record<string, CoachEncounter[]>
+  personal: CoachPersonalLink[]
+}
+
+export interface CoachMemoryLinks {
+  status: 'off' | 'ok' | 'error'
+  items: string[]
+  error?: string
+}
+
+export interface CoachReviewRequest {
+  documentId: string
+  bookTitle: string
+  chapterHref: string
+  chapterLabel: string
+  deckKeys: string[]
+}
+
+export interface CoachReviewItem {
+  id: string
+  documentId: string
+  bookTitle: string
+  chapterHref: string
+  chapterLabel: string
+  question: string
+  recap: string[]
+  dueAt: number
+  intervalDays: number
+  reps: number
+  createdAt: number
+}
+
+/** Normalized key so that the same term is recognised across books. */
+export function coachTermKey(card: Pick<CoachCard, 'quote' | 'title'>): string {
+  return normalizeCoachText(card.quote).toLowerCase().replace(/^(the|a|an) /, '')
+}
+
+const REVIEW_STEPS = [1, 3, 7, 16, 35, 80]
+/** Expanding intervals; forgetting starts the ladder again. */
+export function nextReviewInterval(intervalDays: number, remembered: boolean): number {
+  if (!remembered) return 1
+  return REVIEW_STEPS.find(step => step > intervalDays) ?? Math.round(intervalDays * 2.2)
+}
+
+/** Short lines describing what the coach has learned, for USER.md and long-term memory. */
+export function summarizeCoachProfile(profile: CoachProfile, now = Date.now()): string[] {
+  const lines: string[] = []
+  for (const level of estimatedLevels(profile, now)) {
+    if (level.evidence < 3) continue
+    lines.push(`Reading level in ${level.domain}: ${level.level <= 2 ? 'beginner' : level.level < 4 ? 'intermediate' : 'advanced'} (coach estimate from ${level.evidence} signals)`)
+  }
+  const liked: string[] = []
+  const avoided: string[] = []
+  for (const [key, cell] of Object.entries(profile.cells)) {
+    const [axis, domain, kind] = key.split('|')
+    if (axis !== 'k') continue
+    const current = decayed(cell, now)
+    const total = current.a + current.b
+    if (total < 2) continue
+    const label = `${kind} (${domain})`
+    if (current.a / total >= 0.65) liked.push(label)
+    else if (current.a / total <= 0.35) avoided.push(label)
+  }
+  if (liked.length) lines.push(`Finds these reading-coach card kinds useful: ${liked.slice(0, 6).join(', ')}`)
+  if (avoided.length) lines.push(`Does not want these card kinds: ${avoided.slice(0, 6).join(', ')}`)
+  return lines.slice(0, 8)
 }
 
 // ─── Text helpers ───

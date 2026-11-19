@@ -349,7 +349,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   const [atChapterEnd, setAtChapterEnd] = useState(false)
   const coach = useEpubCoach({
     documentId: tab.documentHash, bookTitle: title, chapterHref: tab.currentChapterHref, chapterLabel: tab.currentChapterLabel,
-    visibleText: tab.content, currentLocation: tab.currentLocation, sections: commentarySections, theme
+    visibleText: tab.content, currentLocation: tab.currentLocation, sections: commentarySections, theme, atChapterEnd
   })
   const coachEnabled = useCoachStore(state => Boolean(state.preferences?.enabled))
 

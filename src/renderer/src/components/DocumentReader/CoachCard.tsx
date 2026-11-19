@@ -1,7 +1,27 @@
-import { RefObject, useEffect, useLayoutEffect, useState } from 'react'
+import { RefObject, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { COACH_KIND_LABELS, type CoachCard as CoachCardData, type CoachDeck, type CoachImage } from '../../../../shared/coach'
 import { askCoachMore, insertCoachCard, markCardKnown, markKindUnwanted } from './utils/coachActions'
+import { useCoachStore } from '../../store/useCoachStore'
+
+/** Phase 5: where else the reader met this term, and their own notes or questions about it. */
+export function CoachCardConnections({ card }: { card: CoachCardData }) {
+  const links = useCoachStore(state => state.links)
+  const { encounters, personal } = useMemo(() => {
+    const values = Object.values(links)
+    return {
+      encounters: values.flatMap(value => value.encounters[card.id] ?? []).slice(0, 3),
+      personal: values.flatMap(value => value.personal.filter(item => item.cardId === card.id)).slice(0, 2)
+    }
+  }, [links, card.id])
+  if (!encounters.length && !personal.length) return null
+  return <div className="mt-2 flex flex-col gap-1 border-t border-[var(--hair-2)] pt-2 text-[12px] text-on-surface-muted">
+    {encounters.map(item => <p key={`${item.documentId}:${item.title}`}>다른 책에서도 만났어요: 《{item.bookTitle}》{item.chapterLabel ? ` ${item.chapterLabel}` : ''}{item.known ? ' · 그때 "이미 알아요"' : ''}</p>)}
+    {personal.map(item => <p key={`${item.source}:${item.at}`}>
+      {item.source === 'chat' ? `예전 질문 (${item.bookTitle}): ${item.question}` : `내 주석 (${item.bookTitle})`}{item.excerpt ? ` — ${item.excerpt}` : ''}
+    </p>)}
+  </div>
+}
 
 const imageRequests = new Map<string, Promise<CoachImage>>()
 /** Pictures are fetched only for cards the reader opens, once per search phrase. */
@@ -53,6 +73,7 @@ export function CoachCardBody({ card, deck, image, onDone, compact = false }: { 
     </div>
     <p className="text-[14px] font-semibold text-on-surface">{card.title}</p>
     <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-on-surface">{card.gloss}</p>
+    <CoachCardConnections card={card} />
     {image?.status === 'ready' && image.pageUrl && (
       <a href={image.pageUrl} className="mt-1 block text-[11px] text-on-surface-muted hover:underline"
         onClick={event => { event.preventDefault(); void window.api.shell.openExternal(image.pageUrl!) }}>그림: Wikipedia — {image.pageTitle} ↗</a>

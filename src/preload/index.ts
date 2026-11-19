@@ -376,6 +376,12 @@ const api: ElectronAPI = {
     resetProfile: () => ipcRenderer.invoke('coach:profile:reset'),
     getUsage: () => ipcRenderer.invoke('coach:usage'),
     getImage: (card) => ipcRenderer.invoke('coach:image', card),
+    getLinks: (request) => ipcRenderer.invoke('coach:links', request),
+    getMemoryLinks: (request) => ipcRenderer.invoke('coach:memory-links', request),
+    openedCards: (documentId, chapterHref) => ipcRenderer.invoke('coach:opened', documentId, chapterHref),
+    addReviews: (request) => ipcRenderer.invoke('coach:reviews:add', request),
+    dueReviews: () => ipcRenderer.invoke('coach:reviews:due'),
+    answerReview: (id, remembered) => ipcRenderer.invoke('coach:reviews:answer', id, remembered),
     onDeck: (callback) => {
       const handler = (_event: IpcRendererEvent, update: CoachDeckUpdate) => callback(update)
       ipcRenderer.on('coach:deck', handler)

@@ -3,8 +3,75 @@ import {
   COACH_FAMILIARITY, COACH_KIND_LABELS, COACH_PROACTIVITY, COACH_PURPOSES, estimatedLevels, selectCoachCards,
   type CoachCard, type CoachDeck
 } from '../../../../shared/coach'
-import { currentChapterDecks, currentChapterStatus, useCoachStore } from '../../store/useCoachStore'
-import { CoachCardBody, useCoachImage } from '../DocumentReader/CoachCard'
+import { currentChapterDecks, currentChapterStatus, linksKey, useCoachStore } from '../../store/useCoachStore'
+import { CoachCardBody, loadCoachImage, useCoachImage } from '../DocumentReader/CoachCard'
+import { askReviewAnswer, insertCoachCard } from '../DocumentReader/utils/coachActions'
+
+/** "이 장에서 열어 본 카드 모두 EPUB에 넣기": skips cards already saved as notes. */
+async function insertOpenedCards(documentId: string, chapterHref: string, decks: CoachDeck[]): Promise<string> {
+  const [opened, snapshot] = await Promise.all([window.api.coach.openedCards(documentId, chapterHref), window.api.commentary.list(documentId)])
+  const saved = new Set(snapshot.notes.filter(note => !note.deletedAt).map(note => note.origin?.messageId ?? ''))
+  const openedIds = new Set(opened)
+  const pending = decks.flatMap(deck => deck.cards.filter(card => openedIds.has(card.id) && !saved.has(`coach:${card.id}`)).map(card => ({ card, deck })))
+  if (!pending.length) return opened.length ? '열어 본 카드는 이미 모두 주석으로 저장되어 있습니다.' : '이 장에서 아직 열어 본 카드가 없습니다.'
+  let done = 0
+  let missing = 0
+  for (const { card, deck } of pending) {
+    try { await insertCoachCard(card, deck, card.imageQuery ? await loadCoachImage(card) : null); done += 1 }
+    catch { missing += 1 }
+  }
+  return `${done}장을 주석으로 저장했습니다.${missing ? ` ${missing}장은 화면에서 위치를 찾지 못해 건너뛰었습니다(해당 쪽을 연 뒤 다시 누르면 됩니다).` : ''} "주석을 포함한 EPUB 저장"으로 책에 넣을 수 있습니다.`
+}
+
+function ReviewList() {
+  const reviews = useCoachStore(state => state.reviews)
+  const answerReview = useCoachStore(state => state.answerReview)
+  useEffect(() => { void useCoachStore.getState().loadReviews() }, [])
+  if (!reviews.length) return null
+  return <section className="flex flex-col gap-2 border-t border-[var(--hair-2)] pt-3">
+    <p className="small-caps text-on-surface-muted">오늘 복습할 질문 {reviews.length}개</p>
+    <ul className="flex flex-col gap-3">{reviews.map(item => <li key={item.id} className="flex flex-col gap-1">
+      <span className="text-[11px] text-on-surface-muted">《{item.bookTitle}》 {item.chapterLabel}</span>
+      <span className="text-on-surface">{item.question}</span>
+      <div className="flex flex-wrap gap-3 text-[12px]">
+        <button className="font-semibold text-accent" onClick={() => void answerReview(item.id, true)}>기억나요</button>
+        <button className="text-on-surface-muted" onClick={() => void answerReview(item.id, false)}>가물가물해요</button>
+        <button className="text-on-surface-muted" onClick={() => void askReviewAnswer(item)}>답 확인</button>
+      </div>
+    </li>)}</ul>
+    <p className="text-[11px] text-on-surface-muted">기억나면 1, 3, 7, 16, 35일 간격으로 늘어나고, 가물가물하면 내일 다시 나옵니다.</p>
+  </section>
+}
+
+function ChapterConnections({ decks, bookTitle, chapterTitle }: { decks: CoachDeck[]; bookTitle: string; chapterTitle: string }) {
+  const key = linksKey(decks)
+  const links = useCoachStore(state => state.links[key])
+  const memory = useCoachStore(state => state.memoryLinks[key])
+  const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    if (!decks.length || useCoachStore.getState().memoryLinks[key]) return
+    setLoading(true)
+    void useCoachStore.getState().loadMemoryLinks(decks, bookTitle, chapterTitle).finally(() => setLoading(false))
+  }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
+  const cardTitle = (id: string) => decks.flatMap(deck => deck.cards).find(card => card.id === id)?.title ?? ''
+  const encounters = Object.entries(links?.encounters ?? {})
+  const personal = links?.personal ?? []
+  if (!encounters.length && !personal.length && !memory?.items.length && !loading && memory?.status !== 'error') return null
+  return <section className="flex flex-col gap-2 border-t border-[var(--hair-2)] pt-3">
+    <p className="small-caps text-on-surface-muted">내 독서 이력과의 연결</p>
+    {encounters.length > 0 && <div><p className="text-[12px] text-on-surface-muted">다른 책에서도 만난 용어</p>
+      <ul className="list-disc pl-4">{encounters.slice(0, 8).map(([id, items]) => <li key={id}>{cardTitle(id)} — {items.map(item => `《${item.bookTitle}》`).join(', ')}</li>)}</ul></div>}
+    {personal.length > 0 && <div><p className="text-[12px] text-on-surface-muted">내 주석과 예전 질문</p>
+      <ul className="flex flex-col gap-1.5">{personal.slice(0, 6).map(item => <li key={`${item.source}:${item.at}`}>
+        <span className="font-medium">{cardTitle(item.cardId)}</span> · {item.source === 'chat' ? `질문 (${item.bookTitle}): ${item.question}` : `내 주석 (${item.bookTitle})`}
+        {item.excerpt && <span className="block text-on-surface-muted">{item.excerpt}</span>}
+      </li>)}</ul></div>}
+    {loading && <p className="text-on-surface-muted">장기 기억에서 연결을 찾는 중…</p>}
+    {memory?.items.length ? <div><p className="text-[12px] text-on-surface-muted">장기 기억(Hindsight)에서</p>
+      <ul className="list-disc pl-4">{memory.items.map(item => <li key={item}>{item}</li>)}</ul></div> : null}
+    {memory?.status === 'error' && <p className="text-[11px] text-on-surface-muted">장기 기억에 연결하지 못했습니다: {memory.error}</p>}
+  </section>
+}
 
 function CardRow({ card, deck, shown }: { card: CoachCard; deck: CoachDeck; shown: boolean }) {
   const [open, setOpen] = useState(false)
@@ -33,6 +100,9 @@ export function CoachTab() {
   const decks = useMemo(() => currentChapterDecks({ documentId, chapterHref, decks: deckMap }), [documentId, chapterHref, deckMap])
   const status = useMemo(() => currentChapterStatus({ documentId, chapterHref, decks: deckMap }), [documentId, chapterHref, deckMap])
   const [filter, setFilter] = useState<'all' | 'shown'>('all')
+  const [insertStatus, setInsertStatus] = useState('')
+  const [inserting, setInserting] = useState(false)
+  const bookTitle = useCoachStore(state => state.bookTitle)
 
   useEffect(() => { void useCoachStore.getState().refreshUsage() }, [status?.status])
   // "부를 때만" builds the deck the first time the tab is opened for a chapter.
@@ -84,6 +154,17 @@ export function CoachTab() {
         <p className="text-[11px] text-on-surface-muted">AI가 만든 카드입니다. 본문과 맞지 않는 항목 {deck.dropped}개는 버렸습니다.</p>
       </section>
     })}
+
+    {decks.length > 0 && chapterHref && <section className="flex flex-col gap-1">
+      <button disabled={inserting} className="self-start font-semibold text-accent disabled:opacity-50" onClick={() => {
+        setInserting(true)
+        void insertOpenedCards(documentId, chapterHref, decks).then(setInsertStatus, error => setInsertStatus(String(error))).finally(() => setInserting(false))
+      }}>이 장에서 열어 본 카드 모두 EPUB에 넣기</button>
+      {insertStatus && <p role="status" className="text-[12px] text-on-surface-muted">{insertStatus}</p>}
+    </section>}
+
+    {decks.length > 0 && <ChapterConnections decks={decks} bookTitle={bookTitle} chapterTitle={chapterLabel ?? ''} />}
+    <ReviewList />
 
     <section className="flex flex-col gap-1 border-t border-[var(--hair-2)] pt-3">
       <p className="small-caps text-on-surface-muted">코치가 추정한 수준</p>
