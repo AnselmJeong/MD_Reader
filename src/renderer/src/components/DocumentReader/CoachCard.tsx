@@ -4,21 +4,21 @@ import { COACH_KIND_LABELS, coachImageKey, type CoachCard as CoachCardData, type
 import { askCoachMore, insertCoachCard, markCardKnown, markKindUnwanted } from './utils/coachActions'
 import { useCoachStore } from '../../store/useCoachStore'
 
-/** Phase 5: where else the reader met this term, and their own notes or questions about it. */
+/** Phase 5: where else the reader met this term, and their own notes about it. */
 export function CoachCardConnections({ card }: { card: CoachCardData }) {
   const links = useCoachStore(state => state.links)
   const { encounters, personal } = useMemo(() => {
     const values = Object.values(links)
     return {
       encounters: values.flatMap(value => value.encounters[card.id] ?? []).slice(0, 3),
-      personal: values.flatMap(value => value.personal.filter(item => item.cardId === card.id)).slice(0, 2)
+      personal: values.flatMap(value => value.personal.filter(item => item.cardId === card.id && item.source === 'commentary')).slice(0, 2)
     }
   }, [links, card.id])
   if (!encounters.length && !personal.length) return null
   return <div className="mt-2 flex flex-col gap-1 border-t border-[var(--hair-2)] pt-2 text-[12px] text-on-surface-muted">
     {encounters.map(item => <p key={`${item.documentId}:${item.title}`}>다른 책에서도 만났어요: 《{item.bookTitle}》{item.chapterLabel ? ` ${item.chapterLabel}` : ''}{item.known ? ' · 그때 "이미 알아요"' : ''}</p>)}
     {personal.map(item => <p key={`${item.source}:${item.at}`}>
-      {item.source === 'chat' ? `예전 질문 (${item.bookTitle}): ${item.question}` : `내 주석 (${item.bookTitle})`}{item.excerpt ? ` — ${item.excerpt}` : ''}
+      {`내 주석 (${item.bookTitle})`}{item.excerpt ? ` — ${item.excerpt}` : ''}
     </p>)}
   </div>
 }

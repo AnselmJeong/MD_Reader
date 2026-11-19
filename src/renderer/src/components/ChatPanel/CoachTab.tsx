@@ -61,15 +61,15 @@ function ChapterConnections({ decks, bookTitle, chapterTitle }: { decks: CoachDe
   }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
   const cardTitle = (id: string) => decks.flatMap(deck => deck.cards).find(card => card.id === id)?.title ?? ''
   const encounters = Object.entries(links?.encounters ?? {})
-  const personal = links?.personal ?? []
+  const personal = (links?.personal ?? []).filter(item => item.source === 'commentary')
   if (!encounters.length && !personal.length && !memory?.items.length && !loading && memory?.status !== 'error') return null
   return <section className="coach-panel">
     <SectionTitle icon={<Link2 />}>내 독서 이력과의 연결</SectionTitle>
     {encounters.length > 0 && <div className="coach-block"><p className="coach-subhead">다른 책에서도 만난 용어</p>
       <ul className="coach-bullets">{encounters.slice(0, 8).map(([id, items]) => <li key={id}><span className="font-medium">{cardTitle(id)}</span> — {items.map(item => `《${item.bookTitle}》`).join(', ')}</li>)}</ul></div>}
-    {personal.length > 0 && <div className="coach-block"><p className="coach-subhead">내 주석과 예전 질문</p>
+    {personal.length > 0 && <div className="coach-block"><p className="coach-subhead">내 주석</p>
       <ul className="flex flex-col gap-2">{personal.slice(0, 6).map(item => <li key={`${item.source}:${item.at}`}>
-        <span className="font-medium">{cardTitle(item.cardId)}</span> · {item.source === 'chat' ? `질문 (${item.bookTitle}): ${item.question}` : `내 주석 (${item.bookTitle})`}
+        <span className="font-medium">{cardTitle(item.cardId)}</span> · {`내 주석 (${item.bookTitle})`}
         {item.excerpt && <span className="coach-excerpt">{item.excerpt}</span>}
       </li>)}</ul></div>}
     {loading && <p className="coach-inline-status"><Loader2 className="coach-spin" />장기 기억에서 연결을 찾는 중…</p>}
