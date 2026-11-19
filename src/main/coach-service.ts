@@ -9,7 +9,6 @@ import {
   appendEvent, countUsage, insertReviews, readDeck, readDueReviews, readEncounters, readImage, readKv, readLastPreferences, readOpenedCardIds, readPreferences,
   readProfile, readReview, readSettings, readUsage, updateReview, writeDeck, writeImage, writeKv, writePreferences, writeProfile, writeSettings, writeTerms
 } from './coach-store'
-import { searchChatQuestions } from './chat-session-service'
 import { searchCommentaryNotes } from './commentary-service'
 import { getAgentMemorySettings } from './agent-memory-settings'
 import { COACH_PROFILE_SECTION, replaceUserSection } from './agent-memory-files'
@@ -327,12 +326,7 @@ export function getCoachLinks(request: CoachLinksRequest): CoachChapterLinks {
   const terms = [...new Map(cards.map(card => [coachTermKey(card), card])).values()]
     .filter(card => coachTermKey(card).length >= 4).sort((a, b) => b.quote.length - a.quote.length).slice(0, MAX_LINK_TERMS)
   for (const card of terms) {
-    for (const hit of searchChatQuestions(card.quote, 2)) {
-      const key = `chat:${hit.createdAt}:${hit.question.slice(0, 40)}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      personal.push({ cardId: card.id, source: 'chat', bookTitle: hit.bookTitle, question: excerpt(hit.question, 160), excerpt: excerpt(hit.answer || hit.quotedText || ''), at: hit.createdAt })
-    }
+    // Past chat questions are no longer linked: matching them by a phrase surfaced unrelated Q&A and confused readers.
     for (const note of searchCommentaryNotes(card.quote, 2)) {
       const key = `note:${note.documentId}:${note.createdAt}`
       if (seen.has(key)) continue
