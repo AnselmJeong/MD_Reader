@@ -134,6 +134,27 @@ function getRenditionContents(rendition: Rendition): Contents[] {
   return Array.isArray(contents) ? contents : [contents]
 }
 
+const EPUB_FONT_OVERRIDE_KEY = 'md-reader-font-override'
+
+// Publisher stylesheets usually set font-family on p/span/div by class, which
+// beats a font inherited from body. When the reader picked a font, force it
+// onto all text but keep code and math in their own faces. Kept in its own
+// keyed <style> so switching fonts (or back to default) replaces the rule;
+// epub.js theme rules only ever accumulate.
+function buildEpubFontOverrideCss(readerFontFamily: string): string {
+  if (!readerFontFamily) return '/* publisher fonts */'
+  const escaped = readerFontFamily.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
+  const stack = `"${escaped}", "Noto Serif KR", Georgia, serif`
+  return [
+    `html body { font-family: ${stack} !important; }`,
+    'body *:not(code):not(pre):not(pre *):not(kbd):not(samp):not(tt):not(math):not(math *):not(.katex):not(.katex *) { font-family: inherit !important; }'
+  ].join('\n')
+}
+
+function applyEpubFontOverride(contents: Contents, css: string): void {
+  contents.addStylesheetCss(css, EPUB_FONT_OVERRIDE_KEY)
+}
+
 function normalizeText(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
@@ -322,6 +343,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   const annotationsRef = useRef<EpubAnnotationSnapshot[]>([])
   const epubDragDepthRef = useRef(0)
   const epubDropCleanupRef = useRef<Array<() => void>>([])
+  const fontOverrideCssRef = useRef('')
 
   const {
     focusMode,
@@ -335,6 +357,14 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   } = useUIStore()
   const { theme, fontSize, lineHeight, contentWidth, readerFontFamily } = useSettingsStore()
   const { setDocument, updateEpubContent, updateEpubLocation } = useDocumentStore()
+
+  fontOverrideCssRef.current = buildEpubFontOverrideCss(readerFontFamily)
+  useEffect(() => {
+    const rendition = renditionRef.current
+    if (!rendition) return
+    const css = buildEpubFontOverrideCss(readerFontFamily)
+    getRenditionContents(rendition).forEach(contents => applyEpubFontOverride(contents, css))
+  }, [readerFontFamily])
 
   const [tocItems, setTocItems] = useState<TocItem[]>([])
   const [title, setTitle] = useState(tab.content || tab.fileName.replace(/\.[^.]+$/, ''))
@@ -689,6 +719,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
         link.setAttribute('data-md-reader-fonts', '')
         contents.document.head.appendChild(link)
       }
+      applyEpubFontOverride(contents, fontOverrideCssRef.current)
       linkTooltips.attach(contents)
       contents.document.querySelectorAll('table').forEach(table => {
         table.setAttribute('tabindex', '0')
