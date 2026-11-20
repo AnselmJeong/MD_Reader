@@ -8,7 +8,9 @@ import { COMMENTARY_BLOCKS, COMMENTARY_HOST } from './epubCommentaryAnchors'
 const HIGHLIGHT_NAME = 'md-reader-coach'
 const STYLE_ID = 'md-reader-coach-style'
 
-export interface CoachMarkEntry { cardId: string; quote: string }
+/** `occurrence`: which match of the quote to mark (0 = first). A card made from a selection marks
+ * the words where the reader selected them, not wherever they first appear in the chapter. */
+export interface CoachMarkEntry { cardId: string; quote: string; occurrence?: number }
 interface Registered { cardId: string; range: Range }
 const registry = new WeakMap<Document, Registered[]>()
 
@@ -54,8 +56,13 @@ export function findQuoteRanges(doc: Document, entries: CoachMarkEntry[]): Regis
   for (const entry of entries) {
     const needle = compact(entry.quote)
     if (needle.length < 2) continue
-    const start = text.indexOf(needle)
+    let start = text.indexOf(needle)
     if (start < 0) continue
+    for (let n = entry.occurrence ?? 0; n > 0; n -= 1) {
+      const next = text.indexOf(needle, start + 1)
+      if (next < 0) break
+      start = next
+    }
     const first = positions[start]
     const last = positions[start + needle.length - 1]
     if (!first || !last) continue
@@ -99,13 +106,27 @@ export function setCoachMarks(contents: Contents, entries: CoachMarkEntry[], col
   return ranges.length
 }
 
+const blockOf = (node: Node) => (node.nodeType === 1 ? node as Element : node.parentElement)?.closest(COMMENTARY_BLOCKS) ?? null
+
 /** The paragraph that contains a card's quote, for anchors and "더 자세히". */
-export function coachQuoteBlock(doc: Document, quote: string): Element | null {
-  const [found] = findQuoteRanges(doc, [{ cardId: '', quote }])
-  if (!found) return null
-  const node = found.range.startContainer
-  const element = node.nodeType === 1 ? node as Element : node.parentElement
-  return element?.closest(COMMENTARY_BLOCKS) ?? null
+export function coachQuoteBlock(doc: Document, quote: string, occurrence?: number): Element | null {
+  const [found] = findQuoteRanges(doc, [{ cardId: '', quote, occurrence }])
+  return found ? blockOf(found.range.startContainer) : null
+}
+
+/** Which match of `quote` in the document the reader's selection is (0 = first), and its paragraph. */
+export function selectionOccurrence(doc: Document, quote: string, selection: Range | null): { occurrence: number; block: Element | null } {
+  const needle = compact(quote)
+  if (!doc.body || !selection || needle.length < 2) return { occurrence: 0, block: selection ? blockOf(selection.startContainer) : null }
+  const { text, positions } = indexText(doc)
+  let occurrence = 0
+  for (let start = text.indexOf(needle); start >= 0; start = text.indexOf(needle, start + 1)) {
+    const end = positions[start + needle.length - 1]
+    // The first match that does not end before the selection starts is the one selected.
+    if (end && selection.comparePoint(end.node, end.offset) >= 0) return { occurrence, block: blockOf(selection.startContainer) }
+    occurrence += 1
+  }
+  return { occurrence: 0, block: blockOf(selection.startContainer) }
 }
 
 /** Report which mark the pointer is over, in outer-window coordinates. */

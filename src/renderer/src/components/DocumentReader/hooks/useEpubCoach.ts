@@ -7,7 +7,7 @@ import {
 import { deckSlot, linksKey, useCoachStore } from '../../../store/useCoachStore'
 import { useChatStore } from '../../../store/useChatStore'
 import { recordCardEvent } from '../utils/coachActions'
-import { attachCoachHover, coachMarkColor, coachQuoteBlock, setCoachMarks } from '../utils/epubCoachMarks'
+import { attachCoachHover, coachMarkColor, coachQuoteBlock, selectionOccurrence, setCoachMarks } from '../utils/epubCoachMarks'
 import { sourceAnchor } from '../utils/epubCommentaryAnchors'
 
 const DWELL_MS = 20000
@@ -25,6 +25,18 @@ interface Options {
   sections: Section[]
   theme: string
   atChapterEnd: boolean
+}
+
+/** The DOM range of the reader's selection: from its CFI, or the live selection if that fails. */
+function selectedRange(contents: Contents, cfiRange?: string): Range | null {
+  if (cfiRange) {
+    try {
+      const range = (contents as unknown as { range: (cfi: string) => Range | null }).range(cfiRange)
+      if (range) return range
+    } catch { /* fall back to the live selection */ }
+  }
+  const selection = contents.window?.getSelection()
+  return selection && selection.rangeCount ? selection.getRangeAt(0) : null
 }
 
 const chapterText = (section: Section | undefined) => section?.contents.document?.body?.textContent?.replace(/[ \t]+/g, ' ') ?? ''
@@ -104,7 +116,8 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
 
   const resolveCard = useCallback((card: CoachCard) => {
     for (const section of sections) {
-      const block = section.contents.document ? coachQuoteBlock(section.contents.document, card.quote) : null
+      if (card.at && card.at.href !== section.chapterHref.split('#')[0]) continue
+      const block = section.contents.document ? coachQuoteBlock(section.contents.document, card.quote, card.at?.occurrence) : null
       if (block) return { anchor: sourceAnchor(block, section.chapterHref), paragraph: normalizeCoachText(block.textContent ?? '').slice(0, 4000) }
     }
     return { anchor: null, paragraph: '' }
@@ -154,12 +167,16 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
     const userDecks = [...decksByChapter.values()].flat().filter(isUserDeck)
     for (const section of sections) {
       if (!section.contents.document?.body) continue
+      const href = section.chapterHref.split('#')[0]
       const hidden = new Set([...suppressed, ...knownElsewhere])
-      const generated = (decksByChapter.get(section.chapterHref.split('#')[0]) ?? []).filter(deck => !isUserDeck(deck))
+      const generated = (decksByChapter.get(href) ?? []).filter(deck => !isUserDeck(deck))
       const entries = [...generated, ...userDecks].flatMap(deck =>
-        (isUserDeck(deck) ? deck.cards.filter(card => !suppressed.has(card.id)) : selectCoachCards(deck, preferences, profile, { suppressed: hidden, day }).map(item => item.card)).map(card => {
+        (isUserDeck(deck)
+          // A selection card is marked only in the file and at the match where the reader selected it.
+          ? deck.cards.filter(card => !suppressed.has(card.id) && (!card.at || card.at.href === href))
+          : selectCoachCards(deck, preferences, profile, { suppressed: hidden, day }).map(item => item.card)).map(card => {
           cardIndex.current.set(card.id, { card, deck })
-          return { cardId: card.id, quote: card.quote }
+          return { cardId: card.id, quote: card.quote, occurrence: card.at?.occurrence }
         }))
       try { setCoachMarks(section.contents, entries, accent) } catch (error) { console.error('[Coach] Failed to draw marks:', error) }
     }
@@ -212,7 +229,7 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
   /** "코치 카드" in the selection menu: ask the coach for a card about the selected text. */
   const [pendingCard, setPendingCard] = useState<{ rect: DOMRect; text: string; error?: string } | null>(null)
   const pendingRun = useRef(0)
-  const createCardFromSelection = useCallback(async (contents: Contents, selectedText: string, rect: DOMRect) => {
+  const createCardFromSelection = useCallback(async (contents: Contents, selectedText: string, rect: DOMRect, cfiRange?: string) => {
     // Saved under the chapter being read, so it is listed in the coach tab with that chapter's cards.
     const section = sections.find(item => item.contents === contents) ?? currentSection
     const chapterHrefForCard = chapter ?? section?.chapterHref
@@ -220,11 +237,18 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
     const run = ++pendingRun.current
     hide()
     setPendingCard({ rect, text: selectedText })
+    // Remember where the selection is: the same words often appear earlier in the chapter (a title,
+    // a heading, an earlier mention), and the card must be marked here, not at the first match.
+    const range = selectedRange(contents, cfiRange)
+    // Same 300-character cut as the card's quote, so the count matches what is marked later.
+    const quote = selectedText.replace(/\s+/g, ' ').trim().slice(0, 300)
+    const { occurrence, block } = contents.document ? selectionOccurrence(contents.document, quote, range) : { occurrence: 0, block: null }
+    const sectionHref = section?.chapterHref.split('#')[0]
     try {
-      const block = contents.document ? coachQuoteBlock(contents.document, selectedText) : null
       const { deck, card } = await window.api.coach.createSelectionCard({
         documentId, chapterHref: chapterHrefForCard, bookTitle, chapterTitle: chapterLabel ?? '', selectedText,
-        paragraph: normalizeCoachText(block?.textContent ?? '').slice(0, 3000), chatModel: useChatStore.getState().selectedModel || 'codex:default'
+        paragraph: normalizeCoachText(block?.textContent ?? '').slice(0, 3000), chatModel: useChatStore.getState().selectedModel || 'codex:default',
+        ...(sectionHref ? { at: { href: sectionHref, occurrence } } : {})
       })
       useCoachStore.getState().applyDeckUpdate({ documentId, chapterHref: deck.chapterHref, part: COACH_USER_PART, status: 'ready', deck })
       if (run !== pendingRun.current) return

@@ -1520,7 +1520,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
           onClose={clearSelection}
           onAnnotate={() => { useCommentaryStore.getState().open(tab.documentHash); clearSelection() }}
           onAsk={() => coach.recordMiss(selection.text)}
-          onCoachCard={() => { void coach.createCardFromSelection(selection.contents, selection.text, selection.rect) }}
+          onCoachCard={() => { void coach.createCardFromSelection(selection.contents, selection.text, selection.rect, selection.cfiRange) }}
         />
       )}
       <CoachIntakeDialog />

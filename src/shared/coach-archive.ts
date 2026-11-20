@@ -3,6 +3,21 @@ import type { CoachCard, CoachCardKind, CoachDeck } from './coach'
 // Same as COACH_USER_PART; repeated so this file has no runtime imports (node tests load it directly).
 const USER_PART = 999
 
+/** Same as sanitizeCardPosition / sameCardPlace in coach.ts, repeated for the same reason. */
+function sanitizeCardPosition(value: unknown): CoachCard['at'] {
+  const entry = value as Record<string, unknown> | null
+  if (!entry || typeof entry !== 'object') return undefined
+  const href = typeof entry.href === 'string' ? entry.href.split('#')[0] : ''
+  const occurrence = Number(entry.occurrence)
+  if (!href || href.length > 4096 || !Number.isSafeInteger(occurrence) || occurrence < 0 || occurrence > 100000) return undefined
+  return { href, occurrence }
+}
+function sameCardPlace(a: CoachCard, b: CoachCard): boolean {
+  if (a.quote !== b.quote) return false
+  if (!a.at || !b.at) return !a.at && !b.at
+  return a.at.href === b.at.href && a.at.occurrence === b.at.occurrence
+}
+
 /**
  * Coach cards travel inside an exported EPUB as `MDReader-Commentary/coach.json`
  * plus their pictures. Another MD Reader merges them on open; other readers ignore the files.
@@ -47,7 +62,8 @@ export function sanitizeArchiveCard(value: unknown): CoachCard | null {
   if (!/^[a-f0-9]{8,64}$/.test(id) || !kind || quote.length < 2 || !title || !gloss) return null
   const imageQuery = str(entry.imageQuery, 160)
   const difficulty = Math.min(5, Math.max(1, Math.round(Number(entry.difficulty) || 3)))
-  return { id, kind, difficulty, quote, title, gloss, ...(imageQuery ? { imageQuery } : {}) }
+  const at = sanitizeCardPosition(entry.at)
+  return { id, kind, difficulty, quote, title, gloss, ...(imageQuery ? { imageQuery } : {}), ...(at ? { at } : {}) }
 }
 
 /** Untrusted deck from a file: keep only well-formed fields, and bind it to this book. */
@@ -101,8 +117,7 @@ export function sanitizeArchiveImage(value: unknown): CoachArchiveImage | null {
 export function mergeUserDeck(local: CoachDeck | null, incoming: CoachDeck): CoachDeck {
   if (!local) return incoming
   const ids = new Set(local.cards.map(card => card.id))
-  const quotes = new Set(local.cards.map(card => card.quote))
-  const added = incoming.cards.filter(card => !ids.has(card.id) && !quotes.has(card.quote))
+  const added = incoming.cards.filter(card => !ids.has(card.id) && !local.cards.some(item => sameCardPlace(item, card)))
   return added.length ? { ...local, cards: [...local.cards, ...added].slice(-100) } : local
 }
 
