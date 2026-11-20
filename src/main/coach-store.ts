@@ -102,6 +102,16 @@ export function countUsage(field: 'calls' | 'cache_hits' | 'failures') {
   database().prepare(`INSERT INTO coach_usage (date, ${field}) VALUES (?, 1) ON CONFLICT(date) DO UPDATE SET ${field} = ${field} + 1`).run(today())
 }
 
+/** Chapters that started a deck today: the daily limit counts chapters, not the calls for their parts. */
+export function readPreparedChapters(): string[] {
+  const stored = getKv<{ date?: string; chapters?: string[] }>('coach-prepared-chapters', {})
+  return stored.date === today() && Array.isArray(stored.chapters) ? stored.chapters : []
+}
+export function markChapterPrepared(chapter: string) {
+  const chapters = readPreparedChapters()
+  if (!chapters.includes(chapter)) setKv('coach-prepared-chapters', { date: today(), chapters: [...chapters, chapter] })
+}
+
 export interface StoredImage { status: 'ready' | 'none'; png: Buffer | null; pageTitle: string | null; pageUrl: string | null; source: string | null; createdAt: number }
 export function readImage(queryKey: string): StoredImage | null {
   const row = database().prepare('SELECT status, png, page_title, page_url, source, created_at FROM coach_images WHERE query_key = ?').get(queryKey) as

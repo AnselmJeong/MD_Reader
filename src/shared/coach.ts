@@ -1,8 +1,13 @@
 // Reading coach: shared types and pure functions (no Node or DOM APIs), so the
 // selection and learning logic can be unit tested and used in both processes.
 
-export const COACH_PROMPT_VERSION = 'coach-deck-v2'
-export const COACH_PART_WORDS = 6000
+export const COACH_PROMPT_VERSION = 'coach-deck-v3'
+/** Each part of a chapter is one model call; smaller parts give long chapters more cards. */
+export const COACH_PART_WORDS = 3500
+/** About one card per this many words, within the bounds below. */
+const WORDS_PER_CARD = 90
+const MIN_CARDS = 15
+const MAX_CARDS = 40
 
 export type CoachPurpose = 'skim' | 'enjoy' | 'study' | 'critique' | 'research'
 export type CoachFamiliarity = 'new' | 'some' | 'familiar'
@@ -116,6 +121,8 @@ export interface CoachDeckRequest {
   chapterTitle: string
   chapterText: string
   chatModel: string
+  /** Number of parts the chapter was split into (shown to the model). */
+  partCount?: number
   /** Bypass the cache and regenerate ("이 장 다시 준비"). */
   force?: boolean
   /** Only return a cached deck; never start a background call. */
@@ -307,16 +314,27 @@ export function countWords(text: string): number {
   return trimmed ? trimmed.split(/\s+/).length : 0
 }
 
+/** Length in "words", also for scripts without spaces (Chinese, Japanese): about six characters count as one word. */
+export function textSize(text: string): number {
+  return Math.max(countWords(text), Math.ceil(text.replace(/\s+/g, '').length / 6))
+}
+
+/** How many cards to ask for, scaled with the length of the text sent in one call. */
+export function coachCardTarget(text: string): { min: number; max: number } {
+  const min = Math.min(MAX_CARDS, Math.max(MIN_CARDS, Math.round(textSize(text) / WORDS_PER_CARD)))
+  return { min, max: Math.min(MAX_CARDS + 8, min + 8) }
+}
+
 /** Split a long chapter at paragraph or sentence boundaries into parts of at most `maxWords`. */
 export function splitChapterText(text: string, maxWords = COACH_PART_WORDS): string[] {
   const clean = text.replace(/\r/g, '').trim()
-  if (countWords(clean) <= maxWords) return clean ? [clean] : []
+  if (textSize(clean) <= maxWords) return clean ? [clean] : []
   const blocks = clean.split(/\n\s*\n|(?<=[.!?。])\s+(?=\S)/)
   const parts: string[] = []
   let current: string[] = []
   let words = 0
   for (const block of blocks) {
-    const n = countWords(block)
+    const n = textSize(block)
     if (words + n > maxWords && current.length) {
       parts.push(current.join('\n\n'))
       current = []
@@ -369,11 +387,12 @@ export function buildCoachDeckPrompt(params: { bookTitle: string; chapterTitle: 
     "image_query": "optional short English image search phrase naming the subject itself (e.g. \"Karl Jaspers\", \"diffusion tensor tractography\"), only when a picture helps (people, places, artworks, objects, instruments, diagrams)"
   }]
 }`
+  const target = coachCardTarget(params.chapterText)
   const user = [
     `Book: ${params.bookTitle || 'Unknown'}`,
     `Chapter: ${params.chapterTitle || 'Unknown'}${params.partCount && params.partCount > 1 ? ` (part ${(params.part ?? 0) + 1} of ${params.partCount})` : ''}`,
     params.request?.trim() ? `Reader's standing request (apply it to every card): ${params.request.trim()}` : '',
-    'Produce 30-40 cards spread over the whole text: difficulty 1 (general reader) to 5 (specialist), and all eight kinds where the text allows.',
+    `Produce ${target.min}-${target.max} cards spread evenly from the beginning to the end of the text (do not stop early in the text): difficulty 1 (general reader) to 5 (specialist), and all eight kinds where the text allows.`,
     '"structure" cards explain the argument of a paragraph; "critique" cards give a representative objection or later revision; "connection" cards link to other fields or books.',
     `JSON shape:\n${schema}`,
     `<chapter_text>\n${params.chapterText}\n</chapter_text>`

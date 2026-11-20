@@ -58,12 +58,13 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
   const parts = useMemo(() => splitChapterText(chapterText(currentSection)), [currentSection])
   const part = useMemo(() => partForVisibleText(parts, visibleText), [parts, visibleText])
 
-  const request = useCallback((options: { force?: boolean; peek?: boolean }) => {
-    if (!chapter || !parts[part]) return
+  const request = useCallback((options: { force?: boolean; peek?: boolean; part?: number }) => {
+    const { part: target = part, ...flags } = options
+    if (!chapter || !parts[target]) return
     const model = useChatStore.getState().selectedModel
     void window.api.coach.requestDeck({
-      documentId, chapterHref: chapter, part, bookTitle, chapterTitle: chapterLabel ?? '', chapterText: parts[part],
-      chatModel: model || 'codex:default', ...options
+      documentId, chapterHref: chapter, part: target, partCount: parts.length, bookTitle, chapterTitle: chapterLabel ?? '', chapterText: parts[target],
+      chatModel: model || 'codex:default', ...flags
     }).then(update => useCoachStore.getState().applyDeckUpdate(update))
       .catch(error => console.error('[Coach] Deck request failed:', error))
   }, [bookTitle, chapter, chapterLabel, documentId, part, parts])
@@ -81,6 +82,18 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
     }, DWELL_MS)
     return () => window.clearTimeout(timer)
   }, [automatic, chapter, documentId, enabled, part, request])
+
+  // Long chapters: once the part being read is ready, prepare the next one so its cards are there on arrival.
+  const prefetched = useRef(new Set<string>())
+  const currentReady = chapter ? decks[deckSlot(documentId, chapter, part)]?.status === 'ready' : false
+  useEffect(() => {
+    if (!automatic || !currentReady || !chapter || !parts[part + 1]) return
+    const next = deckSlot(documentId, chapter, part + 1)
+    const slot = useCoachStore.getState().decks[next]
+    if (prefetched.current.has(next) || (slot && slot.status !== 'idle')) return
+    prefetched.current.add(next)
+    request({ part: part + 1 })
+  }, [automatic, chapter, currentReady, documentId, part, parts, request])
 
   const resolveCard = useCallback((card: CoachCard) => {
     for (const section of sections) {
