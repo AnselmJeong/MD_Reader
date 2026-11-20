@@ -57,6 +57,31 @@ app.whenReady().then(async () => {
   }
   try {
     await openBook()
+    // The first-open coach intake dialog covers the page; close it.
+    if (await run(`document.body.textContent.includes('이 책, 어떻게 도와 드릴까요?')`)) {
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
+      await wait(`!document.body.textContent.includes('이 책, 어떻게 도와 드릴까요?')`, 'intake closes')
+    }
+    // A selection in the right-hand page: the menu used to be squeezed and wrap there.
+    for (const index of [8, 2]) {
+      await run(`(() => { const d = ${frameDoc}; const p = d.querySelectorAll('p')[${index}]; const r = d.createRange(); r.setStart(p.firstChild, 0); r.setEnd(p.firstChild, 6); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r) })()`)
+      await wait(`!!document.querySelector('[data-selection-menu]')`, 'menu for ' + index)
+      await pause(100)
+      const menu = await run(`(() => {
+        const m = document.querySelector('[data-selection-menu]'); const r = m.getBoundingClientRect()
+        // A label that wraps has text on more than one line; a clipped menu is covered at its right end.
+        const lines = Math.max(...Array.from(m.querySelectorAll('button')).map(b => { const tops = new Set(); const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) { const t = document.createRange(); t.selectNodeContents(n); for (const x of t.getClientRects()) if (x.width > 0) tops.add(Math.round(x.top)) } return tops.size }))
+        const visible = m.contains(document.elementFromPoint(r.right - 6, r.top + r.height / 2))
+        return { left: r.left, right: r.right, height: r.height, lines, visible, width: innerWidth }
+      })()`)
+      fs.writeFileSync(path.resolve(`.tmp/selection-menu-${index}.png`), (await win.webContents.capturePage()).toPNG())
+      assert.ok(menu.lines === 1 && menu.height <= 40, `menu wraps: ${JSON.stringify(menu)}`)
+      assert.ok(menu.left >= 0 && menu.right <= menu.width && menu.visible, `menu clipped or off screen: ${JSON.stringify(menu)}`)
+      await run(`(${frameDoc}).getSelection().removeAllRanges()`)
+      win.webContents.sendInputEvent({ type: 'mouseDown', x: 30, y: 400, button: 'left', clickCount: 1 })
+      win.webContents.sendInputEvent({ type: 'mouseUp', x: 30, y: 400, button: 'left', clickCount: 1 })
+      await wait(`!document.querySelector('[data-selection-menu]')`, 'menu closes')
+    }
     // Select the italic phrase (it wraps across a line, like most real selections).
     await run(`(() => { const d = ${frameDoc}; const r = d.createRange(); r.selectNodeContents(d.querySelector('#target i')); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r) })()`)
     await wait(`Array.from(document.querySelectorAll('[data-selection-menu] button')).some(b => b.textContent.includes('코치 카드'))`, 'selection menu')

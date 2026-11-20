@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useChatStore } from '../../store/useChatStore'
 import { useUIStore } from '../../store/useUIStore'
 import { useDocumentStore } from '../../store/useDocumentStore'
@@ -98,19 +99,30 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose, on
   }
 
   const top = Math.max(46, rect.top - 48)
-  const left = Math.min(Math.max(rect.left + rect.width / 2, 220), window.innerWidth - 220)
+  // Keep the whole menu on screen using its real width (it grows with "코치 카드" and "주석"),
+  // and point the arrow at the selection even when the menu had to move.
+  const menuRef = useRef<HTMLDivElement>(null)
+  const anchor = rect.left + rect.width / 2
+  const [width, setWidth] = useState(440)
+  useLayoutEffect(() => { if (menuRef.current) setWidth(menuRef.current.offsetWidth) }, [onCoachCard, onAnnotate])
+  const half = width / 2 + 8
+  const left = window.innerWidth < width + 16 ? window.innerWidth / 2 : Math.min(Math.max(anchor, half), window.innerWidth - half)
+  const arrow = Math.min(Math.max(anchor - left + width / 2, 12), width - 12)
   const itemClass = 'selection-menu-item'
   const iconClass = 'h-3.5 w-3.5 shrink-0'
 
-  return (
+  // Rendered in <body>: inside the reader pane a `fixed` menu was clipped and squeezed by the pane.
+  return createPortal(
     <div
+      ref={menuRef}
       data-selection-menu="true"
       onMouseDown={(e) => e.preventDefault()}
-      className="selection-floating-menu fixed z-50 flex items-center gap-0 rounded-lg border px-1 py-1 ui-text"
+      className="selection-floating-menu fixed z-50 flex w-max items-center gap-0 whitespace-nowrap rounded-lg border px-1 py-1 ui-text"
       style={{
         top: `${Math.max(8, top)}px`,
         left: `${left}px`,
         transform: 'translateX(-50%)',
+        ['--menu-arrow-x' as string]: `${arrow}px`,
         background: 'var(--selection-menu-bg)',
         borderColor: 'var(--selection-menu-hair)',
         boxShadow: 'var(--shadow-lg)',
@@ -181,6 +193,7 @@ export function TextSelectionMenu({ rect, selectedText, onHighlight, onClose, on
         <svg className={iconClass} viewBox="0 0 16 16" aria-hidden="true"><path className="icon-stroke" d="M5.5 5.5h7v7h-7zM3.5 10.5v-7h7" /></svg>
         Copy
       </button>
-    </div>
+    </div>,
+    document.body
   )
 }
