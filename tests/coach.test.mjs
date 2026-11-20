@@ -130,6 +130,8 @@ test('Wikipedia article matching rejects unrelated or special pages', () => {
   assert.equal(wikipediaTitleMatches('Karl_Jaspers', { title: '카를 야스퍼스', imageQuery: 'Karl Jaspers philosopher' }), true)
   assert.equal(wikipediaTitleMatches('Axial Age', { title: '축의 시대', imageQuery: 'Axial Age Karl Jaspers' }), true)
   assert.equal(wikipediaTitleMatches('Jaspers (band)', { title: '카를 야스퍼스', imageQuery: 'Karl Jaspers philosopher' }), true)
+  assert.equal(wikipediaTitleMatches('Charles_Darwin', { title: '크립토필리아 미누투스(Cryptophialus minutus)', imageQuery: 'Cryptophialus minutus barnacle Darwin' }), false)
+  assert.equal(wikipediaTitleMatches('Cryptophialus', { title: '크립토필리아 미누투스(Cryptophialus minutus)', imageQuery: 'Cryptophialus minutus barnacle Darwin' }), true)
   assert.equal(wikipediaTitleMatches('Confucianism in Korea', { title: '카를 야스퍼스', imageQuery: 'Karl Jaspers philosopher' }), false)
 })
 
