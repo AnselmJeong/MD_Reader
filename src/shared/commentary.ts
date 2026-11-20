@@ -63,7 +63,8 @@ export interface CommentaryAPI {
   importImageData: (documentId: string, dataUrl: string, name: string) => Promise<CommentaryAsset>
   importHtml: () => Promise<CommentaryHtml | null>
   permanentlyDelete: (documentId: string, id: string, expectedUpdatedAt: number) => Promise<boolean>
-  exportEpub: (filePath: string, documentId: string) => Promise<{ filePath: string } | null>
+  /** coachCards: how many coach cards went into the book with it. */
+  exportEpub: (filePath: string, documentId: string) => Promise<{ filePath: string; coachCards?: number } | null>
 }
 
 export const commentaryText = (text: string) => text.replace(/\s+/g, ' ').trim()

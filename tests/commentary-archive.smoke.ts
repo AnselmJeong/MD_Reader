@@ -10,6 +10,9 @@ import { createHash } from 'node:crypto'
 import JSZip from 'jszip'
 import { compileCommentaryEpub, exportCommentaryEpub, readCommentaryEpub, commentaryExportPath } from '../src/main/commentary-epub'
 import { closeCommentaryDb, saveCommentary, listCommentary, importCommentarySnapshot } from '../src/main/commentary-service'
+import { exportCoachArchive, importCoachArchive, getCoachUserDeck } from '../src/main/coach-service'
+import { readDeck, readImportedDeck, writeDeck, writeImage, readImage, closeCoachDb } from '../src/main/coach-store'
+import { coachImageStoreKey } from '../src/shared/coach'
 
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'md-reader-commentary-archive-'))
 app.setPath('userData', fixture)
@@ -77,7 +80,39 @@ app.whenReady().then(async () => {
     packed.file('MDReader-Commentary/original.epub', 'corrupted')
     await assert.rejects(readCommentaryEpub(await packed.generateAsync({ type: 'nodebuffer' })), /원본 EPUB 검증/)
     assert.deepEqual(listCommentary(documentId), baseline)
+
+    // Coach cards travel in the book: footnotes for other readers, coach.json for MD Reader.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+    const coachCard = { id: '0000000a', kind: 'term' as const, difficulty: 3, quote: 'First paragraph', title: '첫 문단', gloss: '설명', imageQuery: 'first' }
+    const userCard = { ...coachCard, id: '0000000b', quote: 'Second', title: '둘째', imageQuery: undefined }
+    const generated = { key: 'a'.repeat(64), documentId, chapterHref: 'chapter.xhtml', part: 0, domain: [], brief: '', sections: [], recap: [], questions: [], cards: [coachCard], dropped: 0, model: 'm', createdAt: 1 }
+    writeDeck(generated)
+    writeDeck({ ...generated, key: 'c'.repeat(64), part: 999, cards: [userCard] })
+    writeImage(coachImageStoreKey(coachCard), { status: 'ready', png, pageTitle: 'P', pageUrl: 'https://en.wikipedia.org/wiki/P', source: 'Wikipedia', createdAt: 1 })
+    const coach = exportCoachArchive(documentId)
+    assert.equal(coach.decks.length, 2)
+    assert.equal(coach.images.length, 1)
+    const withCoach = await compileCommentaryEpub(original, listCommentary(documentId), coach)
+    const coachZip = await JSZip.loadAsync(withCoach)
+    assert.match(await coachZip.file('OEBPS/chapter.xhtml')!.async('string'), /epub:type="noteref"[^>]*>First paragraph<\/a>/)
+    // A second device: nothing local yet.
+    closeCoachDb()
+    app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'md-reader-coach-import-')))
     closeCommentaryDb()
+    let imported = 0
+    await readCommentaryEpub(withCoach, true, (id, archive) => { imported += importCoachArchive(id, archive).decks })
+    assert.equal(imported, 2)
+    assert.equal(readImportedDeck(documentId, 'chapter.xhtml', 0)!.cards[0].id, '0000000a')
+    assert.equal(getCoachUserDeck(documentId, 'chapter.xhtml')!.cards[0].id, '0000000b')
+    assert.equal(readImage(coachImageStoreKey(coachCard))!.status, 'ready')
+    // Opening again adds nothing; a local deck is never replaced.
+    imported = 0
+    await readCommentaryEpub(withCoach, true, (id, archive) => { imported += importCoachArchive(id, archive).decks })
+    assert.equal(imported, 0)
+    assert.ok(readDeck('a'.repeat(64)))
+    closeCoachDb()
+    closeCommentaryDb()
+    console.log('PASS: coach cards exported as footnotes and coach.json, imported once on another device.')
     console.log('PASS: EPUB 2 to portable EPUB 3; MathML/nav; root relocation; stale edit, merged cycles, corrupt images/original rejected; failed imports atomic; original overwrite prevented; single annotated suffix; verified annotated same-file and symlink resave with original and notes intact.')
     app.exit(0)
   } catch (error) { console.error(error); closeCommentaryDb(); app.exit(1) }

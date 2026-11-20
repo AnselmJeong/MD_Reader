@@ -6,6 +6,7 @@ import { getEpubReadingProgress } from './epub-reading-progress-service'
 import { readBibliography } from './bibliography-service'
 import type { BibliographyResult } from '../shared/bibliography'
 import { readCommentaryEpub } from './commentary-epub'
+import { importCoachArchive } from './coach-service'
 
 interface FileStoreData {
   recentFiles: string[]
@@ -63,7 +64,7 @@ export async function readDocumentFile(filePath: string): Promise<DocumentFileRe
   const extension = path.extname(filePath).toLowerCase()
 
   if (extension === '.epub') {
-    const buffer = await readCommentaryEpub(await fs.readFile(filePath))
+    const buffer = await readCommentaryEpub(await fs.readFile(filePath), true, importCoachArchive)
     const documentHash = createHash('sha256').update(buffer).digest('hex')
     const progress = getEpubReadingProgress({
       documentId: documentHash,

@@ -171,6 +171,10 @@ export function coachImageKey(card: { title: string; imageQuery?: string }): str
   return (card.imageQuery?.trim() || `title:${card.title.trim()}`).replace(/\s+/g, ' ').toLowerCase().slice(0, 200)
 }
 
+/** Key of a card's picture in the coach database (versioned so older cached misses are ignored). */
+export const COACH_IMAGE_KEY_VERSION = 'v3:'
+export const coachImageStoreKey = (card: { title: string; imageQuery?: string }) => COACH_IMAGE_KEY_VERSION + coachImageKey(card)
+
 export interface CoachAPI {
   getPreferences: (documentId: string) => Promise<{ preferences: CoachPreferences | null; lastPreferences: CoachPreferences | null; settings: CoachSettings }>
   setPreferences: (documentId: string, preferences: CoachPreferences) => Promise<CoachPreferences>

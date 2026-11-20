@@ -8,7 +8,8 @@ import { exportCommentaryEpub, commentaryExportPath } from './commentary-epub'
 import {
   getCoachImage, createCoachSelectionCard, getCoachUserDeck, searchCoachImages, saveCoachImage, getCoachPreferences, getCoachProfile, getCoachSettings, getCoachUsage, recordCoachEvent,
   requestCoachDeck, resetCoachProfile, setCoachChatBusyProbe, setCoachPreferences, setCoachSettings,
-  addCoachReviews, answerCoachReview, getCoachLinks, getCoachMemoryLinks, getDueCoachReviews, getOpenedCards
+  addCoachReviews, answerCoachReview, getCoachLinks, getCoachMemoryLinks, getDueCoachReviews, getOpenedCards,
+  exportCoachArchive
 } from './coach-service'
 import type { CoachDeckRequest, CoachEvent, CoachImageCandidate, CoachSelectionCardRequest, CoachLinksRequest, CoachPreferences, CoachReviewRequest, CoachSettings } from '../shared/coach'
 import type { SaveCommentary } from '../shared/commentary'
@@ -123,8 +124,9 @@ export function registerIpcHandlers(): void {
     const result = await dialog.showSaveDialog({ title: '주석을 포함한 EPUB 저장', defaultPath: commentaryExportPath(filePath), filters: [{ name: 'Quarto', extensions: ['qmd'] },
         { name: 'EPUB', extensions: ['epub'] }] })
     if (result.canceled || !result.filePath) return null
-    await exportCommentaryEpub(filePath, result.filePath, documentId)
-    return { filePath: result.filePath }
+    const coach = exportCoachArchive(documentId)
+    await exportCommentaryEpub(filePath, result.filePath, documentId, coach)
+    return { filePath: result.filePath, coachCards: coach.decks.reduce((sum, deck) => sum + deck.cards.length, 0) }
   })
   // ─── File Operations ───
   ipcMain.handle('file:open-dialog', async () => {
