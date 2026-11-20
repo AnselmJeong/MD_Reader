@@ -20,7 +20,7 @@
 .document-body h4,
 .document-body h5,
 .document-body h6 {
-  font-family: Newsreader, 'Noto Serif KR', Georgia, serif;
+  font-family: var(--reader-font-family, Newsreader, 'Noto Serif KR', Georgia, serif);
   font-weight: 400;
   line-height: 1.08;
   margin-top: 2.2em;
