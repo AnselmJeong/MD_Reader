@@ -273,7 +273,7 @@ export function EpubCommentary({ documentId, filePath, sections, paginated, onNa
     setBusy(true); setError(''); setStatus('EPUB을 만드는 중…', false)
     try {
       const result = await window.api.commentary.exportEpub(filePath, documentId)
-      setStatus(result ? `저장 완료: ${result.filePath}` : '')
+      setStatus(result ? `저장 완료: ${result.filePath}${result.coachCards ? ` (코치 카드 ${result.coachCards}장 포함)` : ''}` : '')
     } catch (error) { setError(String(error)); setStatus('') } finally { setBusy(false) }
   }
   useEffect(() => {

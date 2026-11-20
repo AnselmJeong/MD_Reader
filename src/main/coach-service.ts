@@ -6,7 +6,7 @@ import { getAiProviderConfig } from './ai-provider-settings'
 import { fetchImageBytes, findWikipediaImage, searchBraveImages, type CoachImageLookup } from './coach-image-service'
 import { searchTinyFishWeb } from './tinyfish-web-search-service'
 import {
-  appendEvent, countUsage, insertReviews, readDeck, readDueReviews, readEncounters, readImage, readKv, readLastPreferences, readPreparedChapters, markChapterPrepared, readOpenedCardIds, readPreferences,
+  appendEvent, countUsage, insertReviews, readDeck, readDocumentDecks, readImportedDeck, insertImportedDeck, readReadyImages, readDueReviews, readEncounters, readImage, readKv, readLastPreferences, readPreparedChapters, markChapterPrepared, readOpenedCardIds, readPreferences,
   readProfile, readReview, readSettings, readUsage, updateReview, writeDeck, writeImage, writeKv, writePreferences, writeProfile, writeSettings, writeTerms
 } from './coach-store'
 import { searchCommentaryNotes } from './commentary-service'
@@ -14,11 +14,12 @@ import { getAgentMemorySettings } from './agent-memory-settings'
 import { COACH_PROFILE_SECTION, replaceUserSection } from './agent-memory-files'
 import { checkHindsightHealth, recallHindsight, retainHindsightMemory } from './hindsight-client'
 import {
-  applyCoachEvent, buildCoachDeckPrompt, buildSelectionCardPrompt, COACH_USER_PART, coachImageKey, parseSelectionCard, type CoachCard, type CoachSelectionCardRequest, coachDeckCacheInput, coachHash, coachTermKey, EMPTY_COACH_PROFILE, nextReviewInterval, parseCoachDeck, sanitizePreferences,
+  applyCoachEvent, buildCoachDeckPrompt, COACH_IMAGE_KEY_VERSION, buildSelectionCardPrompt, COACH_USER_PART, coachImageKey, parseSelectionCard, type CoachCard, type CoachSelectionCardRequest, coachDeckCacheInput, coachHash, coachTermKey, EMPTY_COACH_PROFILE, nextReviewInterval, parseCoachDeck, sanitizePreferences,
   summarizeCoachProfile, type CoachChapterLinks, type CoachLinksRequest, type CoachMemoryLinks, type CoachPersonalLink, type CoachReviewItem, type CoachReviewRequest,
   type CoachDeck, type CoachDeckRequest, type CoachDeckUpdate, type CoachEvent, type CoachImage, type CoachImageCandidate, type CoachImageSearchResult, type CoachPreferences, type CoachProfile, type CoachSettings
 } from '../shared/coach'
 import { validateDocumentId } from './commentary-service'
+import { latestDecks, mergeUserDeck, type CoachArchive, type CoachArchiveImageData } from '../shared/coach-archive'
 
 const LANGUAGE = 'ko'
 const MAX_CHAPTER_CHARS = 60000
@@ -122,7 +123,8 @@ export function requestCoachDeck(request: CoachDeckRequest): CoachDeckUpdate {
   if (!preferences?.enabled) return { ...base, status: 'idle' }
   const key = deckKey(request, preferences)
   if (!request.force) {
-    const cached = readDeck(key)
+    // Cards that came inside the EPUB count as this reader's cache, whatever request text made them.
+    const cached = readDeck(key) ?? readImportedDeck(request.documentId, request.chapterHref, request.part)
     if (cached) { countUsage('cache_hits'); return { ...base, status: 'ready', deck: cached } }
   }
   if (inFlight.has(key)) return { ...base, status: 'generating' }
@@ -236,7 +238,7 @@ export async function createCoachSelectionCard(request: CoachSelectionCardReques
 // Misses are retried after a day. Keys carry a version so misses cached by older
 // bugs (thumb.wikimedia.org rejected; WebP/GIF pictures that could not be decoded) are ignored.
 const NONE_TTL = 86400000
-const IMAGE_KEY_VERSION = 'v3:'
+const IMAGE_KEY_VERSION = COACH_IMAGE_KEY_VERSION
 const MAX_RAW_IMAGE_BYTES = 2 * 1024 * 1024
 const MAX_IMAGE_WIDTH = 640
 
@@ -360,6 +362,46 @@ export function saveCoachImage(input: { title: string; imageQuery?: string }, ca
   const info = { pageTitle: String(candidate.title ?? '').slice(0, 200) || card.title, pageUrl, source: String(candidate.source ?? '').slice(0, 100) || null }
   writeImage(IMAGE_KEY_VERSION + coachImageKey(card), { status: 'ready', png, ...info, createdAt: Date.now() })
   return readyImage(png, info)
+}
+
+// ─── Cards inside an exported EPUB ───
+
+/** The newest deck of every chapter part, "my cards" included, with the pictures their cards show. */
+export function exportCoachArchive(documentId: string): CoachArchive {
+  validateDocumentId(documentId)
+  const decks = latestDecks(readDocumentDecks(documentId))
+  const keys = decks.flatMap(deck => deck.cards.map(card => IMAGE_KEY_VERSION + coachImageKey(cleanCard(card))))
+  const images: CoachArchiveImageData[] = []
+  for (const [key, image] of readReadyImages(keys)) {
+    const mime = imageMime(image.png!)
+    if (mime) images.push({ key, mime: mime as CoachArchiveImageData['mime'], bytes: image.png!, pageTitle: image.pageTitle, pageUrl: image.pageUrl, source: image.source })
+  }
+  return { bookTitle: readKv<string>(`book:${documentId}`, ''), decks, images }
+}
+
+/** Merge cards from a file: local decks and pictures win, "my cards" are combined. Input is already sanitized. */
+export function importCoachArchive(documentId: string, archive: CoachArchive): { decks: number; images: number } {
+  validateDocumentId(documentId)
+  let decks = 0
+  let images = 0
+  for (const deck of archive.decks) {
+    if (deck.documentId !== documentId) continue
+    if (deck.part === COACH_USER_PART) {
+      const key = userDeckKey(documentId, deck.chapterHref)
+      const local = readDeck(key)
+      const merged = mergeUserDeck(local, { ...deck, key })
+      if (merged !== local) { writeDeck(merged); decks += 1 }
+    } else if (insertImportedDeck(deck)) decks += 1
+  }
+  for (const image of archive.images) {
+    if (readImage(image.key)?.status === 'ready') continue
+    const bytes = Buffer.from(image.bytes)
+    if (!imageMime(bytes)) continue
+    writeImage(image.key, { status: 'ready', png: bytes, pageTitle: image.pageTitle, pageUrl: image.pageUrl, source: image.source, createdAt: Date.now() })
+    images += 1
+  }
+  if (archive.bookTitle && !readKv<string>(`book:${documentId}`, '')) writeKv(`book:${documentId}`, archive.bookTitle.slice(0, 300))
+  return { decks, images }
 }
 
 // ─── Phase 5: memory and connections ───

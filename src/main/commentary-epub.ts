@@ -7,10 +7,21 @@ import { importCommentarySnapshot, listCommentary } from './commentary-service'
 import { commentaryText, type CommentarySnapshot, type CommentaryNote } from '../shared/commentary'
 import { renderCommentary } from '../shared/commentary-markdown'
 import { renderCommentaryHtml, escapeHtml, resolveCommentaryContent } from '../shared/commentary-html'
+import { coachImageStoreKey } from '../shared/coach'
+import {
+  COACH_ARCHIVE_FORMAT, COACH_ARCHIVE_VERSION, IMAGE_EXTENSIONS, MAX_ARCHIVE_DECKS, MAX_ARCHIVE_IMAGES, MAX_ARCHIVE_IMAGE_BYTES,
+  quotePattern, sanitizeArchiveDeck, sanitizeArchiveImage, type CoachArchive, type CoachArchiveImageData
+} from '../shared/coach-archive'
 
 const PREFIX = 'MDReader-Commentary/'
 const METADATA = PREFIX + 'commentary.json'
 const ORIGINAL = PREFIX + 'original.epub'
+const COACH = PREFIX + 'coach.json'
+const COACH_IMAGES = PREFIX + 'coach-images/'
+const OPS = 'http://www.idpf.org/2007/ops'
+const XMLNS = 'http://www.w3.org/2000/xmlns/'
+const MAX_COACH_IMAGE_TOTAL = 96 * 1024 * 1024
+export type CoachImporter = (documentId: string, archive: CoachArchive) => void
 const XHTML = 'http://www.w3.org/1999/xhtml'
 const OPF = 'http://www.idpf.org/2007/opf'
 const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
@@ -27,7 +38,28 @@ async function entryBytes(zip: JSZip, name: string, limit = MAX_ARCHIVE_BYTES) {
   return bytes
 }
 
-export async function readCommentaryEpub(buffer: Buffer, importNotes = true): Promise<Buffer> {
+/** Coach cards from `coach.json`; a broken coach file never blocks opening the book. */
+export async function readCoachArchive(zip: JSZip, sourceHash: string): Promise<CoachArchive | null> {
+  if (!zip.file(COACH)) return null
+  const data = JSON.parse((await entryBytes(zip, COACH, 32 * 1024 * 1024)).toString('utf8'))
+  if (data?.format !== COACH_ARCHIVE_FORMAT || data.version !== COACH_ARCHIVE_VERSION || data.sourceHash !== sourceHash) return null
+  const decks = (Array.isArray(data.decks) ? data.decks.slice(0, MAX_ARCHIVE_DECKS) : []).map((deck: unknown) => sanitizeArchiveDeck(deck, sourceHash)).filter(Boolean)
+  const images: CoachArchiveImageData[] = []
+  let total = 0
+  for (const entry of Array.isArray(data.images) ? data.images.slice(0, MAX_ARCHIVE_IMAGES) : []) {
+    const image = sanitizeArchiveImage(entry)
+    const file = typeof entry?.file === 'string' ? entry.file : ''
+    if (!image || !/^[a-f0-9]{64}\.(png|jpg|gif|webp)$/.test(file) || !zip.file(COACH_IMAGES + file)) continue
+    const bytes = await entryBytes(zip, COACH_IMAGES + file, MAX_ARCHIVE_IMAGE_BYTES).catch(() => null)
+    if (!bytes || hash(bytes) !== file.split('.')[0]) continue
+    total += bytes.length
+    if (total > MAX_COACH_IMAGE_TOTAL) break
+    images.push({ ...image, bytes })
+  }
+  return { bookTitle: typeof data.bookTitle === 'string' ? data.bookTitle.slice(0, 300) : '', decks, images }
+}
+
+export async function readCommentaryEpub(buffer: Buffer, importNotes = true, importCoach?: CoachImporter): Promise<Buffer> {
   if (buffer.length > MAX_ARCHIVE_BYTES) throw new Error('EPUB 크기가 256 MB를 넘습니다.')
   const zip = await JSZip.loadAsync(buffer)
   if (!zip.file(METADATA)) return buffer
@@ -46,6 +78,12 @@ export async function readCommentaryEpub(buffer: Buffer, importNotes = true): Pr
     assets.push({ id: asset.id, name: asset.name, dataUrl: `data:image/png;base64,${bytes.toString('base64')}` })
   }
   if (importNotes) importCommentarySnapshot(metadata.sourceHash, { notes: metadata.notes, assets })
+  if (importNotes && importCoach) {
+    try {
+      const coach = await readCoachArchive(zip, metadata.sourceHash)
+      if (coach) importCoach(metadata.sourceHash, coach)
+    } catch (error) { console.error('[Commentary] Coach cards in this EPUB could not be imported:', error) }
+  }
   return original
 }
 
@@ -73,7 +111,73 @@ function noteHtml(note: CommentaryNote, snapshot: CommentarySnapshot, assetUrls:
   return `<aside xmlns="${XHTML}" class="mdr-commentary" id="mdr-${note.id}"><p class="mdr-label">주석</p>${origin}${body}${attachment}${children.map(child => noteHtml(child, snapshot, assetUrls, htmlUrls)).join('')}</aside>`
 }
 
-export async function compileCommentaryEpub(original: Buffer, snapshot: CommentarySnapshot): Promise<Buffer> {
+const hasClass = (node: Node | null, name: string) => node?.nodeType === 1 && ((node as unknown as XmlElement).getAttribute('class') ?? '').split(/\s+/).includes(name)
+const BLOCKS = new Set(['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'td', 'th', 'dd', 'dt', 'figcaption', 'caption', 'pre', 'div', 'section'])
+
+/** Inside our own additions (commentary blocks, coach notes and links), nothing is matched again. */
+function insideOurs(node: Node) {
+  for (let cursor: Node | null = node; cursor; cursor = cursor.parentNode) {
+    if (hasClass(cursor, 'mdr-commentary') || hasClass(cursor, 'mdr-coach-note') || hasClass(cursor, 'mdr-coach-ref')) return true
+  }
+  return false
+}
+
+/**
+ * Link a card's quote to its EPUB 3 footnote. The quote itself becomes the link when it sits in one text node;
+ * otherwise a small marker follows the paragraph that holds it. Returns false when the quote is not in the chapter.
+ */
+function linkCoachQuote(doc: ReturnType<typeof xml>, body: XmlElement, quote: string, noteId: string): boolean {
+  const pattern = quotePattern(quote)
+  if (!pattern) return false
+  const link = () => {
+    const a = doc.createElementNS(XHTML, 'a')
+    a.setAttributeNS(OPS, 'epub:type', 'noteref')
+    a.setAttribute('class', 'mdr-coach-ref')
+    a.setAttribute('href', `#${noteId}`)
+    a.setAttribute('id', `${noteId}-ref`)
+    return a
+  }
+  const texts: Node[] = []
+  const walk = (node: Node) => { for (const child of Array.from(node.childNodes)) { if (child.nodeType === 3) texts.push(child); else if (child.nodeType === 1 && !insideOurs(child)) walk(child) } }
+  walk(body as unknown as Node)
+  for (const text of texts) {
+    const value = text.nodeValue ?? ''
+    const match = pattern.exec(value)
+    if (!match || text.parentNode?.nodeType !== 1 || (text.parentNode as unknown as XmlElement).localName === 'a') continue
+    const a = link()
+    a.appendChild(doc.createTextNode(match[0]))
+    const parent = text.parentNode
+    // xmldom serializes a text node's `data`, so the node is replaced rather than edited.
+    parent.insertBefore(doc.createTextNode(value.slice(0, match.index)) as unknown as Node, text)
+    parent.insertBefore(a as unknown as Node, text)
+    parent.insertBefore(doc.createTextNode(value.slice(match.index + match[0].length)) as unknown as Node, text)
+    parent.removeChild(text)
+    return true
+  }
+  const wanted = commentaryText(quote.replace(/[‘’‚′]/g, "'").replace(/[“”„″]/g, '"').replace(/[–—]/g, '-'))
+  const normal = (text: string) => commentaryText(text.replace(/­/g, '').replace(/[‘’‚′]/g, "'").replace(/[“”„″]/g, '"').replace(/[–—]/g, '-'))
+  const blocks = Array.from(body.getElementsByTagName('*')).filter(element => BLOCKS.has(element.localName ?? '') && !insideOurs(element as unknown as Node)
+    && normal(element.textContent ?? '').includes(wanted))
+  // The innermost block that holds the whole quote.
+  const block = blocks.find(element => !Array.from(element.getElementsByTagName('*')).some(child => blocks.includes(child)))
+  if (!block) return false
+  const sup = doc.createElementNS(XHTML, 'sup')
+  const a = link()
+  a.appendChild(doc.createTextNode('*'))
+  sup.appendChild(a)
+  block.appendChild(sup)
+  return true
+}
+
+function coachNoteHtml(id: string, card: CoachArchive['decks'][number]['cards'][number], image: { href: string; data: CoachArchiveImageData } | undefined) {
+  const picture = image
+    ? `<p class="mdr-coach-picture"><img src="${escapeHtml(image.href)}" alt="${escapeHtml(card.title)}"/></p>`
+      + (image.data.pageUrl ? `<p class="mdr-coach-source">그림: <a href="${escapeHtml(image.data.pageUrl)}">${escapeHtml(image.data.source ?? 'Wikipedia')} — ${escapeHtml(image.data.pageTitle ?? card.title)}</a></p>` : '')
+    : ''
+  return `<aside xmlns="${XHTML}" xmlns:epub="${OPS}" epub:type="footnote" class="mdr-coach-note" id="${id}"><p><strong>${escapeHtml(card.title)}</strong> ${escapeHtml(card.gloss)}</p>${picture}<p class="mdr-coach-label">AI 코치 카드</p></aside>`
+}
+
+export async function compileCommentaryEpub(original: Buffer, snapshot: CommentarySnapshot, coach?: CoachArchive): Promise<Buffer> {
   snapshot = { ...snapshot, notes: snapshot.notes.map(note => ({ ...note, ...resolveCommentaryContent(note) })) }
   if (snapshot.notes.length > 10000 || snapshot.assets.length > 1000) throw new Error('이동용 EPUB의 주석 또는 첨부 개수 제한을 초과했습니다.')
   const metadataJson = JSON.stringify({ format: 'md-reader-commentary', version: 1, sourceHash: hash(original), notes: snapshot.notes, assets: snapshot.assets.map(({ id, name }) => ({ id, name })) })
@@ -105,11 +209,15 @@ export async function compileCommentaryEpub(original: Buffer, snapshot: Commenta
   const opfDir = path.posix.dirname(opfPath)
   const resourcePaths = new Set(Array.from(manifest.getElementsByTagName('item')).map(item => resolvePath(opfDir, item.getAttribute('href') ?? '')))
   const modified = new Map<string, ReturnType<typeof xml>>()
+  const chapterDoc = async (chapterPath: string) => {
+    let doc = modified.get(chapterPath)
+    if (!doc) { doc = xml((await entryBytes(input, chapterPath)).toString('utf8')); modified.set(chapterPath, doc) }
+    return doc
+  }
   for (const note of snapshot.notes.filter(item => !item.parentId)) {
     const chapterPath = resolvePath(opfDir, note.anchor.chapterHref)
     if (!resourcePaths.has(chapterPath)) throw new Error(`주석의 장을 찾을 수 없습니다: ${note.anchor.chapterHref}`)
-    let doc = modified.get(chapterPath)
-    if (!doc) { doc = xml((await entryBytes(input, chapterPath)).toString('utf8')); modified.set(chapterPath, doc) }
+    const doc = await chapterDoc(chapterPath)
     // Resolve against pristine source, since inserted siblings change positional paths.
     const pristine = xml((await entryBytes(input, chapterPath)).toString('utf8'))
     let target = pristine.getElementsByTagName('body')[0] as XmlElement | undefined
@@ -143,8 +251,42 @@ export async function compileCommentaryEpub(original: Buffer, snapshot: Commenta
       live.parentNode!.insertBefore(aside, next)
     }
   }
+  // Coach cards: EPUB 3 footnotes (popups in Apple Books and others) plus coach.json for MD Reader.
+  const coachDecks = (coach?.decks ?? []).slice(0, MAX_ARCHIVE_DECKS)
+  const coachImages = new Map<string, { file: string; data: CoachArchiveImageData }>()
+  let coachImageBytes = 0
+  for (const image of (coach?.images ?? []).slice(0, MAX_ARCHIVE_IMAGES)) {
+    if (image.bytes.length > MAX_ARCHIVE_IMAGE_BYTES || coachImageBytes + image.bytes.length > MAX_COACH_IMAGE_TOTAL) continue
+    coachImageBytes += image.bytes.length
+    coachImages.set(image.key, { file: `${hash(Buffer.from(image.bytes))}.${IMAGE_EXTENSIONS[image.mime]}`, data: image })
+  }
+  // Cards already put in the book as commentary ("EPUB에 넣기") are not repeated as footnotes.
+  const inserted = new Set(snapshot.notes.filter(note => !note.deletedAt && note.origin?.messageId?.startsWith('coach:')).map(note => note.origin!.messageId.slice(6)))
+  const styledChapters = new Set<string>()
+  const footnotes = new Map<string, Set<string>>()
+  for (const deck of coachDecks) {
+    let chapterPath: string
+    try { chapterPath = resolvePath(opfDir, deck.chapterHref) } catch { continue }
+    if (!resourcePaths.has(chapterPath) || !/\.x?html?$/i.test(chapterPath)) continue
+    const doc = await chapterDoc(chapterPath)
+    const body = doc.getElementsByTagName('body')[0]
+    if (!body) continue
+    const done = footnotes.get(chapterPath) ?? new Set<string>()
+    footnotes.set(chapterPath, done)
+    for (const card of deck.cards) {
+      const id = `mdr-coach-${card.id}`
+      if (inserted.has(card.id) || done.has(id) || doc.getElementById?.(id)) continue
+      if (!linkCoachQuote(doc, body, card.quote, id)) continue
+      done.add(id)
+      const image = coachImages.get(coachImageStoreKey(card))
+      const note = xml(coachNoteHtml(id, card, image && { href: path.posix.relative(path.posix.dirname(chapterPath), COACH_IMAGES + image.file), data: image.data }))
+      body.appendChild(doc.importNode(note.documentElement!, true))
+      styledChapters.add(chapterPath)
+    }
+  }
   const serializer = new XMLSerializer()
   for (const [name, doc] of modified) {
+    if (styledChapters.has(name) && !doc.documentElement!.getAttribute('xmlns:epub')) doc.documentElement!.setAttributeNS(XMLNS, 'xmlns:epub', OPS)
     const link = doc.createElementNS(XHTML, 'link')
     link.setAttribute('rel', 'stylesheet')
     link.setAttribute('type', 'text/css')
@@ -183,7 +325,19 @@ export async function compileCommentaryEpub(original: Buffer, snapshot: Commenta
   }
   add(ORIGINAL, 'application/epub+zip', original)
   add(METADATA, 'application/json', metadataJson)
-  add(`${PREFIX}commentary.css`, 'text/css', `.mdr-commentary{display:block;margin:1.2em 0;padding:.8em 1em;border-left:2px solid #927655;background:#f8f5ef;color:#302b25;font-size:.92em;line-height:1.65}.mdr-commentary .mdr-commentary{margin-left:.75em}.mdr-label,.mdr-origin{font:small sans-serif;color:#66594c}.mdr-commentary img{max-width:100%;height:auto}.mdr-commentary table{border-collapse:collapse;border-top:2px solid;border-bottom:2px solid}.mdr-commentary th,.mdr-commentary td{padding:.5em;vertical-align:top}.mdr-commentary th{border-bottom:1px solid}.mdr-deleted{font-style:italic}`)
+  if (coachDecks.length) {
+    add(COACH, 'application/json', JSON.stringify({
+      format: COACH_ARCHIVE_FORMAT, version: COACH_ARCHIVE_VERSION, sourceHash: hash(original), bookTitle: coach?.bookTitle ?? '', decks: coachDecks,
+      images: [...coachImages.values()].map(({ file, data: { key, mime, pageTitle, pageUrl, source } }) => ({ key, mime, pageTitle, pageUrl, source, file }))
+    }))
+    const written = new Set<string>()
+    for (const { file, data } of coachImages.values()) {
+      if (written.has(file)) continue
+      written.add(file)
+      add(COACH_IMAGES + file, data.mime, Buffer.from(data.bytes))
+    }
+  }
+  add(`${PREFIX}commentary.css`, 'text/css', `.mdr-coach-ref{color:inherit;text-decoration:underline dotted #927655}.mdr-coach-note{display:block;margin:1em 0;padding:.6em .9em;border-left:2px solid #6f8aa3;background:#f3f6f9;color:#2a3138;font-size:.88em;line-height:1.6}.mdr-coach-note img{max-width:100%;height:auto}.mdr-coach-label,.mdr-coach-source{font:small sans-serif;color:#5b6772}.mdr-commentary{display:block;margin:1.2em 0;padding:.8em 1em;border-left:2px solid #927655;background:#f8f5ef;color:#302b25;font-size:.92em;line-height:1.65}.mdr-commentary .mdr-commentary{margin-left:.75em}.mdr-label,.mdr-origin{font:small sans-serif;color:#66594c}.mdr-commentary img{max-width:100%;height:auto}.mdr-commentary table{border-collapse:collapse;border-top:2px solid;border-bottom:2px solid}.mdr-commentary th,.mdr-commentary td{padding:.5em;vertical-align:top}.mdr-commentary th{border-bottom:1px solid}.mdr-deleted{font-style:italic}`)
   for (const [index, asset] of snapshot.assets.entries()) add(`${PREFIX}images/${asset.id}.png`, 'image/png', assetBytes[index])
   for (const note of snapshot.notes) if (note.html && !note.deletedAt) {
     const html = renderCommentaryHtml(note.html)
@@ -208,7 +362,7 @@ export async function compileCommentaryEpub(original: Buffer, snapshot: Commenta
   return bytes
 }
 
-export async function exportCommentaryEpub(sourcePath: string, destination: string, documentId: string) {
+export async function exportCommentaryEpub(sourcePath: string, destination: string, documentId: string, coach?: CoachArchive) {
   const sourceRealPath = await fs.realpath(sourcePath)
   const destinationRealPath = await fs.realpath(destination).catch(error => {
     if (error.code === 'ENOENT') return null
@@ -221,7 +375,7 @@ export async function exportCommentaryEpub(sourcePath: string, destination: stri
   const sameFile = destinationRealPath === sourceRealPath
   if (sameFile && original === sourceBytes) throw new Error('원문 보존을 위해 다른 파일 이름으로 저장해 주세요.')
   if (hash(original) !== documentId) throw new Error('원본 파일이 변경되었습니다. 문서를 다시 열어 주세요.')
-  const bytes = await compileCommentaryEpub(original, listCommentary(documentId))
+  const bytes = await compileCommentaryEpub(original, listCommentary(documentId), coach)
   // Replacing a symlink itself would leave the loaded target stale; replace the
   // resolved archive instead when resaving through an alias.
   const target = sameFile ? sourceRealPath : destination

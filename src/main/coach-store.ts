@@ -28,6 +28,9 @@ function database() {
   // v0.10.1: caption source for pictures (Wikipedia or a Brave result's site).
   const imageColumns = db.prepare('PRAGMA table_info(coach_images)').all() as Array<{ name: string }>
   if (!imageColumns.some(column => column.name === 'source')) db.exec('ALTER TABLE coach_images ADD COLUMN source TEXT')
+  // v0.10.5: decks that came inside an EPUB from another MD Reader.
+  const deckColumns = db.prepare('PRAGMA table_info(coach_decks)').all() as Array<{ name: string }>
+  if (!deckColumns.some(column => column.name === 'imported')) db.exec('ALTER TABLE coach_decks ADD COLUMN imported INTEGER NOT NULL DEFAULT 0')
   return db
 }
 
@@ -45,9 +48,29 @@ export function readDeck(key: string): CoachDeck | null {
   return row ? JSON.parse(row.payload) as CoachDeck : null
 }
 export function writeDeck(deck: CoachDeck) {
-  database().prepare(`INSERT INTO coach_decks VALUES (@key, @documentId, @chapterHref, @part, @payload, @createdAt)
-    ON CONFLICT(key) DO UPDATE SET payload = excluded.payload, created_at = excluded.created_at`)
+  database().prepare(`INSERT INTO coach_decks (key, document_id, chapter_href, part, payload, created_at, imported) VALUES (@key, @documentId, @chapterHref, @part, @payload, @createdAt, 0)
+    ON CONFLICT(key) DO UPDATE SET payload = excluded.payload, created_at = excluded.created_at, imported = 0`)
     .run({ key: deck.key, documentId: deck.documentId, chapterHref: deck.chapterHref, part: deck.part, payload: JSON.stringify(deck), createdAt: deck.createdAt })
+}
+
+/** Every deck of one book, for export. */
+export function readDocumentDecks(documentId: string): CoachDeck[] {
+  return (database().prepare('SELECT payload FROM coach_decks WHERE document_id = ? ORDER BY created_at').all(documentId) as Array<{ payload: string }>)
+    .map(row => JSON.parse(row.payload) as CoachDeck)
+}
+
+/** A deck from a file never replaces one made on this device. Returns true when it was added. */
+export function insertImportedDeck(deck: CoachDeck): boolean {
+  return database().prepare(`INSERT INTO coach_decks (key, document_id, chapter_href, part, payload, created_at, imported) VALUES (@key, @documentId, @chapterHref, @part, @payload, @createdAt, 1)
+    ON CONFLICT(key) DO NOTHING`)
+    .run({ key: deck.key, documentId: deck.documentId, chapterHref: deck.chapterHref, part: deck.part, payload: JSON.stringify(deck), createdAt: deck.createdAt }).changes > 0
+}
+
+/** The imported deck for a chapter part, used when this reader's own cache key differs (another request text). */
+export function readImportedDeck(documentId: string, chapterHref: string, part: number): CoachDeck | null {
+  const row = database().prepare('SELECT payload FROM coach_decks WHERE document_id = ? AND chapter_href = ? AND part = ? AND imported = 1 ORDER BY created_at DESC LIMIT 1')
+    .get(documentId, chapterHref.split('#')[0], part) as { payload: string } | undefined
+  return row ? JSON.parse(row.payload) as CoachDeck : null
 }
 
 export function readPreferences(documentId: string): CoachPreferences | null {
@@ -118,6 +141,16 @@ export function readImage(queryKey: string): StoredImage | null {
     { status: 'ready' | 'none'; png: Buffer | null; page_title: string | null; page_url: string | null; source: string | null; created_at: number } | undefined
   return row ? { status: row.status, png: row.png, pageTitle: row.page_title, pageUrl: row.page_url, source: row.source, createdAt: row.created_at } : null
 }
+export function readReadyImages(queryKeys: string[]): Map<string, StoredImage> {
+  const query = database().prepare("SELECT status, png, page_title, page_url, source, created_at FROM coach_images WHERE query_key = ? AND status = 'ready' AND png IS NOT NULL")
+  const result = new Map<string, StoredImage>()
+  for (const key of new Set(queryKeys)) {
+    const row = query.get(key) as { status: 'ready'; png: Buffer; page_title: string | null; page_url: string | null; source: string | null; created_at: number } | undefined
+    if (row) result.set(key, { status: row.status, png: row.png, pageTitle: row.page_title, pageUrl: row.page_url, source: row.source, createdAt: row.created_at })
+  }
+  return result
+}
+
 export function writeImage(queryKey: string, image: StoredImage) {
   database().prepare(`INSERT INTO coach_images (query_key, status, png, page_title, page_url, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(query_key) DO UPDATE SET
     status = excluded.status, png = excluded.png, page_title = excluded.page_title, page_url = excluded.page_url, source = excluded.source, created_at = excluded.created_at`)
