@@ -14,7 +14,7 @@ import { getAgentMemorySettings } from './agent-memory-settings'
 import { COACH_PROFILE_SECTION, replaceUserSection } from './agent-memory-files'
 import { checkHindsightHealth, recallHindsight, retainHindsightMemory } from './hindsight-client'
 import {
-  applyCoachEvent, buildCoachDeckPrompt, COACH_IMAGE_KEY_VERSION, buildSelectionCardPrompt, COACH_USER_PART, coachImageKey, parseSelectionCard, type CoachCard, type CoachSelectionCardRequest, coachDeckCacheInput, coachHash, coachTermKey, EMPTY_COACH_PROFILE, nextReviewInterval, parseCoachDeck, sanitizePreferences,
+  applyCoachEvent, buildCoachDeckPrompt, COACH_IMAGE_KEY_VERSION, buildSelectionCardPrompt, COACH_USER_PART, sameCardPlace, sanitizeCardPosition, coachImageKey, parseSelectionCard, type CoachCard, type CoachSelectionCardRequest, coachDeckCacheInput, coachHash, coachTermKey, EMPTY_COACH_PROFILE, nextReviewInterval, parseCoachDeck, sanitizePreferences,
   summarizeCoachProfile, type CoachChapterLinks, type CoachLinksRequest, type CoachMemoryLinks, type CoachPersonalLink, type CoachReviewItem, type CoachReviewRequest,
   type CoachDeck, type CoachDeckRequest, type CoachDeckUpdate, type CoachEvent, type CoachImage, type CoachImageCandidate, type CoachImageSearchResult, type CoachPreferences, type CoachProfile, type CoachSettings
 } from '../shared/coach'
@@ -206,6 +206,7 @@ export async function createCoachSelectionCard(request: CoachSelectionCardReques
   if (selectedText.length < 2) throw new Error('카드를 만들 글을 선택해 주세요.')
   if (selectedText.length > 1200) throw new Error('선택한 글이 너무 깁니다. 단어나 구절, 한두 문장 정도로 골라 주세요.')
   const chapterHref = request.chapterHref.split('#')[0]
+  const at = sanitizeCardPosition(request.at)
   const model = await resolveCoachModel(request.chatModel)
   const prompt = buildSelectionCardPrompt({
     bookTitle: String(request.bookTitle ?? '').slice(0, 300), chapterTitle: String(request.chapterTitle ?? '').slice(0, 300),
@@ -218,7 +219,7 @@ export async function createCoachSelectionCard(request: CoachSelectionCardReques
     const raw = await chatCompletionsText({ model, responseFormat: { type: 'json_object' }, messages: [
       { role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }
     ] })
-    card = parseSelectionCard(JSON.parse(raw), selectedText)
+    card = parseSelectionCard(JSON.parse(raw), selectedText, at)
   } catch (error) {
     countUsage('failures')
     throw error instanceof SyntaxError ? new Error('코치 응답을 읽지 못했습니다. 다시 시도해 보세요.') : error
@@ -226,7 +227,7 @@ export async function createCoachSelectionCard(request: CoachSelectionCardReques
   const key = userDeckKey(request.documentId, chapterHref)
   const existing = readDeck(key)
   const deck: CoachDeck = existing
-    ? { ...existing, cards: [...existing.cards.filter(item => item.id !== card.id && item.quote !== card.quote), card].slice(-100), model, createdAt: Date.now() }
+    ? { ...existing, cards: [...existing.cards.filter(item => item.id !== card.id && !sameCardPlace(item, card)), card].slice(-100), model, createdAt: Date.now() }
     : { key, documentId: request.documentId, chapterHref, part: COACH_USER_PART, domain: [], brief: '', sections: [], recap: [], questions: [], cards: [card], dropped: 0, model, createdAt: Date.now() }
   writeDeck(deck)
   writeKv(`book:${request.documentId}`, String(request.bookTitle ?? '').slice(0, 300))

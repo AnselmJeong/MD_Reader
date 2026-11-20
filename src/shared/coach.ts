@@ -69,6 +69,27 @@ export interface CoachCard {
   title: string
   gloss: string
   imageQuery?: string
+  /** Cards made from a selection: where the reader selected it (the n-th match of the quote in that file). */
+  at?: CoachCardPosition
+}
+
+export interface CoachCardPosition { href: string; occurrence: number }
+
+/** Accepts only a well-formed position; anything else means "first match in any rendered file". */
+export function sanitizeCardPosition(value: unknown): CoachCardPosition | undefined {
+  const entry = value as Record<string, unknown> | null
+  if (!entry || typeof entry !== 'object') return undefined
+  const href = typeof entry.href === 'string' ? entry.href.split('#')[0] : ''
+  const occurrence = Number(entry.occurrence)
+  if (!href || href.length > 4096 || !Number.isSafeInteger(occurrence) || occurrence < 0 || occurrence > 100000) return undefined
+  return { href, occurrence }
+}
+
+/** Two selection cards are the same card when they explain the same words at the same place. */
+export function sameCardPlace(a: CoachCard, b: CoachCard): boolean {
+  if (a.quote !== b.quote) return false
+  if (!a.at || !b.at) return !a.at && !b.at
+  return a.at.href === b.at.href && a.at.occurrence === b.at.occurrence
 }
 
 export interface CoachSectionSummary { quote: string; summary: string }
@@ -492,6 +513,8 @@ export interface CoachSelectionCardRequest {
   /** The paragraph around the selection, only to tell which sense is meant. */
   paragraph: string
   chatModel: string
+  /** Where the selection is, so the card is marked there and not at the first match of the words. */
+  at?: CoachCardPosition
 }
 
 export function buildSelectionCardPrompt(params: { bookTitle: string; chapterTitle: string; selectedText: string; paragraph: string; request?: string }): { system: string; user: string } {
@@ -516,7 +539,7 @@ export function buildSelectionCardPrompt(params: { bookTitle: string; chapterTit
 }
 
 /** Validate the model's card for a selection; the quote is the selection itself. */
-export function parseSelectionCard(raw: unknown, selectedText: string): CoachCard {
+export function parseSelectionCard(raw: unknown, selectedText: string, at?: CoachCardPosition): CoachCard {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('코치 카드 응답이 올바른 JSON 객체가 아닙니다.')
   const entry = raw as Record<string, unknown>
   const quote = str(selectedText, 300)
@@ -527,7 +550,8 @@ export function parseSelectionCard(raw: unknown, selectedText: string): CoachCar
   const kind = KINDS.includes(entry.kind as CoachCardKind) ? entry.kind as CoachCardKind : 'term'
   const difficulty = Math.min(5, Math.max(1, Math.round(Number(entry.difficulty) || 3)))
   const imageQuery = str(entry.image_query ?? entry.imageQuery, 160)
-  return { id: coachHash(`user|${normalizeCoachText(quote)}|${title}`), kind, difficulty, quote, title, gloss, ...(imageQuery ? { imageQuery } : {}) }
+  const place = at ? `|${at.href}|${at.occurrence}` : ''
+  return { id: coachHash(`user|${normalizeCoachText(quote)}|${title}${place}`), kind, difficulty, quote, title, gloss, ...(imageQuery ? { imageQuery } : {}), ...(at ? { at } : {}) }
 }
 
 // ─── Selection (no LLM) ───

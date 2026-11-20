@@ -42,3 +42,13 @@ test('export keeps the newest deck per chapter part', () => {
   const kept = latestDecks([deck(0, 1, [], 'a'.repeat(64)), deck(0, 3, [], 'b'.repeat(64)), deck(1, 2, [], 'c'.repeat(64))])
   assert.deepEqual(kept.map(item => item.key[0]), ['b', 'c'])
 })
+
+test('a selection card keeps its place through export and import', () => {
+  const placed = { ...card('0000000d', 'term'), at: { href: 'text/part0009.html', occurrence: 2 } }
+  const clean = sanitizeArchiveDeck(deck(999, 1, [placed, { ...card('0000000e', 'other'), at: { href: '', occurrence: 'x' } }]), 'doc')
+  assert.deepEqual(clean.cards[0].at, { href: 'text/part0009.html', occurrence: 2 })
+  assert.equal('at' in clean.cards[1], false)
+  // The same words at another place are another card.
+  const merged = mergeUserDeck(deck(999, 1, [{ ...placed, id: '0000000f', at: { href: 'text/part0009.html', occurrence: 0 } }]), deck(999, 2, [placed]))
+  assert.equal(merged.cards.length, 2)
+})

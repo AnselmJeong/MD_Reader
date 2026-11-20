@@ -4,7 +4,7 @@ import {
   applyCoachEvent, baseCardScore, buildCoachDeckPrompt, coachDeckCacheInput, DEFAULT_COACH_PREFERENCES, EMPTY_COACH_PROFILE,
   estimatedLevels, parseCoachDeck, partForVisibleText, profileMismatch, sanitizePreferences, selectCoachCards, showsBriefing,
   splitChapterText, coachTermKey, nextReviewInterval, summarizeCoachProfile, buildSelectionCardPrompt, parseSelectionCard, isUserDeck, COACH_USER_PART,
-  coachCardTarget, textSize
+  coachCardTarget, textSize, sameCardPlace, sanitizeCardPosition
 } from '../src/shared/coach.ts'
 import { findWikipediaImage, searchBraveImages, wikipediaArticle, wikipediaTitleMatches } from '../src/main/coach-image-service.ts'
 import { searchTinyFishWeb } from '../src/main/tinyfish-web-search-service.ts'
@@ -251,4 +251,18 @@ test('phase 5: term keys match across books, review intervals expand, profile su
   assert.ok(lines.some(line => /useful: .*critique \(philosophy\)/.test(line)))
   assert.ok(lines.some(line => /Does not want .*place \(philosophy\)/.test(line)))
   assert.deepEqual(summarizeCoachProfile(EMPTY_COACH_PROFILE, now), [])
+})
+
+test('selection cards remember where the reader selected them', () => {
+  const raw = { kind: 'term', title: '정지질량', gloss: '물체가 정지해 있을 때의 질량.' }
+  const here = parseSelectionCard(raw, '정지질량', { href: 'chapter005.xhtml', occurrence: 3 })
+  const first = parseSelectionCard(raw, '정지질량')
+  assert.deepEqual(here.at, { href: 'chapter005.xhtml', occurrence: 3 })
+  assert.equal(first.at, undefined)
+  assert.notEqual(here.id, first.id)
+  assert.equal(sameCardPlace(here, parseSelectionCard({ ...raw, title: '다른 제목' }, '정지질량', { href: 'chapter005.xhtml', occurrence: 3 })), true)
+  assert.equal(sameCardPlace(here, parseSelectionCard(raw, '정지질량', { href: 'chapter005.xhtml', occurrence: 4 })), false)
+  assert.equal(sameCardPlace(here, first), false)
+  assert.deepEqual(sanitizeCardPosition({ href: 'a.xhtml#x', occurrence: 2 }), { href: 'a.xhtml', occurrence: 2 })
+  for (const bad of [null, { href: '', occurrence: 0 }, { href: 'a', occurrence: -1 }, { href: 'a', occurrence: 1.5 }]) assert.equal(sanitizeCardPosition(bad), undefined)
 })
