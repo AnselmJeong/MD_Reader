@@ -3,7 +3,8 @@ import test from 'node:test'
 import {
   applyCoachEvent, baseCardScore, buildCoachDeckPrompt, coachDeckCacheInput, DEFAULT_COACH_PREFERENCES, EMPTY_COACH_PROFILE,
   estimatedLevels, parseCoachDeck, partForVisibleText, profileMismatch, sanitizePreferences, selectCoachCards, showsBriefing,
-  splitChapterText, coachTermKey, nextReviewInterval, summarizeCoachProfile, buildSelectionCardPrompt, parseSelectionCard, isUserDeck, COACH_USER_PART
+  splitChapterText, coachTermKey, nextReviewInterval, summarizeCoachProfile, buildSelectionCardPrompt, parseSelectionCard, isUserDeck, COACH_USER_PART,
+  coachCardTarget, textSize
 } from '../src/shared/coach.ts'
 import { findWikipediaImage, searchBraveImages, wikipediaArticle, wikipediaTitleMatches } from '../src/main/coach-image-service.ts'
 import { searchTinyFishWeb } from '../src/main/tinyfish-web-search-service.ts'
@@ -101,6 +102,21 @@ test('briefing, preferences sanitizing, and long chapter parts', () => {
   assert.equal(parts.length, 3)
   assert.equal(partForVisibleText(parts, 'Paragraph 29 word word'), 2)
   assert.equal(partForVisibleText(parts, 'nowhere'), 0)
+  // Default part size is smaller, so a 12,000-word chapter gets four calls' worth of cards.
+  assert.equal(splitChapterText(long).length, 4)
+  // Scripts without spaces are measured by characters.
+  assert.equal(splitChapterText(Array.from({ length: 10 }, () => '字'.repeat(4000)).join('\n\n')).length, 2)
+})
+
+test('card count scales with the length of the text', () => {
+  assert.deepEqual(coachCardTarget('word '.repeat(300)), { min: 15, max: 23 })
+  assert.deepEqual(coachCardTarget('word '.repeat(2700)), { min: 30, max: 38 })
+  assert.deepEqual(coachCardTarget('word '.repeat(3500)), { min: 39, max: 47 })
+  assert.deepEqual(coachCardTarget('word '.repeat(9000)), { min: 40, max: 48 })
+  assert.equal(textSize('字'.repeat(600)), 100)
+  const prompt = buildCoachDeckPrompt({ bookTitle: 'B', chapterTitle: 'C', chapterText: 'word '.repeat(2700), part: 1, partCount: 3 })
+  assert.match(prompt.user, /Produce 30-38 cards/)
+  assert.match(prompt.user, /part 2 of 3/)
 })
 
 test('Wikipedia article matching rejects unrelated or special pages', () => {

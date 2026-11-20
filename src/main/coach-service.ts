@@ -6,7 +6,7 @@ import { getAiProviderConfig } from './ai-provider-settings'
 import { fetchImageBytes, findWikipediaImage, searchBraveImages, type CoachImageLookup } from './coach-image-service'
 import { searchTinyFishWeb } from './tinyfish-web-search-service'
 import {
-  appendEvent, countUsage, insertReviews, readDeck, readDueReviews, readEncounters, readImage, readKv, readLastPreferences, readOpenedCardIds, readPreferences,
+  appendEvent, countUsage, insertReviews, readDeck, readDueReviews, readEncounters, readImage, readKv, readLastPreferences, readPreparedChapters, markChapterPrepared, readOpenedCardIds, readPreferences,
   readProfile, readReview, readSettings, readUsage, updateReview, writeDeck, writeImage, writeKv, writePreferences, writeProfile, writeSettings, writeTerms
 } from './coach-store'
 import { searchCommentaryNotes } from './commentary-service'
@@ -100,11 +100,19 @@ function broadcast(update: CoachDeckUpdate) {
 const deckKey = (request: CoachDeckRequest, preferences: CoachPreferences) =>
   createHash('sha256').update(coachDeckCacheInput(request, LANGUAGE, preferences.request)).digest('hex')
 
+const chapterId = (request: CoachDeckRequest) => `${request.documentId}|${request.chapterHref.split('#')[0]}`
+/** Later parts of a chapter already started today do not use up the daily chapter limit. */
+function overDailyLimit(request: CoachDeckRequest, dailyLimit: number) {
+  const chapters = readPreparedChapters()
+  return !chapters.includes(chapterId(request)) && chapters.length >= dailyLimit
+}
+
 function validateRequest(request: CoachDeckRequest) {
   validateDocumentId(request?.documentId)
   if (typeof request.chapterHref !== 'string' || !request.chapterHref || request.chapterHref.length > 4096
     || !Number.isSafeInteger(request.part) || request.part < 0 || request.part > 100
-    || typeof request.chapterText !== 'string' || typeof request.chatModel !== 'string') throw new Error('코치 요청이 올바르지 않습니다.')
+    || typeof request.chapterText !== 'string' || typeof request.chatModel !== 'string'
+    || (request.partCount !== undefined && (!Number.isSafeInteger(request.partCount) || request.partCount < 1 || request.partCount > 101))) throw new Error('코치 요청이 올바르지 않습니다.')
 }
 
 export function requestCoachDeck(request: CoachDeckRequest): CoachDeckUpdate {
@@ -121,7 +129,7 @@ export function requestCoachDeck(request: CoachDeckRequest): CoachDeckUpdate {
   if (pending.some(job => job.key === key)) return { ...base, status: 'queued' }
   if (request.peek) return { ...base, status: 'idle' }
   const settings = readSettings()
-  if (readUsage().calls >= settings.dailyLimit) return { ...base, status: 'limited', error: `오늘 코치가 준비할 수 있는 장 수(${settings.dailyLimit}개)를 다 썼습니다. 설정에서 바꿀 수 있습니다.` }
+  if (overDailyLimit(request, settings.dailyLimit)) return { ...base, status: 'limited', error: `오늘 코치가 준비할 수 있는 장 수(${settings.dailyLimit}개)를 다 썼습니다. 설정에서 바꿀 수 있습니다.` }
   if (request.chapterText.trim().length < 200) return { ...base, status: 'error', error: '이 장은 코치 카드를 만들기에 본문이 너무 짧습니다.' }
   pending.unshift({ key, request: { ...request, chapterText: request.chapterText.slice(0, MAX_CHAPTER_CHARS) }, preferences })
   // Readers who page quickly should not leave a backlog of background calls.
@@ -147,7 +155,7 @@ async function drain() {
 async function runJob({ key, request, preferences }: Job) {
   const base = { documentId: request.documentId, chapterHref: request.chapterHref, part: request.part }
   const settings = readSettings()
-  if (readUsage().calls >= settings.dailyLimit) {
+  if (overDailyLimit(request, settings.dailyLimit)) {
     broadcast({ ...base, status: 'limited', error: `오늘 코치가 준비할 수 있는 장 수(${settings.dailyLimit}개)를 다 썼습니다.` })
     return
   }
@@ -156,8 +164,9 @@ async function runJob({ key, request, preferences }: Job) {
   if (blocked) { broadcast({ ...base, status: 'limited', error: blocked }); return }
   broadcast({ ...base, status: 'generating' })
   countUsage('calls')
+  markChapterPrepared(chapterId(request))
   try {
-    const prompt = buildCoachDeckPrompt({ bookTitle: request.bookTitle, chapterTitle: request.chapterTitle, chapterText: request.chapterText, request: preferences.request, part: request.part })
+    const prompt = buildCoachDeckPrompt({ bookTitle: request.bookTitle, chapterTitle: request.chapterTitle, chapterText: request.chapterText, request: preferences.request, part: request.part, partCount: request.partCount })
     const raw = await chatCompletionsText({ model, responseFormat: { type: 'json_object' }, messages: [
       { role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }
     ] })
