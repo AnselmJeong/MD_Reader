@@ -19,10 +19,13 @@ type HighlightWindow = Window & {
 
 const SKIP = new Set(['script', 'style', 'noscript', COMMENTARY_HOST])
 
-/** Normalized text of the chapter body with a map back to text-node offsets. */
+/** Whitespace is ignored when matching: line breaks (<br>) and block boundaries put spaces in a
+ * selection or a model quote that the text nodes do not have, and vice versa. */
+const compact = (text: string) => normalizeCoachText(text).replace(/\s+/g, '')
+
+/** Normalized text of the chapter body, without whitespace, with a map back to text-node offsets. */
 function indexText(doc: Document) {
   let text = ''
-  let lastSpace = true
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
       for (let parent = node.parentElement; parent && parent !== doc.body; parent = parent.parentElement) {
@@ -35,9 +38,8 @@ function indexText(doc: Document) {
   for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
     const value = node.data
     for (let index = 0; index < value.length; index += 1) {
-      const char = normalizeCoachText(value[index]) || (/\s/.test(value[index]) ? ' ' : '')
+      const char = compact(value[index])
       if (!char) continue
-      if (char === ' ') { if (lastSpace) continue; lastSpace = true } else lastSpace = false
       text += char
       positions.push({ node, offset: index })
     }
@@ -50,7 +52,7 @@ export function findQuoteRanges(doc: Document, entries: CoachMarkEntry[]): Regis
   const { text, positions } = indexText(doc)
   const result: Registered[] = []
   for (const entry of entries) {
-    const needle = normalizeCoachText(entry.quote)
+    const needle = compact(entry.quote)
     if (needle.length < 2) continue
     const start = text.indexOf(needle)
     if (start < 0) continue

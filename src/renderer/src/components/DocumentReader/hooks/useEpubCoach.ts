@@ -44,15 +44,22 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
   }), [])
   useEffect(() => { useCoachStore.getState().setChapter(chapter, chapterLabel, bookTitle) }, [bookTitle, chapter, chapterLabel])
 
-  // Cards the reader made from a selection are stored per chapter and always loaded.
+  // Cards the reader made from a selection are stored per chapter and loaded for every rendered
+  // section, not only the current chapter: a figure or caption is often its own file next to it.
+  const userDeckChapters = [...new Set([chapter, ...sections.map(section => section.chapterHref?.split('#')[0])].filter((href): href is string => Boolean(href)))].sort().join('\n')
+  const loadedUserDecks = useRef(new Set<string>())
   useEffect(() => {
-    if (!chapter) return
     let active = true
-    window.api.coach.getUserDeck(documentId, chapter).then(deck => {
-      if (active && deck) useCoachStore.getState().applyDeckUpdate({ documentId, chapterHref: deck.chapterHref, part: COACH_USER_PART, status: 'ready', deck })
-    }).catch(error => console.error('[Coach] Failed to load my cards:', error))
+    for (const href of userDeckChapters ? userDeckChapters.split('\n') : []) {
+      const slot = deckSlot(documentId, href, COACH_USER_PART)
+      if (loadedUserDecks.current.has(slot)) continue
+      loadedUserDecks.current.add(slot)
+      window.api.coach.getUserDeck(documentId, href).then(deck => {
+        if (active && deck) useCoachStore.getState().applyDeckUpdate({ documentId, chapterHref: deck.chapterHref, part: COACH_USER_PART, status: 'ready', deck })
+      }).catch(error => { loadedUserDecks.current.delete(slot); console.error('[Coach] Failed to load my cards:', error) })
+    }
     return () => { active = false }
-  }, [chapter, documentId])
+  }, [documentId, userDeckChapters])
 
   const currentSection = sections.find(section => section.chapterHref === chapter && section.contents.window?.frameElement?.isConnected)
   const parts = useMemo(() => splitChapterText(chapterText(currentSection)), [currentSection])
@@ -142,11 +149,14 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
     const accent = coachMarkColor(theme)
     const day = new Date().toDateString()
     cardIndex.current = new Map()
+    // Cards the reader asked for are always marked, whatever the coach's filter says, in whichever
+    // rendered section holds their text (a caption can live in a file next to the chapter).
+    const userDecks = [...decksByChapter.values()].flat().filter(isUserDeck)
     for (const section of sections) {
       if (!section.contents.document?.body) continue
       const hidden = new Set([...suppressed, ...knownElsewhere])
-      const entries = (decksByChapter.get(section.chapterHref) ?? []).flatMap(deck =>
-        // Cards the reader asked for are always marked, whatever the coach's filter says.
+      const generated = (decksByChapter.get(section.chapterHref.split('#')[0]) ?? []).filter(deck => !isUserDeck(deck))
+      const entries = [...generated, ...userDecks].flatMap(deck =>
         (isUserDeck(deck) ? deck.cards.filter(card => !suppressed.has(card.id)) : selectCoachCards(deck, preferences, profile, { suppressed: hidden, day }).map(item => item.card)).map(card => {
           cardIndex.current.set(card.id, { card, deck })
           return { cardId: card.id, quote: card.quote }
@@ -203,8 +213,9 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
   const [pendingCard, setPendingCard] = useState<{ rect: DOMRect; text: string; error?: string } | null>(null)
   const pendingRun = useRef(0)
   const createCardFromSelection = useCallback(async (contents: Contents, selectedText: string, rect: DOMRect) => {
+    // Saved under the chapter being read, so it is listed in the coach tab with that chapter's cards.
     const section = sections.find(item => item.contents === contents) ?? currentSection
-    const chapterHrefForCard = section?.chapterHref ?? chapter
+    const chapterHrefForCard = chapter ?? section?.chapterHref
     if (!chapterHrefForCard) return
     const run = ++pendingRun.current
     hide()

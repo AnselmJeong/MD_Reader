@@ -170,5 +170,9 @@ export function wikipediaTitleMatches(articleTitle: string, card: { title: strin
   if (!article.length) return false
   const wanted = new Set([...significant(card.imageQuery), ...significant(card.title)])
   const overlap = article.filter(word => wanted.has(word)).length
+  // When the card title names its subject in Latin script (e.g. "크립토필리아 미누투스(Cryptophialus minutus)"),
+  // the article must be about that subject, not about someone the search phrase merely mentions ("Charles Darwin").
+  const subject = significant(card.title).filter(word => /^[a-z0-9]+$/.test(word))
+  if (subject.length && !article.some(word => subject.includes(word))) return false
   return overlap >= Math.min(2, article.length) || (overlap >= 1 && article.length <= 2)
 }
