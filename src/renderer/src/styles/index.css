@@ -79,6 +79,8 @@ body {
 .selection-menu-item,
 .selection-menu-primary {
   display: inline-flex;
+  flex-shrink: 0;
+  white-space: nowrap;
   height: 28px;
   align-items: center;
   gap: 6px;
@@ -95,7 +97,7 @@ body {
 .selection-floating-menu::after {
   content: '';
   position: absolute;
-  left: 50%;
+  left: var(--menu-arrow-x, 50%);
   top: 100%;
   width: 8px;
   height: 8px;
