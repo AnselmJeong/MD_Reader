@@ -114,8 +114,12 @@ test('card count scales with the length of the text', () => {
   assert.deepEqual(coachCardTarget('word '.repeat(3500)), { min: 39, max: 47 })
   assert.deepEqual(coachCardTarget('word '.repeat(9000)), { min: 40, max: 48 })
   assert.equal(textSize('字'.repeat(600)), 100)
-  const prompt = buildCoachDeckPrompt({ bookTitle: 'B', chapterTitle: 'C', chapterText: 'word '.repeat(2700), part: 1, partCount: 3 })
-  assert.match(prompt.user, /Produce 30-38 cards/)
+  const prose = Array.from({ length: 270 }, (_, index) => `Sentence ${index} ${'word '.repeat(8)}ends.`).join(' ')
+  const prompt = buildCoachDeckPrompt({ bookTitle: 'B', chapterTitle: 'C', chapterText: prose, part: 1, partCount: 3 })
+  assert.match(prompt.user, /Produce 33-41 cards/)
+  // 2,970 words go out as five segments of about 540 words, each with its own quota.
+  assert.match(prompt.user, /split into 5 numbered segments\. Take 7-8 cards from EVERY segment/)
+  assert.match(prompt.user, /<segment n="5">/)
   assert.match(prompt.user, /part 2 of 3/)
 })
 

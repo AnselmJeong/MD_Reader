@@ -1,13 +1,15 @@
 // Reading coach: shared types and pure functions (no Node or DOM APIs), so the
 // selection and learning logic can be unit tested and used in both processes.
 
-export const COACH_PROMPT_VERSION = 'coach-deck-v3'
+export const COACH_PROMPT_VERSION = 'coach-deck-v4'
 /** Each part of a chapter is one model call; smaller parts give long chapters more cards. */
 export const COACH_PART_WORDS = 3500
 /** About one card per this many words, within the bounds below. */
 const WORDS_PER_CARD = 90
 const MIN_CARDS = 15
 const MAX_CARDS = 40
+/** Models front-load cards, so the text is sent in numbered segments with a quota for each. */
+const SEGMENT_WORDS = 600
 
 export type CoachPurpose = 'skim' | 'enjoy' | 'study' | 'critique' | 'research'
 export type CoachFamiliarity = 'new' | 'some' | 'familiar'
@@ -379,6 +381,7 @@ export function buildCoachDeckPrompt(params: { bookTitle: string; chapterTitle: 
   "recap": ["key point 1", "key point 2", "key point 3"],
   "questions": ["self-check question 1", "question 2"],
   "cards": [{
+    "segment": 1,
     "kind": "term | person | place | background | math | structure | critique | connection",
     "difficulty": 1,
     "quote": "verbatim phrase from the text",
@@ -388,14 +391,22 @@ export function buildCoachDeckPrompt(params: { bookTitle: string; chapterTitle: 
   }]
 }`
   const target = coachCardTarget(params.chapterText)
+  const segments = splitChapterText(params.chapterText, SEGMENT_WORDS)
+  const perSegment = (count: number) => Math.max(1, Math.round(count / Math.max(1, segments.length)))
+  const text = segments.length > 1
+    ? segments.map((segment, index) => `<segment n="${index + 1}">\n${segment}\n</segment>`).join('\n')
+    : params.chapterText
   const user = [
     `Book: ${params.bookTitle || 'Unknown'}`,
     `Chapter: ${params.chapterTitle || 'Unknown'}${params.partCount && params.partCount > 1 ? ` (part ${(params.part ?? 0) + 1} of ${params.partCount})` : ''}`,
     params.request?.trim() ? `Reader's standing request (apply it to every card): ${params.request.trim()}` : '',
-    `Produce ${target.min}-${target.max} cards spread evenly from the beginning to the end of the text (do not stop early in the text): difficulty 1 (general reader) to 5 (specialist), and all eight kinds where the text allows.`,
+    `Produce ${target.min}-${target.max} cards spread evenly from the beginning to the end of the text: difficulty 1 (general reader) to 5 (specialist), and all eight kinds where the text allows.`,
     '"structure" cards explain the argument of a paragraph; "critique" cards give a representative objection or later revision; "connection" cards link to other fields or books.',
+    segments.length > 1
+      ? `The text is split into ${segments.length} numbered segments. Take ${perSegment(target.min)}-${perSegment(target.max)} cards from EVERY segment, the last ones as much as the first: models tend to crowd cards into the opening pages, so do not. Work through the segments in order and give each card the "segment" number its quote comes from. Quotes never include the segment tags.`
+      : '',
     `JSON shape:\n${schema}`,
-    `<chapter_text>\n${params.chapterText}\n</chapter_text>`
+    `<chapter_text>\n${text}\n</chapter_text>`
   ].filter(Boolean).join('\n\n')
   return { system, user }
 }
