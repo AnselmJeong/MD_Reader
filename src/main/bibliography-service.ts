@@ -2,6 +2,7 @@ import { readDocumentMetadata } from '../shared/document-metadata'
 import fs from 'fs/promises'
 import path from 'path'
 import type { BibliographyResult } from '../shared/bibliography'
+import { readFileTolerant } from './safe-read'
 
 export async function readBibliography(
   documentPath: string,
@@ -12,14 +13,14 @@ export async function readBibliography(
     if (!bibFilePath) {
       const dir = path.dirname(documentPath)
       if (/\.qmd$/i.test(documentPath)) {
-        const metadata = readDocumentMetadata(await fs.readFile(documentPath, 'utf-8'))
+        const metadata = readDocumentMetadata(await readFileTolerant(documentPath, 'utf-8'))
         const declared = metadata.bibliography
         const sources = (Array.isArray(declared) ? declared : [declared]).filter((value): value is string => typeof value === 'string' && !!value.trim())
         if (sources.length) {
           const paths = sources.map(source => path.resolve(dir, source))
           bibFilePath = paths[0]
           if (paths.some(source => path.extname(source).toLowerCase() !== '.bib')) throw new Error('이 리더는 .bib 참고문헌 파일을 지원합니다.')
-          const entries = await Promise.all(paths.map(source => fs.readFile(source, 'utf-8')))
+          const entries = await Promise.all(paths.map(source => readFileTolerant(source, 'utf-8')))
           return { bibContent: entries.join('\n'), bibFilePath, customBibFilePath, bibError: null }
         }
       }
@@ -32,7 +33,7 @@ export async function readBibliography(
     if (bibFilePath && path.extname(bibFilePath).toLowerCase() !== '.bib') {
       throw new Error('Please choose a .bib file.')
     }
-    const bibContent = bibFilePath ? await fs.readFile(bibFilePath, 'utf-8') : null
+    const bibContent = bibFilePath ? await readFileTolerant(bibFilePath, 'utf-8') : null
     return { bibContent, bibFilePath, customBibFilePath, bibError: null }
   } catch (error) {
     return {

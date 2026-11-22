@@ -7,6 +7,7 @@ import { readBibliography } from './bibliography-service'
 import type { BibliographyResult } from '../shared/bibliography'
 import { readCommentaryEpub } from './commentary-epub'
 import { importCoachArchive } from './coach-service'
+import { readFileTolerant } from './safe-read'
 
 interface FileStoreData {
   recentFiles: string[]
@@ -43,7 +44,7 @@ const MAX_RECENT = 20
 export async function readFileWithBib(filePath: string): Promise<{ content: string } & BibliographyResult> {
   const customPath = store.get('bibliographyPaths')[path.resolve(filePath)] ?? null
   const [content, bibliography] = await Promise.all([
-    fs.readFile(filePath, 'utf-8'),
+    readFileTolerant(filePath, 'utf-8'),
     readBibliography(filePath, customPath)
   ])
   return { content, ...bibliography }
@@ -64,7 +65,7 @@ export async function readDocumentFile(filePath: string): Promise<DocumentFileRe
   const extension = path.extname(filePath).toLowerCase()
 
   if (extension === '.epub') {
-    const buffer = await readCommentaryEpub(await fs.readFile(filePath), true, importCoachArchive)
+    const buffer = await readCommentaryEpub(await readFileTolerant(filePath), true, importCoachArchive)
     const documentHash = createHash('sha256').update(buffer).digest('hex')
     const progress = getEpubReadingProgress({
       documentId: documentHash,
@@ -111,4 +112,11 @@ export async function addRecentFile(filePath: string): Promise<void> {
   recent.unshift(resolved)
   if (recent.length > MAX_RECENT) recent = recent.slice(0, MAX_RECENT)
   store.set('recentFiles', recent)
+}
+
+export function removeRecentFiles(filePaths: string[]): string[] {
+  const remove = new Set(filePaths.map(filePath => path.resolve(filePath)))
+  const recent = getRecentFiles().filter(filePath => !remove.has(filePath))
+  store.set('recentFiles', recent)
+  return recent
 }

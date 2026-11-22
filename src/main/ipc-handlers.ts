@@ -13,7 +13,8 @@ import {
 } from './coach-service'
 import type { CoachDeckRequest, CoachEvent, CoachImageCandidate, CoachSelectionCardRequest, CoachLinksRequest, CoachPreferences, CoachReviewRequest, CoachSettings } from '../shared/coach'
 import type { SaveCommentary } from '../shared/commentary'
-import { readDocumentFile, getRecentFiles, addRecentFile, writeFileContent, setDocumentBibliography } from './file-service'
+import { readDocumentFile, getRecentFiles, addRecentFile, removeRecentFiles, writeFileContent, setDocumentBibliography } from './file-service'
+import { getRecentFileInfo, getRecentFileCover } from './recent-library-service'
 import { listModels, generateChatTitle } from './ai-service'
 import { getModelVisionInfo } from './model-vision-service'
 import { validateChatImageMessages, writeChatExport } from './chat-image-service'
@@ -173,6 +174,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('file:recent-list', async () => {
     return getRecentFiles()
   })
+  ipcMain.handle('file:recent-info', (_event, paths: string[]) => getRecentFileInfo(paths))
+  ipcMain.handle('file:recent-cover', (_event, filePath: string) => getRecentFileCover(filePath))
+  ipcMain.handle('file:recent-remove', (_event, paths: string[]) => removeRecentFiles(paths))
 
   ipcMain.handle('file:save', async (_event, filePath: string, content: string) => {
     try {
