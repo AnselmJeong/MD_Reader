@@ -471,7 +471,10 @@ export class EpubPaginator {
         activeBox.panel.height = Math.max(0, cursorY - activeBox.panel.y);
         activeBox = null;
         cursorY += BOX_GAP;
+        boxClosedAt = cursorY;
       };
+      // Two asides in a row (an equation and its explanation) are set as one unit, as books do.
+      let boxClosedAt = -1;
 
       for (const block of chapter.blocks) {
         if (!currentPage) {
@@ -481,7 +484,8 @@ export class EpubPaginator {
         if (activeBox && activeBox.id !== block.box?.id) closeBox();
         if (block.box && !activeBox) {
           const pageHasContent = currentPage!.lines.length + currentPage!.images.length > 0;
-          if (pageHasContent) cursorY += BOX_GAP;
+          if (boxClosedAt === cursorY) cursorY -= BOX_GAP;
+          else if (pageHasContent) cursorY += BOX_GAP;
           // Do not open a panel that has no room for a couple of lines.
           if (pageHasContent && cursorY + BOX_PAD_TOP + settings.fontSizePx * settings.lineHeight * 2.2 > contentBottom) {
             startNewPage(chapter.spineIndex, chapter.chapterTitle, false, block.blockIndex, 0);

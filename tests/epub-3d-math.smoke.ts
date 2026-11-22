@@ -1,6 +1,6 @@
 // After npm run build:
 // node tests/build-smoke.mjs tests/epub-3d-math.smoke.ts .tmp/epub-3d-math.cjs
-// node_modules/.bin/electron .tmp/epub-3d-math.cjs [book.epub]
+// node_modules/.bin/electron .tmp/epub-3d-math.cjs [book.epub] [--first-page=N]
 // Opens a book with MathML formulas and a framed note. In 2D the book's dark-mode styles must
 // follow the reader theme; in 3D formulas are laid out as formulas (no raw TeX in the page text),
 // drawn into the page, and the note sits on a panel.
@@ -15,6 +15,8 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'md-reader-3d-math-'))
 app.setPath('userData', path.join(fixture, 'profile'))
 fs.mkdirSync(path.join(fixture, 'profile'))
 const given = process.argv.slice(2).find((arg) => arg.endsWith('.epub'))
+// Optional: --first-page=N draws six pages starting at page index N.
+const firstPage = Number(process.argv.find((arg) => arg.startsWith('--first-page='))?.split('=')[1] ?? 0) || 0
 const file = given ? path.resolve(given) : path.join(fixture, 'math.epub')
 dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] })
 const xhtml = (body: string) => `<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Math</title></head><body>${body}</body></html>`
@@ -83,14 +85,17 @@ a { color: #3b4a9a; }
     }
     await run(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === '3D').click()`)
     await wait(`!!document.querySelector('canvas')`, '3D canvas')
-    await pause(3500)
+    const started = Date.now()
+    await wait(`!!window.__mdReader3dAdapter`, '3D layout')
+    console.log(`3D layout ready after ${Date.now() - started} ms`)
+    await pause(2500)
     await shot('math-3d')
     const state = await run(`(async () => {
       const adapter = window.__mdReader3dAdapter
       const stats = adapter.getLayoutStats()
       const pageImages = []
       let inked = 0
-      for (let i = 0; i < Math.min(stats.pages, 6); i++) {
+      for (let i = ${firstPage}; i < Math.min(stats.pages, ${firstPage} + 6); i++) {
         const canvas = document.createElement('canvas')
         await adapter.renderPage(i, canvas, 1280, 1820, 'light')
         // toDataURL throws if a formula image tainted the canvas (it could then not be a texture).
