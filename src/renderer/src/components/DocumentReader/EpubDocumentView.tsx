@@ -377,9 +377,28 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
   const [returnCfi, setReturnCfi] = useState<string | null>(null)
   const [isEpubDragging, setIsEpubDragging] = useState(false)
   const [atChapterEnd, setAtChapterEnd] = useState(false)
+  // The coach reads ahead: the text of the files after the current one, straight from the book
+  // (not rendered), as the chapter's own text would be on screen.
+  const loadUpcomingChapters = useCallback(async (chapterHref: string, max: number) => {
+    const book = bookRef.current
+    const current = book?.spine.get(chapterHref)
+    if (!book || !current) return []
+    const chapters: Array<{ href: string; label: string | null; text: string }> = []
+    for (let index = current.index + 1; index <= current.index + max; index += 1) {
+      const section = book.spine.get(index)
+      if (!section) break
+      if ((section as unknown as { linear?: boolean | string }).linear === false || (section as unknown as { linear?: string }).linear === 'no') continue
+      try {
+        const doc = await book.load(section.url) as unknown as Document
+        const body = doc?.body ?? doc?.querySelector?.('body')
+        chapters.push({ href: section.href, label: findCurrentTocLabel(tocItemsRef.current, section.href), text: body?.textContent?.replace(/[ \t]+/g, ' ') ?? '' })
+      } catch (error) { console.error('[Coach] Could not read an upcoming chapter:', error) }
+    }
+    return chapters
+  }, [])
   const coach = useEpubCoach({
     documentId: tab.documentHash, bookTitle: title, chapterHref: tab.currentChapterHref, chapterLabel: tab.currentChapterLabel,
-    visibleText: tab.content, currentLocation: tab.currentLocation, sections: commentarySections, theme, atChapterEnd
+    visibleText: tab.content, currentLocation: tab.currentLocation, sections: commentarySections, theme, atChapterEnd, loadUpcomingChapters
   })
   const coachEnabled = useCoachStore(state => Boolean(state.preferences?.enabled))
 

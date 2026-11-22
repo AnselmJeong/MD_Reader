@@ -5,7 +5,7 @@ import { useCoachStore } from '../../../store/useCoachStore'
 import { useChatStore } from '../../../store/useChatStore'
 import { attachCoachHover, coachMarkColor, coachQuoteBlock, selectionOccurrence, setCoachMarks } from '../utils/epubCoachMarks'
 import { sourceAnchor } from '../utils/epubCommentaryAnchors'
-import { useCoachCore } from './useCoachCore'
+import { useCoachCore, type UpcomingChapter } from './useCoachCore'
 
 interface Section { contents: Contents; chapterHref: string }
 interface Options {
@@ -18,6 +18,7 @@ interface Options {
   sections: Section[]
   theme: string
   atChapterEnd: boolean
+  loadUpcomingChapters?: (chapterHref: string, max: number) => Promise<UpcomingChapter[]>
 }
 
 /** The DOM range of the reader's selection: from its CFI, or the live selection if that fails. */
@@ -35,7 +36,7 @@ function selectedRange(contents: Contents, cfiRange?: string): Range | null {
 const chapterText = (section: Section | undefined) => section?.contents.document?.body?.textContent?.replace(/[ \t]+/g, ' ') ?? ''
 
 /** Connects the coach to the 2D EPUB view: marks in the iframe, hover detection and cards from a selection. */
-export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel, visibleText, currentLocation, sections, theme, atChapterEnd }: Options) {
+export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel, visibleText, currentLocation, sections, theme, atChapterEnd, loadUpcomingChapters }: Options) {
   const chapter = chapterHref?.split('#')[0] ?? null
   const currentSection = sections.find(section => section.chapterHref === chapter && section.contents.window?.frameElement?.isConnected)
   const currentText = useMemo(() => chapterText(currentSection), [currentSection])
@@ -52,7 +53,7 @@ export function useEpubCoach({ documentId, bookTitle, chapterHref, chapterLabel,
 
   const core = useCoachCore({
     documentId, bookTitle, chapterHref, chapterLabel, visibleText, currentLocation, atChapterEnd,
-    chapterText: currentText, extraChapters, resolveCard
+    chapterText: currentText, extraChapters, resolveCard, loadUpcomingChapters
   })
   const { buildMarkEntries, onMarkHover, showCard, hide } = core
 

@@ -7,7 +7,7 @@ import { listCommentary, saveCommentary, setCommentaryDeleted, importCommentaryI
 import { exportCommentaryEpub, commentaryExportPath } from './commentary-epub'
 import {
   getCoachImage, createCoachSelectionCard, getCoachUserDeck, searchCoachImages, saveCoachImage, getCoachPreferences, getCoachProfile, getCoachSettings, getCoachUsage, recordCoachEvent,
-  requestCoachDeck, resetCoachProfile, setCoachChatBusyProbe, setCoachPreferences, setCoachSettings,
+  prefetchCoachDecks, requestCoachDeck, resetCoachProfile, setCoachChatBusyProbe, setCoachPreferences, setCoachSettings,
   addCoachReviews, answerCoachReview, getCoachLinks, getCoachMemoryLinks, getDueCoachReviews, getOpenedCards,
   exportCoachArchive
 } from './coach-service'
@@ -106,6 +106,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('coach:settings:get', () => getCoachSettings())
   ipcMain.handle('coach:settings:set', (_event, partial: Partial<CoachSettings>) => setCoachSettings(partial))
   ipcMain.handle('coach:deck', (_event, request: CoachDeckRequest) => requestCoachDeck(request))
+  ipcMain.handle('coach:prefetch', (_event, documentId: string, requests: CoachDeckRequest[]) => prefetchCoachDecks(documentId, requests))
   ipcMain.handle('coach:event', (_event, event: CoachEvent) => recordCoachEvent(event))
   ipcMain.handle('coach:profile', () => getCoachProfile())
   ipcMain.handle('coach:profile:reset', () => resetCoachProfile())

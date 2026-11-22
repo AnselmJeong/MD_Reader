@@ -315,9 +315,20 @@ export function Epub3DView({ tab }: { tab: EpubDocumentTab }) {
     return { anchor: null, paragraph: '' }
   }, [info.spines, spineItems])
 
+  const loadUpcomingChapters = useCallback(async (href: string, max: number) => {
+    const current = adapterRef.current
+    const start = spineItems.findIndex(item => item.href === href)
+    if (!current || start < 0) return []
+    return spineItems.slice(start + 1, start + 1 + max).map((item, offset) => ({
+      href: item.href,
+      label: toc.find(entry => entry.spineIndex === start + 1 + offset)?.label ?? item.chapterTitle ?? null,
+      text: chapterTextOf(current.getChapterDocument(start + 1 + offset))
+    }))
+  }, [spineItems, toc])
+
   const coach = useCoachCore({
     documentId: tab.documentHash, bookTitle: title, chapterHref, chapterLabel, visibleText,
-    currentLocation: `3d:${leftPage}:${layoutVersion}`, chapterText, extraChapters: visibleHrefs, atChapterEnd, resolveCard
+    currentLocation: `3d:${leftPage}:${layoutVersion}`, chapterText, extraChapters: visibleHrefs, atChapterEnd, resolveCard, loadUpcomingChapters
   })
   const { buildMarkEntries, onMarkHover } = coach
 
