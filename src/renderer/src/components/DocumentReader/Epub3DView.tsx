@@ -231,7 +231,13 @@ export function Epub3DView({ tab }: { tab: EpubDocumentTab }) {
   const spineItems = useMemo(() => adapter?.getSpineItems() ?? [], [adapter])
   const leftPage = info.page - (info.page % 2)
   const visiblePages = useMemo(() => [leftPage, leftPage + 1].filter(page => page < info.total), [leftPage, info.total])
-  const currentSpine = info.spines[0] ?? -1
+  // The chapter being read is the left page's, unless a new chapter opens on the right page
+  // (then the left page only holds the end of the previous one).
+  const currentSpine = useMemo(() => {
+    const last = info.spines[info.spines.length - 1]
+    if (adapter && info.spines.length > 1 && adapter.getPageIndexForSpine(last) === leftPage + 1) return last
+    return info.spines[0] ?? -1
+  }, [adapter, info.spines, leftPage])
   const chapterHref = currentSpine >= 0 ? spineItems[currentSpine]?.href ?? null : null
   const chapterLabel = useMemo(() => {
     if (currentSpine < 0) return null

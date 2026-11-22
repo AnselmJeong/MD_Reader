@@ -417,16 +417,23 @@ export class EpubPaginator {
         }
 
         if (block.kind === 'image' && block.imagePath) {
-          const imgBoxH = Math.min(340, (contentBottom - contentTop) * 0.46);
+          const maxBoxH = Math.min(340, (contentBottom - contentTop) * 0.46);
+          const maxBoxW = contentWidth * 0.88;
+          // Fit the image's own proportions; small images (ornaments, icons) keep their pixel size.
+          const scale = block.imageWidth && block.imageHeight
+            ? Math.min(maxBoxW / block.imageWidth, maxBoxH / block.imageHeight, 1)
+            : 0;
+          const imgBoxW = scale ? block.imageWidth! * scale : maxBoxW;
+          const imgBoxH = scale ? block.imageHeight! * scale : maxBoxH;
           const captionH = block.caption ? 40 : 0; // room for the two caption lines the renderer draws
-          const totalH = imgBoxH + captionH + 24;
+          const totalH = imgBoxH + captionH + (imgBoxH < 40 ? 12 : 24);
           if (cursorY + totalH > contentBottom && currentPage!.lines.length + currentPage!.images.length > 0) {
             startNewPage(chapter.spineIndex, chapter.chapterTitle, false, block.blockIndex, 0);
           }
           currentPage!.images.push({
-            y: cursorY + 8,
+            y: cursorY + (imgBoxH < 40 ? 4 : 8),
             height: imgBoxH,
-            maxWidth: contentWidth * 0.88,
+            maxWidth: imgBoxW,
             imagePath: block.imagePath,
             caption: block.caption,
             anchor: {

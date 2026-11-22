@@ -130,10 +130,12 @@ export async function renderPaginatedPageToCanvas(
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(bitmap, drawX, drawY, drawW, drawH);
 
-      // Hairline frame around illustrations
-      ctx.strokeStyle = palette.ruleColor;
-      ctx.lineWidth = 0.75;
-      ctx.strokeRect(drawX, drawY, drawW, drawH);
+      // Hairline frame around illustrations (not around small ornaments)
+      if (drawW >= 80 && drawH >= 40) {
+        ctx.strokeStyle = palette.ruleColor;
+        ctx.lineWidth = 0.75;
+        ctx.strokeRect(drawX, drawY, drawW, drawH);
+      }
     } else {
       ctx.fillStyle = palette.quoteBg;
       ctx.fillRect(boxLeft, imgBlock.y, imgBlock.maxWidth, imgBlock.height);

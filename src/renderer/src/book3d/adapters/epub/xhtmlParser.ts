@@ -34,6 +34,9 @@ export interface SemanticBlock {
   runs: TextRun[];
   imagePath?: string;
   caption?: string;
+  /** Natural pixel size, when the image header could be read (set by the adapter). */
+  imageWidth?: number;
+  imageHeight?: number;
   noIndent?: boolean;
 }
 
@@ -87,6 +90,15 @@ const BLOCK_TAGS = new Set([
   'dt',
   'dd'
 ]);
+
+/** Alt text worth printing as a caption: not empty, not a placeholder like "image" or a file name. */
+function captionFromAlt(alt: string | null | undefined): string | undefined {
+  const text = (alt ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return undefined;
+  if (/^(image|img|picture|photo|figure|graphic|그림|이미지|사진|cover)$/i.test(text)) return undefined;
+  if (/\.(jpe?g|png|gif|webp|svg)$/i.test(text)) return undefined;
+  return text;
+}
 
 function dirname(filePath: string): string {
   const idx = filePath.lastIndexOf('/');
@@ -205,7 +217,8 @@ export function parseXhtmlToBlocks(
     node: Node,
     style: InlineStyle,
     runs: TextRun[],
-    preserveSpace: boolean
+    preserveSpace: boolean,
+    allowImages = true
   ) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const raw = node.textContent ?? '';
@@ -224,6 +237,8 @@ export function parseXhtmlToBlocks(
     }
 
     if (tag === 'img' || tag === 'image') {
+      // Images inside a heading are ornaments (rules around a chapter number): leave them out.
+      if (!allowImages) return;
       const src =
         el.getAttribute('src') ??
         el.getAttribute('xlink:href') ??
@@ -231,12 +246,11 @@ export function parseXhtmlToBlocks(
         '';
       if (src) {
         const resolved = resolveRelativePath(baseDir, src);
-        const alt = el.getAttribute('alt')?.trim() ?? '';
         pushBlock({
           kind: 'image',
           runs: [],
           imagePath: resolved,
-          caption: alt || undefined,
+          caption: captionFromAlt(el.getAttribute('alt')),
           align: 'center'
         });
       }
@@ -245,7 +259,7 @@ export function parseXhtmlToBlocks(
 
     const nextStyle = mergeStyle(style, el);
     for (const child of Array.from(el.childNodes)) {
-      collectInlineRuns(child, nextStyle, runs, preserveSpace);
+      collectInlineRuns(child, nextStyle, runs, preserveSpace, allowImages);
     }
   };
 
@@ -277,7 +291,7 @@ export function parseXhtmlToBlocks(
           kind: 'image',
           runs: [],
           imagePath: resolveRelativePath(baseDir, src),
-          caption: el.getAttribute('alt')?.trim() || undefined,
+          caption: captionFromAlt(el.getAttribute('alt')),
           align: 'center'
         });
       }
@@ -313,7 +327,7 @@ export function parseXhtmlToBlocks(
             kind: 'image',
             runs: [],
             imagePath: resolveRelativePath(baseDir, src),
-            caption: caption || img.getAttribute('alt')?.trim() || undefined,
+            caption: caption || captionFromAlt(img.getAttribute('alt')),
             align: 'center'
           });
           return;
@@ -324,7 +338,7 @@ export function parseXhtmlToBlocks(
     if (/^h[1-6]$/.test(tag)) {
       const level = Number(tag[1]);
       const runs: TextRun[] = [];
-      collectInlineRuns(el, { ...DEFAULT_STYLE, bold: level <= 2 }, runs, false);
+      collectInlineRuns(el, { ...DEFAULT_STYLE, bold: level <= 2 }, runs, false, false);
       const cleaned = trimRuns(runs);
       if (cleaned.length > 0) {
         const headingText = cleaned.map((r) => r.text).join('').trim();
