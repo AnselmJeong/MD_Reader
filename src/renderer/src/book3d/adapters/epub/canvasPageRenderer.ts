@@ -5,6 +5,7 @@ import {
   LOGICAL_PAGE_WIDTH,
   type PaginatedPage
 } from './epubPaginator';
+import { getMathImage, MATH_PAD } from './mathLayout';
 
 /** A dotted underline under marked words, in logical page coordinates. */
 export interface PageMarkRect {
@@ -115,6 +116,26 @@ export async function renderPaginatedPageToCanvas(
     }
   }
 
+  // Panels behind framed asides (notes, explanation boxes)
+  for (const box of page.boxes) {
+    if (box.height <= 0) continue;
+    const radius = 5;
+    ctx.beginPath();
+    ctx.roundRect(leftMargin, box.y, contentWidth, box.height, [
+      box.openTop ? 0 : radius,
+      box.openTop ? 0 : radius,
+      box.openBottom ? 0 : radius,
+      box.openBottom ? 0 : radius
+    ]);
+    ctx.fillStyle = palette.boxBg;
+    ctx.fill();
+    ctx.strokeStyle = palette.boxBorder;
+    ctx.lineWidth = 0.75;
+    ctx.stroke();
+    ctx.fillStyle = palette.boxAccent;
+    ctx.fillRect(leftMargin, box.y, 3, box.height);
+  }
+
   // Render embedded images
   for (const imgBlock of page.images) {
     const bitmap = await imageResolver.getImageBitmap(imgBlock.imagePath);
@@ -189,22 +210,38 @@ export async function renderPaginatedPageToCanvas(
 
     if (line.isQuote) {
       ctx.fillStyle = palette.ruleColor;
-      ctx.fillRect(leftMargin + 8, line.y + 1, 2, line.height - 2);
+      ctx.fillRect(baseX - 16, line.y + 1, 2, line.height - 2);
     }
 
     if (line.isCode) {
       ctx.fillStyle = palette.quoteBg;
-      ctx.fillRect(leftMargin + 8, line.y, contentWidth - 16, line.height);
+      ctx.fillRect(baseX - 8, line.y, line.maxWidth + 16, line.height);
     }
 
     if (line.listMarker) {
       ctx.fillStyle = palette.mutedColor;
-      ctx.font = line.runs[0]?.fontString ?? '400 16px serif';
-      ctx.fillText(line.listMarker, leftMargin + 6, baseY);
+      ctx.font = line.runs.find((r) => !r.math)?.fontString ?? line.runs[0]?.fontString ?? '400 16px serif';
+      ctx.fillText(line.listMarker, baseX - 18, baseY);
     }
 
     for (const run of line.runs) {
       if (run.isSpace) continue;
+      if (run.math) {
+        const { spec, metrics, scale } = run.math;
+        const image = await getMathImage(spec, run.fontSize, palette.inkColor, scaleX * scale);
+        if (image) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(
+            image,
+            baseX + run.x - MATH_PAD * scale,
+            baseY - metrics.baseline * scale,
+            metrics.width * scale,
+            metrics.height * scale
+          );
+        }
+        continue;
+      }
       ctx.font = run.fontString;
       ctx.fillStyle = run.style.code ? palette.mutedColor : palette.inkColor;
       const yOffset = run.style.sup ? -run.fontSize * 0.42 : run.style.sub ? run.fontSize * 0.22 : 0;

@@ -1,5 +1,6 @@
 import type { FontPreset, MarginPreset, ReadingAnchor, TypographySettings } from '../../types/book';
 import type { InlineStyle, SemanticBlock } from './xhtmlParser';
+import { MATH_PAD, measureMath, type MathMetrics, type MathSpec } from './mathLayout';
 
 export const LOGICAL_PAGE_WIDTH = 640;
 export const LOGICAL_PAGE_HEIGHT = 910; // ~0.703 aspect ratio (classic hardcover)
@@ -12,6 +13,17 @@ export interface LaidOutRun {
   fontString: string;
   style: InlineStyle;
   isSpace: boolean;
+  /** A formula drawn as one box: `scale` shrinks one that is wider than the line. */
+  math?: { spec: MathSpec; metrics: MathMetrics; scale: number };
+}
+
+/** The tinted panel behind the blocks of a framed aside; one per page the aside touches. */
+export interface LaidOutBox {
+  y: number;
+  height: number;
+  /** The aside continues from the previous page / onto the next one. */
+  openTop: boolean;
+  openBottom: boolean;
 }
 
 export interface LaidOutLine {
@@ -51,6 +63,7 @@ export interface PaginatedPage {
   lines: LaidOutLine[];
   images: LaidOutImage[];
   rules: LaidOutRule[];
+  boxes: LaidOutBox[];
   startAnchor: ReadingAnchor;
 }
 
@@ -106,6 +119,7 @@ interface AtomicToken {
   isSpace: boolean;
   isNewline: boolean;
   tokenOffset: number;
+  math?: MathSpec;
 }
 
 const NO_LINE_START_CHARS = new Set([
@@ -113,11 +127,22 @@ const NO_LINE_START_CHARS = new Set([
   '。', '、', '，', '！', '？', '：', '；', '」', '』', '）', '】', '〉', '》'
 ]);
 
-function tokenizeRuns(runs: { text: string; style: InlineStyle }[]): AtomicToken[] {
+function tokenizeRuns(runs: { text: string; style: InlineStyle; math?: MathSpec }[]): AtomicToken[] {
   const tokens: AtomicToken[] = [];
   let offset = 0;
 
   for (const run of runs) {
+    if (run.math) {
+      tokens.push({
+        text: '',
+        style: run.style,
+        isSpace: false,
+        isNewline: false,
+        tokenOffset: offset++,
+        math: run.math
+      });
+      continue;
+    }
     const parts = run.text.split(/(\n| +)/);
     for (const part of parts) {
       if (!part) continue;
@@ -199,6 +224,12 @@ export class EpubPaginator {
 
     let currentPage: PaginatedPage | null = null;
     let cursorY = contentTop;
+    // The framed aside being laid out, and its panel on the current page.
+    let activeBox: { id: number; panel: LaidOutBox } | null = null;
+    const BOX_PAD_X = 14;
+    const BOX_PAD_TOP = 10;
+    const BOX_PAD_BOTTOM = 6;
+    const BOX_GAP = 12;
 
     const startNewPage = (
       spineIndex: number,
@@ -207,6 +238,10 @@ export class EpubPaginator {
       blockIndex: number,
       tokenOffset: number
     ): PaginatedPage => {
+      if (activeBox) {
+        activeBox.panel.height = Math.max(0, cursorY - activeBox.panel.y);
+        activeBox.panel.openBottom = true;
+      }
       const page: PaginatedPage = {
         pageIndex: pages.length,
         spineIndex,
@@ -215,6 +250,7 @@ export class EpubPaginator {
         lines: [],
         images: [],
         rules: [],
+        boxes: [],
         startAnchor: {
           spineIndex,
           blockIndex,
@@ -225,6 +261,11 @@ export class EpubPaginator {
       pages.push(page);
       currentPage = page;
       cursorY = isChapterStart ? contentTop + 28 : contentTop;
+      if (activeBox) {
+        activeBox.panel = { y: cursorY, height: 0, openTop: true, openBottom: false };
+        page.boxes.push(activeBox.panel);
+        cursorY += BOX_PAD_TOP;
+      }
       return page;
     };
 
@@ -357,9 +398,36 @@ export class EpubPaginator {
         lineWidth += tokW;
       };
 
+      const pushMath = (tok: AtomicToken, spec: MathSpec) => {
+        const metrics = measureMath(spec, fontSize);
+        // The drawn box has padding on every side; the formula itself advances the line.
+        const inkWidth = Math.max(1, metrics.width - MATH_PAD * 2);
+        const avail = maxWidth - (isFirstLine ? firstLineIndent : 0);
+        if (lineRuns.length > 0 && lineWidth + inkWidth > avail) flushLine();
+        if (lineRuns.length === 0) lineStartTokenOffset = tok.tokenOffset;
+        const room = maxWidth - (isFirstLine ? firstLineIndent : 0);
+        const scale = inkWidth > room ? Math.max(0.45, room / inkWidth) : 1;
+        const width = inkWidth * scale;
+        lineRuns.push({
+          text: '',
+          x: 0,
+          width,
+          fontSize,
+          fontString: buildFontString(baseFamily, fontSize, tok.style),
+          style: tok.style,
+          isSpace: false,
+          math: { spec, metrics, scale }
+        });
+        lineWidth += width;
+      };
+
       for (const tok of tokens) {
         if (tok.isNewline) {
           flushLine();
+          continue;
+        }
+        if (tok.math) {
+          pushMath(tok, tok.math);
           continue;
         }
         const fontString = buildFontString(baseFamily, fontSize, tok.style);
@@ -397,10 +465,38 @@ export class EpubPaginator {
 
       let prevKind: SemanticBlock['kind'] | null = null;
 
+      const closeBox = () => {
+        if (!activeBox) return;
+        cursorY += BOX_PAD_BOTTOM;
+        activeBox.panel.height = Math.max(0, cursorY - activeBox.panel.y);
+        activeBox = null;
+        cursorY += BOX_GAP;
+        boxClosedAt = cursorY;
+      };
+      // Two asides in a row (an equation and its explanation) are set as one unit, as books do.
+      let boxClosedAt = -1;
+
       for (const block of chapter.blocks) {
         if (!currentPage) {
           startNewPage(chapter.spineIndex, chapter.chapterTitle, false, block.blockIndex, 0);
         }
+
+        if (activeBox && activeBox.id !== block.box?.id) closeBox();
+        if (block.box && !activeBox) {
+          const pageHasContent = currentPage!.lines.length + currentPage!.images.length > 0;
+          if (boxClosedAt === cursorY) cursorY -= BOX_GAP;
+          else if (pageHasContent) cursorY += BOX_GAP;
+          // Do not open a panel that has no room for a couple of lines.
+          if (pageHasContent && cursorY + BOX_PAD_TOP + settings.fontSizePx * settings.lineHeight * 2.2 > contentBottom) {
+            startNewPage(chapter.spineIndex, chapter.chapterTitle, false, block.blockIndex, 0);
+          }
+          const panel: LaidOutBox = { y: cursorY, height: 0, openTop: false, openBottom: false };
+          currentPage!.boxes.push(panel);
+          activeBox = { id: block.box.id, panel };
+          cursorY += BOX_PAD_TOP;
+          prevKind = null;
+        }
+        const boxInset = activeBox ? BOX_PAD_X : 0;
 
         if (block.kind === 'hr') {
           const hrSpace = 28;
@@ -474,8 +570,9 @@ export class EpubPaginator {
           spaceAfter = 12;
           align = 'left';
         } else if (block.kind === 'list-item') {
-          indentLeft = 24;
-          maxW = contentWidth - 28;
+          const depthIndent = Math.min(block.listDepth ?? 0, 3) * 18;
+          indentLeft = 24 + depthIndent;
+          maxW = contentWidth - 28 - depthIndent;
           spaceAfter = 6;
           align = 'left';
         } else if (block.kind === 'code') {
@@ -496,6 +593,9 @@ export class EpubPaginator {
           firstLineIndent = shouldIndent ? Math.round(settings.fontSizePx * 1.45) : 0;
           spaceAfter = shouldIndent ? Math.round(settings.fontSizePx * 0.16) : Math.round(settings.fontSizePx * 0.36);
         }
+
+        indentLeft += boxInset;
+        maxW -= boxInset * 2;
 
         const lineHeightPx = Math.round(fontSize * lineMult);
         const tokens = tokenizeRuns(block.runs);
@@ -525,9 +625,31 @@ export class EpubPaginator {
           cursorY += spaceBefore;
         }
 
+        const baseBaseline = Math.round(fontSize * 0.85);
         for (let li = 0; li < wrapped.length; li++) {
           const wl = wrapped[li];
-          if (cursorY + lineHeightPx > contentBottom) {
+          // A line grows to hold formulas taller than the text (fractions, sums).
+          let extraTop = 0;
+          let extraBottom = 0;
+          let onlyDisplayMath = wl.runs.length > 0;
+          for (const r of wl.runs) {
+            if (!r.math) {
+              if (!r.isSpace) onlyDisplayMath = false;
+              continue;
+            }
+            if (!r.math.spec.display) onlyDisplayMath = false;
+            const ascent = (r.math.metrics.baseline - MATH_PAD) * r.math.scale;
+            const descent = (r.math.metrics.height - r.math.metrics.baseline - MATH_PAD) * r.math.scale;
+            extraTop = Math.max(extraTop, Math.ceil(ascent - baseBaseline));
+            extraBottom = Math.max(extraBottom, Math.ceil(descent - (lineHeightPx - baseBaseline)));
+          }
+          if (onlyDisplayMath) {
+            extraTop += 4;
+            extraBottom += 4;
+          }
+          const thisLineHeight = lineHeightPx + extraTop + extraBottom;
+          const lineAlign: LaidOutLine['align'] = onlyDisplayMath ? 'center' : align;
+          if (cursorY + thisLineHeight > contentBottom && currentPage!.lines.length + currentPage!.images.length > 0) {
             startNewPage(
               chapter.spineIndex,
               chapter.chapterTitle,
@@ -543,7 +665,7 @@ export class EpubPaginator {
 
           // Position runs horizontally
           const runs = wl.runs;
-          if (align === 'justify' && !isLast && runs.length > 2) {
+          if (lineAlign === 'justify' && !isLast && runs.length > 2) {
             const spaceCount = runs.filter((r) => r.isSpace).length;
             const leftover = lineMaxW - wl.width;
             const maxExtraPerSpace = fontSize * 0.65;
@@ -561,13 +683,14 @@ export class EpubPaginator {
                 x += r.width;
               }
             }
-          } else if (align === 'center') {
-            let x = Math.max(0, (lineMaxW - wl.width) * 0.5);
+          } else if (lineAlign === 'center') {
+            // Centered on the full measure, also on an indented first line.
+            let x = Math.max(0, (maxW - wl.width) * 0.5 - (lineIndent - indentLeft));
             for (const r of runs) {
               r.x = x;
               x += r.width;
             }
-          } else if (align === 'right') {
+          } else if (lineAlign === 'right') {
             let x = Math.max(0, lineMaxW - wl.width);
             for (const r of runs) {
               r.x = x;
@@ -583,10 +706,10 @@ export class EpubPaginator {
 
           currentPage!.lines.push({
             y: cursorY,
-            height: lineHeightPx,
-            baselineOffset: Math.round(fontSize * 0.85),
+            height: thisLineHeight,
+            baselineOffset: baseBaseline + extraTop,
             runs,
-            align,
+            align: lineAlign,
             isLastInParagraph: isLast,
             maxWidth: lineMaxW,
             indentLeft: lineIndent,
@@ -600,12 +723,13 @@ export class EpubPaginator {
             }
           });
 
-          cursorY += lineHeightPx;
+          cursorY += thisLineHeight;
         }
 
         cursorY += spaceAfter;
         prevKind = block.kind;
       }
+      closeBox();
     }
 
     // Ensure at least 2 pages so spreads work gracefully

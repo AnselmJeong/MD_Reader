@@ -1,3 +1,4 @@
+import { nativeTheme } from 'electron'
 import { SimpleStore } from './simple-store'
 import { DEFAULT_AI_SYSTEM_PROMPT, resolveAiSystemPrompt } from '../shared/ai-prompts'
 
@@ -39,4 +40,14 @@ export function getSettings(key?: string): unknown {
 
 export function setSettings(key: string, value: unknown): void {
   store.set(key as keyof AppSettings, value as never)
+  if (key === 'theme') syncNativeTheme()
+}
+
+/**
+ * Make the window's colour scheme follow the reader's theme instead of the system's. Books carry
+ * their own `prefers-color-scheme: dark` styles; with a dark system and a light reader theme those
+ * painted dark boxes onto light paper (and the reverse).
+ */
+export function syncNativeTheme(): void {
+  nativeTheme.themeSource = store.get('theme') === 'dark' ? 'dark' : 'light'
 }

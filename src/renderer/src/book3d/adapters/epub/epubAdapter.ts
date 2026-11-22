@@ -13,8 +13,9 @@ import {
   LOGICAL_PAGE_WIDTH,
   type PaginatedPage
 } from './epubPaginator';
-import { parseXhtmlToBlocks, type SemanticBlock } from './xhtmlParser';
+import { collectBoxClasses, parseXhtmlToBlocks, type SemanticBlock } from './xhtmlParser';
 import { renderPaginatedPageToCanvas, type PageMarkRect } from './canvasPageRenderer';
+import { mathPlainText } from './mathLayout';
 import { normalizeCoachText } from '../../../../../shared/coach';
 
 export type { PageMarkRect };
@@ -114,9 +115,20 @@ export class EpubAdapter implements BookDocument {
     const parsed = await parseEpubBuffer(buffer);
     const chapters: Array<{ spineIndex: number; chapterTitle: string; blocks: SemanticBlock[] }> = [];
 
+    // Which classes the book's own stylesheets draw as panels (notes, explanation boxes).
+    const decoder = new TextDecoder('utf-8');
+    const stylesheets: string[] = [];
+    for (const [path, bytes] of parsed.files) {
+      if (path.toLowerCase().endsWith('.css')) stylesheets.push(decoder.decode(bytes));
+    }
+    for (const item of parsed.spine) {
+      for (const style of item.xhtml.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) stylesheets.push(style[1]);
+    }
+    const boxClasses = collectBoxClasses(stylesheets);
+
     for (let i = 0; i < parsed.spine.length; i++) {
       const item = parsed.spine[i];
-      const { blocks, inferredTitle } = parseXhtmlToBlocks(item.xhtml, item.fullPath, i);
+      const { blocks, inferredTitle } = parseXhtmlToBlocks(item.xhtml, item.fullPath, i, boxClasses);
       // Images are laid out at their own proportions (and never blown up past their pixel size).
       for (const block of blocks) {
         if (block.kind !== 'image' || !block.imagePath) continue;
@@ -361,10 +373,28 @@ export class EpubAdapter implements BookDocument {
     if (!page) return '';
     let text = '';
     for (const line of page.lines) {
-      text += line.runs.map((run) => run.text).join('');
+      text += line.runs.map((run) => (run.math ? mathPlainText(run.math.spec) : run.text)).join('');
       text += line.isLastInParagraph ? '\n\n' : ' ';
     }
     return text.trim();
+  }
+
+  /** Counts of what the layout holds, for tests. */
+  public getLayoutStats(): { pages: number; mathRuns: number; boxes: number; printedText: string } {
+    let mathRuns = 0;
+    let boxes = 0;
+    let printedText = '';
+    for (const page of this.pages) {
+      boxes += page.boxes.length;
+      for (const line of page.lines) {
+        for (const run of line.runs) {
+          if (run.math) mathRuns++;
+          printedText += run.text;
+        }
+        printedText += '\n';
+      }
+    }
+    return { pages: this.pages.length, mathRuns, boxes, printedText };
   }
 
   public getSpineTextIndex(spineIndex: number): SpineTextIndex {
