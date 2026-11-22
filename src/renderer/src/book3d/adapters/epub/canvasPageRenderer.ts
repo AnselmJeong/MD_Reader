@@ -168,6 +168,17 @@ export async function renderPaginatedPageToCanvas(
     }
   }
 
+  // A soft wash behind marked words (under the text), so marks read at a glance on a tilted page
+  if (marks && marks.rects.length > 0) {
+    ctx.save();
+    ctx.fillStyle = marks.color;
+    ctx.globalAlpha = 0.13;
+    for (const mark of marks.rects) {
+      ctx.fillRect(mark.x - 1, mark.y + 2, mark.width + 2, mark.height - 1);
+    }
+    ctx.restore();
+  }
+
   // Render text lines
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -202,12 +213,13 @@ export async function renderPaginatedPageToCanvas(
   }
 
   if (marks && marks.rects.length > 0) {
+    // Dots big enough to survive texture filtering at a reading distance
     ctx.strokeStyle = marks.color;
-    ctx.lineWidth = 1.7;
+    ctx.lineWidth = 2.6;
     ctx.lineCap = 'round';
-    ctx.setLineDash([0.1, 3.6]);
+    ctx.setLineDash([0.1, 4.4]);
     for (const mark of marks.rects) {
-      const y = mark.baseline + 3.6;
+      const y = mark.baseline + 4.2;
       ctx.beginPath();
       ctx.moveTo(mark.x, y);
       ctx.lineTo(mark.x + mark.width, y);
