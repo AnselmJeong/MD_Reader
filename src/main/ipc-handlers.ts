@@ -21,7 +21,7 @@ import { validateChatImageMessages, writeChatExport } from './chat-image-service
 import { imageModelWarning, type ChatImage } from '../shared/chat-images'
 import { getAiProviderStatus, updateAiProviderSettings, AiProviderSettingsUpdate } from './ai-provider-settings'
 import { streamGroundedChat, type StreamGroundedChatParams } from './ai-chat-service'
-import { getSettings, setSettings } from './settings-service'
+import { getSettings, setSettings, syncNativeTheme } from './settings-service'
 import { listKoreanSystemFonts } from './system-font-service'
 import {
   archiveChatSession,
@@ -292,6 +292,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('subscriptions:action', (_event, provider: SubscriptionProvider, action: 'login' | 'cancelLogin' | 'logout') => subscriptionAction(provider, action))
 
   // ─── Settings ───
+  syncNativeTheme()
   ipcMain.handle('settings:get', async (_event, key?: string) => {
     return getSettings(key)
   })

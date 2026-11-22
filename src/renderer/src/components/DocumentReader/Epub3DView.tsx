@@ -176,6 +176,8 @@ export function Epub3DView({ tab }: { tab: EpubDocumentTab }) {
         if (disposed) { adapter.dispose(); return }
         await adapter.relayout(typography, adapter.getAnchorForPage(0))
         adapterRef.current = adapter
+        // For smoke tests: lets a test read the layout and draw pages without the 3D scene.
+        ;(window as unknown as { __mdReader3dAdapter?: EpubAdapter }).__mdReader3dAdapter = adapter
         setTitle(adapter.metadata.title || tab.fileName.replace(/\.[^.]+$/, ''))
         setToc([...adapter.metadata.toc])
         const page = initialPage(adapter)
@@ -265,7 +267,7 @@ export function Epub3DView({ tab }: { tab: EpubDocumentTab }) {
   const progress = info.total > 1 ? info.page / (info.total - 1) : 0
   const hasPreciseOnlyContent = useMemo(() => {
     if (!adapter) return false
-    return info.spines.some(spine => Boolean(adapter.getChapterDocument(spine)?.querySelector('table, math')))
+    return info.spines.some(spine => Boolean(adapter.getChapterDocument(spine)?.querySelector('table')))
   }, [adapter, info.spines])
 
   // Keep the chat's view of "the text on screen" current, as 2D does.
@@ -477,7 +479,7 @@ export function Epub3DView({ tab }: { tab: EpubDocumentTab }) {
           </div>
         )}
         {status === 'ready' && hasPreciseOnlyContent && (
-          <div className="epub-3d-note ui-text">이 장의 표와 수식은 2D에서 정확히 보입니다.</div>
+          <div className="epub-3d-note ui-text">이 장의 표는 2D에서 정확히 보입니다.</div>
         )}
         {toast && <div className="epub-3d-toast ui-text" role="status">{toast}</div>}
       </div>

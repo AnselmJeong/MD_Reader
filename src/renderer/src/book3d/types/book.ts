@@ -52,6 +52,10 @@ export interface PageRenderTheme {
   mutedColor: string;
   ruleColor: string;
   quoteBg: string;
+  /** Panel behind a framed aside (note, explanation box). */
+  boxBg: string;
+  boxBorder: string;
+  boxAccent: string;
 }
 
 export const THEME_PALETTES: Record<ThemeMode, PageRenderTheme> = {
@@ -60,21 +64,30 @@ export const THEME_PALETTES: Record<ThemeMode, PageRenderTheme> = {
     inkColor: '#141311',
     mutedColor: '#5c5850',
     ruleColor: '#d4cec2',
-    quoteBg: 'rgba(120, 108, 90, 0.06)'
+    quoteBg: 'rgba(120, 108, 90, 0.06)',
+    boxBg: '#f1ede2',
+    boxBorder: '#ddd6c7',
+    boxAccent: '#8a93b8'
   },
   sepia: {
     paperBg: '#f4ecd8',
     inkColor: '#2c2317',
     mutedColor: '#75644b',
     ruleColor: '#d5c6a8',
-    quoteBg: 'rgba(130, 100, 55, 0.08)'
+    quoteBg: 'rgba(130, 100, 55, 0.08)',
+    boxBg: '#eadfc4',
+    boxBorder: '#d5c6a8',
+    boxAccent: '#a08a5c'
   },
   dark: {
     paperBg: '#232428',
     inkColor: '#dcd9d0',
     mutedColor: '#8d8a82',
     ruleColor: '#3a3c42',
-    quoteBg: 'rgba(255, 255, 255, 0.04)'
+    quoteBg: 'rgba(255, 255, 255, 0.04)',
+    boxBg: '#2c2e35',
+    boxBorder: '#3d4049',
+    boxAccent: '#7f8ac0'
   }
 };
 
