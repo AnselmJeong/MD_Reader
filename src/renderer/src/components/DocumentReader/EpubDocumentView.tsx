@@ -1481,6 +1481,7 @@ export function EpubDocumentView({ tab }: EpubDocumentViewProps) {
         </button>
         <button onClick={() => useCoachStore.getState().setIntakeOpen(true)} aria-pressed={coachEnabled} className={coachEnabled ? 'active' : ''} title="독서 코치 설정">코치</button>
         <button onClick={() => setSpreadMode('comments')} aria-pressed={spreadMode === 'comments'} className={spreadMode === 'comments' ? 'active' : ''} title="Scroll through text and commentary">주석 읽기</button>
+        <button onClick={() => useUIStore.getState().setEpubViewMode('3d')} title="3D 책으로 읽기 (읽기 전용: 선택, 하이라이트, 주석, 검색은 2D에서)">3D</button>
       </div>
       <ReadingPaneFooter progress={progress} detail="EPUB" />
       <ReadingSensesPanel />

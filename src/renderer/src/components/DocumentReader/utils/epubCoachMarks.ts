@@ -25,8 +25,8 @@ const SKIP = new Set(['script', 'style', 'noscript', COMMENTARY_HOST])
  * selection or a model quote that the text nodes do not have, and vice versa. */
 const compact = (text: string) => normalizeCoachText(text).replace(/\s+/g, '')
 
-/** Normalized text of the chapter body, without whitespace, with a map back to text-node offsets. */
-function indexText(doc: Document) {
+/** Normalized text of the chapter body, without whitespace, with a map back to text-node offsets. (Also used to line up 2D and 3D positions.) */
+export function indexText(doc: Document) {
   let text = ''
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
