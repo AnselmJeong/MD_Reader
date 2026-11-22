@@ -524,22 +524,27 @@ export function parseXhtmlToBlocks(
     }
 
     if (tag === 'tr') {
-      const cells = Array.from(el.children)
-        .filter((c) => c.localName.toLowerCase() === 'td' || c.localName.toLowerCase() === 'th')
-        .map((c) => c.textContent?.replace(/\s+/g, ' ').trim() ?? '')
-        .filter(Boolean);
-      if (cells.length > 0) {
-        const isHeader = Array.from(el.children).some((c) => c.localName.toLowerCase() === 'th');
+      // A row is set as one line of cells; formulas in cells stay formulas.
+      const cellEls = Array.from(el.children).filter(
+        (c) => c.localName.toLowerCase() === 'td' || c.localName.toLowerCase() === 'th'
+      );
+      const isHeader = cellEls.some((c) => c.localName.toLowerCase() === 'th');
+      const cellStyle = { ...DEFAULT_STYLE, bold: isHeader };
+      const runs: TextRun[] = [];
+      for (const cell of cellEls) {
+        const cellRuns: TextRun[] = [];
+        collectInlineRuns(cell, cellStyle, cellRuns, false, false);
+        const cleaned = trimRuns(cellRuns).filter((r) => r.math || r.text !== '\n');
+        if (cleaned.length === 0) continue;
+        if (runs.length > 0) runs.push({ text: '   ·   ', style: cellStyle });
+        runs.push(...cleaned);
+      }
+      if (runs.length > 0) {
         pushBlock({
           kind: 'paragraph',
           align: 'left',
           noIndent: true,
-          runs: [
-            {
-              text: cells.join('   ·   '),
-              style: { ...DEFAULT_STYLE, bold: isHeader }
-            }
-          ]
+          runs
         });
       }
       return;

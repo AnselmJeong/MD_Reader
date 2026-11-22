@@ -27,6 +27,7 @@ const chapter = `<h1>베이즈 정리</h1>
 <div class="math-explain"><p><strong>수식 해설 — 식 (1.2): 숨은 상태 ${math('<mi>x</mi>', 'x')}에 대한 베이즈 정리</strong></p>
 <ul><li><strong>한눈에 보기</strong>: 사후 확률분포 ${math(pxy, 'p(x \\mid y)')}를 구하는 공식입니다.</li>
 <li><strong>기호 풀이</strong>:<ul><li>${math(pxy, 'p(x \\mid y)')}: <strong>사후 분포</strong> — 갱신된 신념.</li><li>${math('<mi>p</mi><mo>(</mo><mi>y</mi><mo>)</mo>', 'p(y)')}: <strong>모델 증거</strong>.</li></ul></li></ul></div>
+<table><tr><th>기호</th><th>뜻</th></tr><tr><td>${math(pxy, 'p(x \\mid y)')}</td><td>사후 분포</td></tr></table>
 <p>여기서 조건부 확률의 정의를 적용해 분자를 다시 써 봅니다.</p>`
 
 app.whenReady().then(async () => {
@@ -102,10 +103,10 @@ a { color: #3b4a9a; }
       fs.writeFileSync(path.resolve(`.tmp/math-3d-page-${index}.png`), Buffer.from(url.split(',')[1], 'base64'))
     }
     console.log(JSON.stringify({ pages: state.pages, mathRuns: state.mathRuns, boxes: state.boxes }))
+    assert.ok(!/\\(mid|frac|mathcal|theta|text|hat)\b/.test(state.printedText), 'raw TeX is not printed')
     if (!given) {
-      assert.ok(state.mathRuns >= 6, `formulas laid out as boxes: ${state.mathRuns}`)
+      assert.ok(state.mathRuns >= 7, `formulas laid out as boxes: ${state.mathRuns}`)
       assert.equal(state.boxes, 2, `panels for the equation block and the note: ${state.boxes}`)
-      assert.ok(!/\\\\mid|\\\\frac/.test(state.printedText), 'raw TeX is not printed')
     }
     console.log('epub 3D math smoke passed')
     app.exit(0)
