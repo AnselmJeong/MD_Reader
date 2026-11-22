@@ -130,6 +130,7 @@ export function WelcomeScreen({ onOpenFile, onDocumentOpened }: WelcomeScreenPro
                 {status === 'missing' && <span className="book-flag"><FileQuestion />파일 없음</span>}
                 {status === 'offline' && <span className="book-flag"><CloudOff />연결 안 됨</span>}
                 {opening === path && <span className="book-flag">여는 중…</span>}
+                {!status || status === 'ok' ? opening !== path && <span className="book-format">{format(path)}</span> : null}
               </span>
               <strong>{titleOf(path)}</strong>
               <small>{info?.author || folder(path)}</small>
