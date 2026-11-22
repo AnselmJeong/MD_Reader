@@ -137,6 +137,9 @@ export interface ElectronAPI {
     read: (path: string) => Promise<FileReadResult>
     readImage: (documentPath: string, source: string) => Promise<string | null>
     getRecent: () => Promise<string[]>
+    getRecentInfo: (paths: string[]) => Promise<Array<{ filePath: string; status: 'ok' | 'missing' | 'offline' }>>
+    getRecentCover: (path: string) => Promise<{ title: string | null; author: string | null; cover: string | null }>
+    removeRecent: (paths: string[]) => Promise<string[]>
     save: (path: string, content: string) => Promise<{ success: boolean; error?: string }>
   }
   ai: {
@@ -290,6 +293,9 @@ const api: ElectronAPI = {
     read: (path: string) => ipcRenderer.invoke('file:read', path),
     readImage: (documentPath: string, source: string) => ipcRenderer.invoke('file:read-image', documentPath, source),
     getRecent: () => ipcRenderer.invoke('file:recent-list'),
+    getRecentInfo: (paths: string[]) => ipcRenderer.invoke('file:recent-info', paths),
+    getRecentCover: (path: string) => ipcRenderer.invoke('file:recent-cover', path),
+    removeRecent: (paths: string[]) => ipcRenderer.invoke('file:recent-remove', paths),
     save: (path: string, content: string) => ipcRenderer.invoke('file:save', path, content)
   },
   ai: {

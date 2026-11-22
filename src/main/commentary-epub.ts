@@ -2,6 +2,7 @@ import JSZip from 'jszip'
 import { DOMParser, XMLSerializer, type Element as XmlElement } from '@xmldom/xmldom'
 import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
+import { readFileTolerant } from './safe-read'
 import path from 'node:path'
 import { importCommentarySnapshot, listCommentary } from './commentary-service'
 import { commentaryText, type CommentarySnapshot, type CommentaryNote } from '../shared/commentary'
@@ -368,7 +369,7 @@ export async function exportCommentaryEpub(sourcePath: string, destination: stri
     if (error.code === 'ENOENT') return null
     throw error
   })
-  const sourceBytes = await fs.readFile(sourceRealPath)
+  const sourceBytes = await readFileTolerant(sourceRealPath)
   const original = await readCommentaryEpub(sourceBytes, false)
   // A suffix alone does not grant overwrite permission. Only a validated
   // commentary archive, with its hash-checked embedded original, is editable.
@@ -383,7 +384,7 @@ export async function exportCommentaryEpub(sourcePath: string, destination: stri
   try {
     const handle = await fs.open(temporary, 'wx')
     try { await handle.writeFile(bytes); await handle.sync() } finally { await handle.close() }
-    if (sameFile && !sourceBytes.equals(await fs.readFile(sourceRealPath))) throw new Error('저장하는 동안 EPUB 파일이 변경되었습니다. 다시 열어 확인해 주세요.')
+    if (sameFile && !sourceBytes.equals(await readFileTolerant(sourceRealPath))) throw new Error('저장하는 동안 EPUB 파일이 변경되었습니다. 다시 열어 확인해 주세요.')
     await fs.rename(temporary, target)
   } finally { await fs.rm(temporary, { force: true }) }
 }
