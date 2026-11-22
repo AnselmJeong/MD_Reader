@@ -86,7 +86,7 @@ function CardRow({ card, deck, shown }: { card: CoachCard; deck: CoachDeck; show
     <button className="coach-card-toggle" aria-expanded={open} onClick={() => setOpen(value => !value)}>
       <span className="coach-kind">{COACH_KIND_LABELS[card.kind]}</span>
       <span className="coach-card-title">{card.title}</span>
-      <span className="coach-card-meta"><span className={shown ? 'coach-dot is-on' : 'coach-dot'} aria-hidden />{shown ? '본문' : '숨김'} · {card.difficulty}</span>
+      <span className="coach-card-meta"><span className={shown ? 'coach-dot is-on' : 'coach-dot'} aria-hidden />{shown ? '본문' : '숨김'} · {card.from ? (card.from.gloss ? '보충' : '앞 장') : card.difficulty}</span>
       <ChevronDown className="coach-chevron" aria-hidden />
     </button>
     {open && <div className="coach-card-body"><CoachCardBody card={card} deck={deck} image={image} /></div>}

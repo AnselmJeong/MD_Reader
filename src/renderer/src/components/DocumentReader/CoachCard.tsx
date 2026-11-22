@@ -139,8 +139,12 @@ export function CoachCardBody({ card, deck, image, onDone, compact = false }: { 
       <span>난이도 {card.difficulty}</span>
       <span className="ml-auto">AI 코치</span>
     </div>
+    {card.from && <p className="mb-1 text-[11px] text-on-surface-muted">
+      {card.from.gloss ? '앞에서 나온 용어 · 이 장에서의 쓰임' : '앞에서 나온 카드'}{card.from.chapterLabel ? ` · ${card.from.chapterLabel}` : ''}
+    </p>}
     <p className="text-[14px] font-semibold text-on-surface">{card.title}</p>
-    <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-on-surface">{card.gloss}</p>
+    {card.from?.gloss && <p className="mt-1 whitespace-pre-wrap text-[12px] leading-relaxed text-on-surface-muted">{card.from.gloss}</p>}
+    <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-on-surface">{card.from?.gloss ? <><span className="font-semibold">이 장에서는: </span>{card.gloss}</> : card.gloss}</p>
     <CoachCardConnections card={card} />
     {ready && image!.pageUrl && (
       <a href={image!.pageUrl} className="mt-1 block truncate text-[11px] text-on-surface-muted hover:underline" title={image!.pageTitle}

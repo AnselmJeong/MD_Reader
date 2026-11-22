@@ -4,7 +4,7 @@ import {
   applyCoachEvent, baseCardScore, buildCoachDeckPrompt, coachDeckCacheInput, DEFAULT_COACH_PREFERENCES, EMPTY_COACH_PROFILE,
   estimatedLevels, parseCoachDeck, partForVisibleText, profileMismatch, sanitizePreferences, selectCoachCards, showsBriefing,
   splitChapterText, coachTermKey, nextReviewInterval, summarizeCoachProfile, buildSelectionCardPrompt, parseSelectionCard, isUserDeck, COACH_USER_PART,
-  coachCardTarget, textSize, sameCardPlace, sanitizeCardPosition
+  coachCardTarget, textSize, sameCardPlace, sanitizeCardPosition, earlierCardsInText, withEarlierCards
 } from '../src/shared/coach.ts'
 import { findWikipediaImage, searchBraveImages, wikipediaArticle, wikipediaTitleMatches } from '../src/main/coach-image-service.ts'
 import { searchTinyFishWeb } from '../src/main/tinyfish-web-search-service.ts'
@@ -265,4 +265,42 @@ test('selection cards remember where the reader selected them', () => {
   assert.equal(sameCardPlace(here, first), false)
   assert.deepEqual(sanitizeCardPosition({ href: 'a.xhtml#x', occurrence: 2 }), { href: 'a.xhtml', occurrence: 2 })
   for (const bad of [null, { href: '', occurrence: 0 }, { href: 'a', occurrence: -1 }, { href: 'a', occurrence: 1.5 }]) assert.equal(sanitizeCardPosition(bad), undefined)
+})
+
+test('a term with a card in an earlier chapter is linked, not written again', () => {
+  const higgs = { id: 'aaaa1111', kind: 'term', difficulty: 3, quote: '힉스장', title: '힉스장', gloss: '앞 장 설명', imageQuery: 'Higgs field' }
+  const other = { id: 'bbbb2222', kind: 'term', difficulty: 2, quote: '전자', title: '전자', gloss: '전자 설명' }
+  const deck = (chapterHref, part, cards, createdAt) => ({ key: chapterHref + part, documentId: 'd', chapterHref, part, domain: [], brief: '', sections: [], recap: [], questions: [], cards, dropped: 0, model: 'm', createdAt })
+  const decks = [deck('ch2.xhtml', 0, [higgs, other], 1), deck('ch5.xhtml', 1, [{ ...higgs, id: 'cccc3333', gloss: '같은 장 다른 부분' }], 2)]
+  const text = '입자들이 힉스장으로부터 얻는 질량은 입자의 성질이다. 힉스장은 다시 나온다.'
+  const earlier = earlierCardsInText(decks, { chapterHref: 'ch5.xhtml', part: 0 }, text, { 'ch2.xhtml': '2장 질량' })
+  assert.deepEqual([...earlier.keys()], ['힉스장'], 'only terms that appear in this text')
+  assert.equal(earlier.get('힉스장').chapterHref, 'ch2.xhtml', 'the oldest card wins')
+
+  const prompt = buildCoachDeckPrompt({ bookTitle: 'B', chapterTitle: 'C', chapterText: text, knownTerms: [...earlier.values()].map(entry => entry.card) })
+  assert.match(prompt.user, /already have cards[^\n]*힉스장/)
+  assert.match(prompt.user, /"supplement": true/)
+  assert.doesNotMatch(buildCoachDeckPrompt({ bookTitle: 'B', chapterTitle: 'C', chapterText: text }).user, /already have cards/)
+
+  const raw = { cards: [
+    { kind: 'term', difficulty: 3, quote: '힉스장', title: '힉스장', gloss: '다시 쓴 설명' },
+    { kind: 'term', difficulty: 3, quote: '질량', title: '질량', gloss: '질량 설명' }
+  ] }
+  const parsed = parseCoachDeck(raw, text, earlier)
+  assert.deepEqual(parsed.cards.map(card => card.title), ['질량'], 'a repeated term without "supplement" is dropped')
+  const shown = withEarlierCards(parsed, earlier)
+  const linked = shown.cards.find(card => card.title === '힉스장')
+  assert.equal(linked.id, higgs.id, 'the earlier card itself, so its picture and "known" state carry over')
+  assert.equal(linked.gloss, '앞 장 설명')
+  assert.deepEqual(linked.from, { chapterHref: 'ch2.xhtml', chapterLabel: '2장 질량' })
+  assert.equal(parsed.cards.length, 1, 'linking does not change the stored deck')
+
+  const supplement = parseCoachDeck({ cards: [{ ...raw.cards[0], gloss: '여기서는 비유로 쓰인다', supplement: true }] }, text, earlier)
+  assert.equal(supplement.cards[0].from.gloss, '앞 장 설명')
+  assert.equal(withEarlierCards(supplement, earlier).cards.length, 1, 'a supplement replaces the link')
+
+  const sameChapter = earlierCardsInText(decks, { chapterHref: 'ch5.xhtml', part: 0 }, text).get('힉스장')
+  const onlyLater = earlierCardsInText([decks[1]], { chapterHref: 'ch5.xhtml', part: 0 }, text)
+  assert.equal(sameChapter.sameChapter, false)
+  assert.equal(withEarlierCards({ cards: [] }, onlyLater).cards.length, 0, 'other parts of the same chapter already mark its file')
 })
