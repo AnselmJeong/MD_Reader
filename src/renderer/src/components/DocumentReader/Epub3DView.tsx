@@ -15,7 +15,7 @@ import { CoachIntakeDialog } from './CoachIntakeDialog'
 import { CoachHoverCard } from './CoachCard'
 import { CoachRail } from './CoachRail'
 import { useCoachCore, type CoachHoverHit } from './hooks/useCoachCore'
-import { coachMarkColor, coachQuoteBlock } from './utils/epubCoachMarks'
+import { coachQuoteBlock } from './utils/epubCoachMarks'
 import { sourceAnchor } from './utils/epubCommentaryAnchors'
 import { cfiForCompactOffset, chapterTextIndex, compactOffsetOfCfi, mapCompactOffset } from './utils/epub3dPositions'
 
@@ -65,6 +65,13 @@ async function waitForFont(family: string, size: number, text = 'Aa가'): Promis
     document.fonts.load(`${style} ${size}px "${name}"`, text).catch(() => [])
   ))).then(() => document.fonts.ready).then(() => undefined).catch(() => undefined)
   await Promise.race([load, timeout])
+}
+
+/** Same blue-teal family as the 2D coach marks, but deeper: the 3D page is lit and tone-mapped, which washes colours out. */
+function coachMarkColor3D(theme: string): string {
+  if (theme === 'dark') return 'oklch(0.8 0.13 215)'
+  if (theme === 'sepia') return 'oklch(0.45 0.15 225)'
+  return 'oklch(0.47 0.18 245)'
 }
 
 const chapterTextOf = (doc: Document | null) => doc?.body?.textContent?.replace(/[ \t]+/g, ' ') ?? ''
@@ -330,7 +337,7 @@ export function Epub3DView({ tab }: { tab: EpubDocumentTab }) {
       for (const [page, rects] of found.byPage) byPage.set(page, [...(byPage.get(page) ?? []), ...rects])
     })
     if (missing > 0) console.info(`[Coach 3D] ${missing} of ${total} marked quotes were not found in the 3D layout and are not underlined.`)
-    const changed = current.setMarks(byPage, coachMarkColor(theme))
+    const changed = current.setMarks(byPage, coachMarkColor3D(theme))
     if (changed.length) stage.repaintPages(changed)
   }, [buildMarkEntries, info.spines, layoutVersion, spineItems, status, theme, visibleHrefs])
 
