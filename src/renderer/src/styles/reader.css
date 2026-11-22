@@ -420,6 +420,70 @@
   bottom: 56px;
 }
 
+/* 3D book view: a WebGL canvas fills the reading area; notes and toasts float over it. */
+.epub-3d-viewport {
+  position: relative;
+  padding: 0;
+}
+
+.epub-3d-host {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.epub-3d-host canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.epub-3d-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--color-on-surface-muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.epub-3d-status button {
+  pointer-events: auto;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  padding: 4px 12px;
+  color: var(--color-on-surface);
+}
+
+.epub-3d-note,
+.epub-3d-toast {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 21;
+  transform: translateX(-50%);
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--color-surface) 90%, transparent);
+  padding: 4px 12px;
+  color: var(--color-on-surface-muted);
+  font-size: 12px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.epub-3d-toast {
+  top: 44px;
+  color: var(--color-on-surface);
+}
+
 .epub-reading-stage .epub-return-button {
   left: 14px;
 }

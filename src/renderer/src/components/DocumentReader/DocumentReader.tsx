@@ -7,6 +7,7 @@ import { MetadataCard } from './MetadataCard'
 import { TableOfContents } from './TableOfContents'
 import { TextSelectionMenu } from './TextSelectionMenu'
 import { EpubDocumentView } from './EpubDocumentView'
+import { Epub3DView } from './Epub3DView'
 import { LinkTooltip } from './LinkTooltip'
 import { ReadingPaneFooter, ReadingPaneHeader, ReadingSensesPanel } from './ReadingChrome'
 import { useDocumentSearch } from './hooks/useDocumentSearch'
@@ -224,8 +225,12 @@ function MarkdownDocumentView({ tab }: { tab: MarkdownDocumentTab }) {
 
 export function DocumentReader() {
   const { activeTab } = useDocumentStore()
+  const epubViewMode = useUIStore(state => state.epubViewMode)
 
   if (!activeTab) return null
-  if (activeTab.kind === 'epub') return <EpubDocumentView tab={activeTab} />
+  // Only one of the two is mounted: an epub.js rendition and a WebGL book together waste memory.
+  if (activeTab.kind === 'epub') return epubViewMode === '3d'
+    ? <Epub3DView key={activeTab.id} tab={activeTab} />
+    : <EpubDocumentView tab={activeTab} />
   return <MarkdownDocumentView tab={activeTab} />
 }

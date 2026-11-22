@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { defaultReaderLayout, restoreReaderLayout, type ReaderLayout, type EpubSpreadMode } from '../../../shared/reader-layout'
+import { defaultReaderLayout, restoreReaderLayout, type ReaderLayout, type EpubSpreadMode, type EpubViewMode } from '../../../shared/reader-layout'
 
 interface UIState extends ReaderLayout {
   showSettings: boolean
@@ -20,6 +20,7 @@ interface UIState extends ReaderLayout {
   setSelectedText: (text: string | null) => void
   setChatWidth: (width: number) => void
   setEpubSpreadMode: (mode: EpubSpreadMode) => void
+  setEpubViewMode: (mode: EpubViewMode) => void
 }
 
 export const useUIStore = create<UIState>()(persist((set) => ({
@@ -46,10 +47,11 @@ export const useUIStore = create<UIState>()(persist((set) => ({
   setShowSearch: (show) => set({ showSearch: show }),
   setSelectedText: (text) => set({ selectedText: text }),
   setChatWidth: (width) => set({ chatWidth: restoreReaderLayout({ chatWidth: width }).chatWidth }),
-  setEpubSpreadMode: (mode) => set({ epubSpreadMode: mode })
+  setEpubSpreadMode: (mode) => set({ epubSpreadMode: mode }),
+  setEpubViewMode: (mode) => set({ epubViewMode: mode })
 }), {
   name: 'md-reader-layout',
   version: 1,
-  partialize: ({ chatWidth, showChat, showToC, focusMode, epubSpreadMode }) => ({ chatWidth, showChat, showToC, focusMode, epubSpreadMode }),
+  partialize: ({ chatWidth, showChat, showToC, focusMode, epubSpreadMode, epubViewMode }) => ({ chatWidth, showChat, showToC, focusMode, epubSpreadMode, epubViewMode }),
   merge: (saved, current) => ({ ...current, ...restoreReaderLayout(saved) })
 }))
