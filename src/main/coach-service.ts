@@ -24,6 +24,8 @@ import { latestDecks, mergeUserDeck, type CoachArchive, type CoachArchiveImageDa
 const LANGUAGE = 'ko'
 const MAX_CHAPTER_CHARS = 60000
 const MAX_PENDING = 3
+/** Chapters ahead of the reader that may wait to be prepared (a sliding window, never the whole book). */
+const MAX_PREFETCH = 4
 
 // ─── Preferences, settings, profile ───
 
@@ -90,8 +92,10 @@ async function quotaBlock(model: string, pausePercent: number): Promise<string |
 
 // ─── Deck queue: one job at a time, newest chapter first ───
 
-interface Job { key: string; request: CoachDeckRequest; preferences: CoachPreferences }
+interface Job { key: string; request: CoachDeckRequest; preferences: CoachPreferences; prefetch?: boolean }
 const pending: Job[] = []
+/** Upcoming chapters: run only when nothing the reader is looking at is waiting. */
+const prefetchQueue: Job[] = []
 const inFlight = new Set<string>()
 let running = false
 
@@ -150,6 +154,15 @@ export function requestCoachDeck(request: CoachDeckRequest): CoachDeckUpdate {
   }
   if (inFlight.has(key)) return { ...base, status: 'generating' }
   if (pending.some(job => job.key === key)) return { ...base, status: 'queued' }
+  // The reader reached a chapter that was waiting as an upcoming one: it goes first now.
+  const waiting = prefetchQueue.findIndex(job => job.key === key)
+  if (waiting >= 0) {
+    const [job] = prefetchQueue.splice(waiting, 1)
+    pending.unshift({ ...job, prefetch: false })
+    for (const dropped of pending.splice(MAX_PENDING)) broadcast({ documentId: dropped.request.documentId, chapterHref: dropped.request.chapterHref, part: dropped.request.part, status: 'idle' })
+    void drain()
+    return { ...base, status: 'queued' }
+  }
   if (request.peek) return { ...base, status: 'idle' }
   const settings = readSettings()
   if (overDailyLimit(request, settings.dailyLimit)) return { ...base, status: 'limited', error: `오늘 코치가 준비할 수 있는 장 수(${settings.dailyLimit}개)를 다 썼습니다. 설정에서 바꿀 수 있습니다.` }
@@ -161,13 +174,58 @@ export function requestCoachDeck(request: CoachDeckRequest): CoachDeckUpdate {
   return { ...base, status: 'queued' }
 }
 
+const idleUpdate = (job: Job): CoachDeckUpdate => ({ documentId: job.request.documentId, chapterHref: job.request.chapterHref, part: job.request.part, status: 'idle' })
+
+/**
+ * Prepares the first part of the next few chapters in the background, so their cards are there
+ * when the reader arrives. The renderer sends the whole window each time; upcoming chapters of
+ * this book that are no longer in it (the reader jumped elsewhere) are dropped before they cost
+ * anything. Chapters already prepared come back from the cache.
+ */
+export function prefetchCoachDecks(documentId: string, requests: CoachDeckRequest[]): CoachDeckUpdate[] {
+  validateDocumentId(documentId)
+  if (!Array.isArray(requests)) throw new Error('코치 요청이 올바르지 않습니다.')
+  const list = requests.slice(0, MAX_PREFETCH)
+  for (const request of list) {
+    validateRequest(request)
+    if (request.documentId !== documentId) throw new Error('코치 요청이 올바르지 않습니다.')
+  }
+  const idle = (request: CoachDeckRequest): CoachDeckUpdate => ({ documentId, chapterHref: request.chapterHref, part: request.part, status: 'idle' })
+  const preferences = readPreferences(documentId)
+  if (!preferences?.enabled || preferences.proactivity === 'onDemand') return list.map(idle)
+  const settings = readSettings()
+  const keys = list.map(request => deckKey(request, preferences))
+  const wanted = new Set(keys)
+  for (let index = prefetchQueue.length - 1; index >= 0; index--) {
+    const job = prefetchQueue[index]
+    if (job.request.documentId === documentId && !wanted.has(job.key)) broadcast(idleUpdate(prefetchQueue.splice(index, 1)[0]))
+  }
+  const updates = list.map((request, index): CoachDeckUpdate => {
+    const base = { documentId, chapterHref: request.chapterHref, part: request.part }
+    const key = keys[index]
+    rememberChapterLabel(request)
+    const cached = readDeck(key) ?? readImportedDeck(documentId, request.chapterHref, request.part)
+    if (cached) return { ...base, status: 'ready', deck: withEarlierCards(cached, earlierCards(request)) }
+    if (inFlight.has(key)) return { ...base, status: 'generating' }
+    if (pending.some(job => job.key === key) || prefetchQueue.some(job => job.key === key)) return { ...base, status: 'queued' }
+    // Reading ahead never shows a limit message or uses a chapter the reader may not reach today.
+    if (overDailyLimit(request, settings.dailyLimit) || request.chapterText.trim().length < 200) return idle(request)
+    prefetchQueue.push({ key, request: { ...request, force: false, peek: false, chapterText: request.chapterText.slice(0, MAX_CHAPTER_CHARS) }, preferences, prefetch: true })
+    return { ...base, status: 'queued' }
+  })
+  for (const dropped of prefetchQueue.splice(MAX_PREFETCH)) broadcast(idleUpdate(dropped))
+  void drain()
+  return updates
+}
+
 async function drain() {
   if (running) return
   running = true
   try {
-    while (pending.length) {
+    while (pending.length || prefetchQueue.length) {
       while (chatBusy()) await new Promise(resolve => setTimeout(resolve, 2000))
-      const job = pending.shift()
+      // One chapter at a time, so an upcoming chapter sees the cards made just before it.
+      const job = pending.shift() ?? prefetchQueue.shift()
       if (!job) break
       inFlight.add(job.key)
       try { await runJob(job) } finally { inFlight.delete(job.key) }
@@ -175,16 +233,17 @@ async function drain() {
   } finally { running = false }
 }
 
-async function runJob({ key, request, preferences }: Job) {
+async function runJob({ key, request, preferences, prefetch }: Job) {
   const base = { documentId: request.documentId, chapterHref: request.chapterHref, part: request.part }
   const settings = readSettings()
+  // A chapter prepared ahead of the reader stops quietly; the reader sees the limit on arrival.
   if (overDailyLimit(request, settings.dailyLimit)) {
-    broadcast({ ...base, status: 'limited', error: `오늘 코치가 준비할 수 있는 장 수(${settings.dailyLimit}개)를 다 썼습니다.` })
+    broadcast(prefetch ? { ...base, status: 'idle' } : { ...base, status: 'limited', error: `오늘 코치가 준비할 수 있는 장 수(${settings.dailyLimit}개)를 다 썼습니다.` })
     return
   }
   const model = await resolveCoachModel(request.chatModel, settings.coachModel)
   const blocked = await quotaBlock(model, settings.quotaPausePercent)
-  if (blocked) { broadcast({ ...base, status: 'limited', error: blocked }); return }
+  if (blocked) { broadcast(prefetch ? { ...base, status: 'idle' } : { ...base, status: 'limited', error: blocked }); return }
   broadcast({ ...base, status: 'generating' })
   countUsage('calls')
   markChapterPrepared(chapterId(request))

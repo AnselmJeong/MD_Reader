@@ -11,6 +11,14 @@ import type { CoachMarkEntry } from '../utils/epubCoachMarks'
 const DWELL_MS = 20000
 const OPEN_MS = 800
 const HIDE_MS = 300
+/** How many chapters ahead of the reader are prepared: enough to stay ahead, not the whole book. */
+const PREFETCH_CHAPTERS = 3
+/** Spine files looked at to find them (title pages, figures and notes are skipped). */
+const PREFETCH_SCAN = 12
+/** Shorter files are not counted as chapters to read ahead (they are prepared on arrival as before). */
+const PREFETCH_MIN_CHARS = 1000
+
+export interface UpcomingChapter { href: string; label: string | null; text: string }
 
 export interface CoachCoreOptions {
   documentId: string
@@ -28,6 +36,8 @@ export interface CoachCoreOptions {
   extraChapters: string[]
   atChapterEnd: boolean
   resolveCard: (card: CoachCard) => CoachCardContext
+  /** Text of the files after this chapter in reading order, up to `max` of them, to prepare ahead. */
+  loadUpcomingChapters?: (chapterHref: string, max: number) => Promise<UpcomingChapter[]>
 }
 
 export interface CoachHoverHit { cardId: string; rect: DOMRect }
@@ -39,7 +49,7 @@ export type CoachEntry = { card: CoachCard; deck: CoachDeck }
  * each draw the marks and report hovers in their own way.
  */
 export function useCoachCore({
-  documentId, bookTitle, chapterHref, chapterLabel, visibleText, currentLocation, chapterText, extraChapters, atChapterEnd, resolveCard
+  documentId, bookTitle, chapterHref, chapterLabel, visibleText, currentLocation, chapterText, extraChapters, atChapterEnd, resolveCard, loadUpcomingChapters
 }: CoachCoreOptions) {
   const preferences = useCoachStore(state => state.preferences)
   const profile = useCoachStore(state => state.profile)
@@ -110,6 +120,39 @@ export function useCoachCore({
     prefetched.current.add(next)
     request({ part: part + 1 })
   }, [automatic, chapter, currentReady, documentId, part, parts, request])
+
+  // Reading ahead: once this chapter is settled and the reader has stayed a while, the first part of
+  // the next few chapters is prepared in the background, so their cards are there on arrival.
+  // Only a short window, since many books are not read to the end. Each chapter is still one call;
+  // ones already prepared come from the cache, and the reader's own chapter always goes first.
+  const currentStatus = chapter ? decks[deckSlot(documentId, chapter, part)]?.status : undefined
+  const currentSettled = Boolean(chapter) && (!parts.length || currentStatus === 'ready' || currentStatus === 'error')
+  const readAheadFrom = useRef(new Set<string>())
+  useEffect(() => {
+    if (!automatic || !currentSettled || !chapter || !loadUpcomingChapters) return
+    const from = `${documentId}|${chapter}`
+    if (readAheadFrom.current.has(from)) return
+    let active = true
+    const timer = window.setTimeout(() => {
+      readAheadFrom.current.add(from)
+      void loadUpcomingChapters(chapter, PREFETCH_SCAN).then(upcoming => {
+        if (!active) { readAheadFrom.current.delete(from); return }
+        const seen = new Set<string>([chapter])
+        const ahead = upcoming
+          .map(item => ({ ...item, href: item.href.split('#')[0] }))
+          .filter(item => !seen.has(item.href) && seen.add(item.href) && item.text.trim().length >= PREFETCH_MIN_CHARS)
+          .slice(0, PREFETCH_CHAPTERS)
+          .map(item => ({ item, parts: splitChapterText(item.text) }))
+          .filter(({ parts: chapterParts }) => chapterParts.length > 0)
+        if (!ahead.length) return
+        const chatModel = useChatStore.getState().selectedModel || 'codex:default'
+        return window.api.coach.prefetchDecks(documentId, ahead.map(({ item, parts: chapterParts }) => ({
+          documentId, chapterHref: item.href, part: 0, partCount: chapterParts.length, bookTitle, chapterTitle: item.label ?? '', chapterText: chapterParts[0], chatModel
+        }))).then(updates => { for (const update of updates) useCoachStore.getState().applyDeckUpdate(update) })
+      }).catch(error => { readAheadFrom.current.delete(from); console.error('[Coach] Reading ahead failed:', error) })
+    }, DWELL_MS)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [automatic, bookTitle, chapter, currentSettled, documentId, loadUpcomingChapters])
 
   useEffect(() => {
     useCoachStore.getState().register({ prepareCurrent: (force) => request({ force }), resolveCard })

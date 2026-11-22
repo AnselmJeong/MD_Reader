@@ -379,6 +379,7 @@ const api: ElectronAPI = {
     getSettings: () => ipcRenderer.invoke('coach:settings:get'),
     setSettings: (partial) => ipcRenderer.invoke('coach:settings:set', partial),
     requestDeck: (request) => ipcRenderer.invoke('coach:deck', request),
+    prefetchDecks: (documentId, requests) => ipcRenderer.invoke('coach:prefetch', documentId, requests),
     recordEvent: (event) => ipcRenderer.invoke('coach:event', event),
     getProfile: () => ipcRenderer.invoke('coach:profile'),
     resetProfile: () => ipcRenderer.invoke('coach:profile:reset'),

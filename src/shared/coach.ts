@@ -208,6 +208,8 @@ export interface CoachAPI {
   getSettings: () => Promise<CoachSettings>
   setSettings: (partial: Partial<CoachSettings>) => Promise<CoachSettings>
   requestDeck: (request: CoachDeckRequest) => Promise<CoachDeckUpdate>
+  /** The first part of the next few chapters, prepared in the background (a sliding window). */
+  prefetchDecks: (documentId: string, requests: CoachDeckRequest[]) => Promise<CoachDeckUpdate[]>
   recordEvent: (event: CoachEvent) => Promise<CoachProfile>
   getProfile: () => Promise<CoachProfile>
   resetProfile: () => Promise<CoachProfile>
