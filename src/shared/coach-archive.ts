@@ -12,6 +12,16 @@ function sanitizeCardPosition(value: unknown): CoachCard['at'] {
   if (!href || href.length > 4096 || !Number.isSafeInteger(occurrence) || occurrence < 0 || occurrence > 100000) return undefined
   return { href, occurrence }
 }
+/** A card linked to, or supplementing, a card in another chapter. */
+function sanitizeCardOrigin(value: unknown): CoachCard['from'] {
+  const entry = value as Record<string, unknown> | null
+  if (!entry || typeof entry !== 'object') return undefined
+  const chapterHref = typeof entry.chapterHref === 'string' ? entry.chapterHref.split('#')[0].slice(0, 4096) : ''
+  if (!chapterHref) return undefined
+  const chapterLabel = typeof entry.chapterLabel === 'string' ? entry.chapterLabel.replace(/\s+/g, ' ').trim().slice(0, 300) : ''
+  const gloss = typeof entry.gloss === 'string' ? entry.gloss.replace(/\s+/g, ' ').trim().slice(0, 1500) : ''
+  return { chapterHref, ...(chapterLabel ? { chapterLabel } : {}), ...(gloss ? { gloss } : {}) }
+}
 function sameCardPlace(a: CoachCard, b: CoachCard): boolean {
   if (a.quote !== b.quote) return false
   if (!a.at || !b.at) return !a.at && !b.at
@@ -63,7 +73,8 @@ export function sanitizeArchiveCard(value: unknown): CoachCard | null {
   const imageQuery = str(entry.imageQuery, 160)
   const difficulty = Math.min(5, Math.max(1, Math.round(Number(entry.difficulty) || 3)))
   const at = sanitizeCardPosition(entry.at)
-  return { id, kind, difficulty, quote, title, gloss, ...(imageQuery ? { imageQuery } : {}), ...(at ? { at } : {}) }
+  const from = sanitizeCardOrigin(entry.from)
+  return { id, kind, difficulty, quote, title, gloss, ...(imageQuery ? { imageQuery } : {}), ...(at ? { at } : {}), ...(from ? { from } : {}) }
 }
 
 /** Untrusted deck from a file: keep only well-formed fields, and bind it to this book. */

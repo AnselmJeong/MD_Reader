@@ -14,7 +14,7 @@ import { getAgentMemorySettings } from './agent-memory-settings'
 import { COACH_PROFILE_SECTION, replaceUserSection } from './agent-memory-files'
 import { checkHindsightHealth, recallHindsight, retainHindsightMemory } from './hindsight-client'
 import {
-  applyCoachEvent, buildCoachDeckPrompt, COACH_IMAGE_KEY_VERSION, buildSelectionCardPrompt, COACH_USER_PART, sameCardPlace, sanitizeCardPosition, coachImageKey, parseSelectionCard, type CoachCard, type CoachSelectionCardRequest, coachDeckCacheInput, coachHash, coachTermKey, EMPTY_COACH_PROFILE, nextReviewInterval, parseCoachDeck, sanitizePreferences,
+  applyCoachEvent, buildCoachDeckPrompt, earlierCardsInText, withEarlierCards, type CoachEarlierCard, COACH_IMAGE_KEY_VERSION, buildSelectionCardPrompt, COACH_USER_PART, sameCardPlace, sanitizeCardPosition, coachImageKey, parseSelectionCard, type CoachCard, type CoachSelectionCardRequest, coachDeckCacheInput, coachHash, coachTermKey, EMPTY_COACH_PROFILE, nextReviewInterval, parseCoachDeck, sanitizePreferences,
   summarizeCoachProfile, type CoachChapterLinks, type CoachLinksRequest, type CoachMemoryLinks, type CoachPersonalLink, type CoachReviewItem, type CoachReviewRequest,
   type CoachDeck, type CoachDeckRequest, type CoachDeckUpdate, type CoachEvent, type CoachImage, type CoachImageCandidate, type CoachImageSearchResult, type CoachPreferences, type CoachProfile, type CoachSettings
 } from '../shared/coach'
@@ -116,16 +116,37 @@ function validateRequest(request: CoachDeckRequest) {
     || (request.partCount !== undefined && (!Number.isSafeInteger(request.partCount) || request.partCount < 1 || request.partCount > 101))) throw new Error('코치 요청이 올바르지 않습니다.')
 }
 
+// ─── Terms that already have cards in this book ───
+
+const labelKey = (documentId: string) => `chapter-labels:${documentId}`
+/** Chapter names for "앞 장에서 나온 카드"; decks do not store them. */
+function rememberChapterLabel(request: CoachDeckRequest) {
+  const label = String(request.chapterTitle ?? '').replace(/\s+/g, ' ').trim().slice(0, 300)
+  const href = request.chapterHref.split('#')[0]
+  if (!label || href.length > 1024) return
+  const labels = readKv<Record<string, string>>(labelKey(request.documentId), {})
+  if (labels[href] === label) return
+  writeKv(labelKey(request.documentId), { ...labels, [href]: label })
+}
+
+/** Local lookup, no model call: this book's cards whose words appear in this part of the chapter. */
+function earlierCards(request: Pick<CoachDeckRequest, 'documentId' | 'chapterHref' | 'part' | 'chapterText'>): Map<string, CoachEarlierCard> {
+  try {
+    return earlierCardsInText(readDocumentDecks(request.documentId), request, request.chapterText, readKv<Record<string, string>>(labelKey(request.documentId), {}))
+  } catch (error) { console.error('[Coach] Could not read earlier cards:', error); return new Map() }
+}
+
 export function requestCoachDeck(request: CoachDeckRequest): CoachDeckUpdate {
   validateRequest(request)
   const base = { documentId: request.documentId, chapterHref: request.chapterHref, part: request.part }
   const preferences = readPreferences(request.documentId)
   if (!preferences?.enabled) return { ...base, status: 'idle' }
+  rememberChapterLabel(request)
   const key = deckKey(request, preferences)
   if (!request.force) {
     // Cards that came inside the EPUB count as this reader's cache, whatever request text made them.
     const cached = readDeck(key) ?? readImportedDeck(request.documentId, request.chapterHref, request.part)
-    if (cached) { countUsage('cache_hits'); return { ...base, status: 'ready', deck: cached } }
+    if (cached) { countUsage('cache_hits'); return { ...base, status: 'ready', deck: withEarlierCards(cached, earlierCards(request)) } }
   }
   if (inFlight.has(key)) return { ...base, status: 'generating' }
   if (pending.some(job => job.key === key)) return { ...base, status: 'queued' }
@@ -168,18 +189,21 @@ async function runJob({ key, request, preferences }: Job) {
   countUsage('calls')
   markChapterPrepared(chapterId(request))
   try {
-    const prompt = buildCoachDeckPrompt({ bookTitle: request.bookTitle, chapterTitle: request.chapterTitle, chapterText: request.chapterText, request: preferences.request, part: request.part, partCount: request.partCount })
+    // Terms with a card elsewhere in this book are named so the model spends its cards on new ones.
+    const earlier = earlierCards(request)
+    const knownTerms = [...earlier.values()].map(entry => ({ title: entry.card.title, quote: entry.card.quote }))
+    const prompt = buildCoachDeckPrompt({ bookTitle: request.bookTitle, chapterTitle: request.chapterTitle, chapterText: request.chapterText, request: preferences.request, part: request.part, partCount: request.partCount, knownTerms })
     const raw = await chatCompletionsText({ model, responseFormat: { type: 'json_object' }, messages: [
       { role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }
     ] })
-    const parsed = parseCoachDeck(JSON.parse(raw), request.chapterText)
+    const parsed = parseCoachDeck(JSON.parse(raw), request.chapterText, earlier)
     if (!parsed.cards.length && !parsed.brief) throw new Error('본문과 맞는 카드를 만들지 못했습니다. "이 장 다시 준비"로 다시 시도해 보세요.')
     const deck: CoachDeck = { ...parsed, key, documentId: request.documentId, chapterHref: request.chapterHref.split('#')[0], part: request.part, model, createdAt: Date.now() }
     writeDeck(deck)
     // Remember terms so later books can reuse them without another model call.
     writeTerms(deck, request.bookTitle, request.chapterTitle)
     writeKv(`book:${request.documentId}`, request.bookTitle.slice(0, 300))
-    broadcast({ ...base, status: 'ready', deck })
+    broadcast({ ...base, status: 'ready', deck: withEarlierCards(deck, earlier) })
   } catch (error) {
     countUsage('failures')
     broadcast({ ...base, status: 'error', error: error instanceof Error ? error.message : '코치 카드를 만들지 못했습니다.' })
